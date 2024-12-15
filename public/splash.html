@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BBZCloud wird geladen</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+      
+      .splash-container {
+        text-align: center;
+        background: linear-gradient(135deg, #2c3e50, #3498db);
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        color: white;
+      }
+
+      .loader {
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top: 4px solid white;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 300;
+      }
+
+      p {
+        margin: 10px 0 0;
+        font-size: 14px;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="splash-container">
+      <h1>BBZCloud</h1>
+      <div class="loader"></div>
+      <p>Wird geladen...</p>
+    </div>
+  </body>
+</html>

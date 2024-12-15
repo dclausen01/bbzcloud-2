@@ -1,0 +1,156 @@
+{
+  "name": "bbzcloud",
+  "version": "1.9.0",
+  "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
+  "main": "public/electron.js",
+  "private": true,
+  "homepage": "https://github.com/koyuawsmbrtn/bbz-cloud#readme",
+  "bugs": {
+    "url": "https://github.com/koyuawsmbrtn/bbz-cloud/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "koyu.space",
+    "email": "support@koyu.space",
+    "url": "https://koyu.space"
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^2.8.0",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "axios": "^1.5.0",
+    "electron-is-dev": "^2.0.0",
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.1.4",
+    "framer-motion": "^10.16.4",
+    "fs-extra": "^11.1.1",
+    "keytar": "^7.9.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.15.0",
+    "react-scripts": "5.0.1"
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "concurrently": "^8.2.1",
+    "cross-env": "^7.0.3",
+    "electron": "^26.1.0",
+    "electron-builder": "^24.6.4",
+    "electron-devtools-installer": "^3.2.0",
+    "wait-on": "^7.0.1"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "cross-env PUBLIC_URL=./ react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "electron-dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "postinstall": "electron-builder install-app-deps",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder -mwl",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "release": "npm run build && electron-builder --publish=always"
+  },
+  "build": {
+    "appId": "com.bbzcloud.app",
+    "productName": "BBZ Cloud",
+    "files": [
+      "build/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "public/electron.js",
+      "public/preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": ["**/*"]
+      }
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/images/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/images/icon.png",
+      "category": "public.app-category.education",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/images/icon.png",
+      "category": "Education",
+      "desktop": {
+        "Name": "BBZ Cloud",
+        "Comment": "Die Desktop-App für die BBZ Cloud",
+        "Categories": "Education;Network;",
+        "StartupWMClass": "BBZ Cloud"
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BBZ Cloud"
+    },
+    "dmg": {
+      "title": "BBZ Cloud",
+      "icon": "assets/images/icon.png",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "koyuawsmbrtn",
+      "repo": "bbz-cloud",
+      "private": true
+    }
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
