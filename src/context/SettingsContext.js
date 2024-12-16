@@ -18,7 +18,7 @@ const defaultSettings = {
     },
     bbb: { 
       visible: true, 
-      url: 'https://bbb.bbz-rd-eck.de/b', 
+      url: 'https://bbb.bbz-rd-eck.de/b/', 
       title: 'BigBlueButton',
       buttonVariant: 'bbb'
     },
@@ -156,8 +156,7 @@ export function SettingsProvider({ children }) {
         ...prevSettings,
         customApps: [...currentCustomApps, {
           ...app,
-          buttonVariant: 'solid',
-          favicon: `https://www.google.com/s2/favicons?domain=${new URL(app.url).hostname}&sz=32`
+          buttonVariant: 'solid'
         }]
       };
     });

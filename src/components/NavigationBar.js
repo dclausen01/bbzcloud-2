@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Flex,
   Button,
@@ -10,6 +10,33 @@ import {
 
 function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const { colorMode } = useColorMode();
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const showText = windowWidth >= 1400;
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const getSymbol = (id) => {
+    const symbols = {
+      schulcloud: '🏫',
+      moodle: '📚',
+      bbb: '🎥',
+      outlook: '📧',
+      office: '📎',
+      cryptpad: '📝',
+      taskcards: '📋',
+      webuntis: '📅',
+      wiki: '📖',
+      handbook: '📔',
+    };
+    return symbols[id] || '🔗';
+  };
 
   return (
     <Flex as="nav" gap={1} align="center" minWidth="0" flex="0 1 auto">
@@ -17,19 +44,26 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
         .filter(([_, config]) => config.visible)
         .map(([id, config]) => (
           <ButtonGroup key={id} size="sm" isAttached variant="outline" spacing={0}>
-            <Button
-              onClick={() => onButtonClick(id)}
-              variant={config.buttonVariant || 'solid'}
-              _hover={{
-                opacity: 0.8,
-              }}
-              height="28px"
-              minW="auto"
-              px={2}
-              fontSize="xs"
-            >
-              {config.title}
-            </Button>
+            <Tooltip label={!showText ? config.title : undefined} placement="top">
+              <Button
+                onClick={() => onButtonClick(id)}
+                variant={config.buttonVariant || 'solid'}
+                _hover={{
+                  opacity: 0.8,
+                }}
+                height="28px"
+                minW={showText ? "auto" : "28px"}
+                px={showText ? 2 : 1}
+                fontSize="xs"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                gap={2}
+              >
+                {!showText && <span>{getSymbol(id)}</span>}
+                {showText && config.title}
+              </Button>
+            </Tooltip>
             <Tooltip label="In neuem Fenster öffnen" placement="top">
               <IconButton
                 aria-label={`${config.title} in neuem Fenster öffnen`}

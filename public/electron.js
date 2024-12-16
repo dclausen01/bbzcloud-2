@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Menu, Tray, dialog, webContents } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
@@ -40,7 +40,8 @@ const store = new Store({
               visible: { type: 'boolean' },
               url: { type: 'string' },
               title: { type: 'string' },
-              buttonVariant: { type: 'string' }
+              buttonVariant: { type: 'string' },
+              favicon: { type: 'string' }
             }
           }
         },
@@ -52,11 +53,21 @@ const store = new Store({
               id: { type: 'string' },
               title: { type: 'string' },
               url: { type: 'string' },
-              buttonVariant: { type: 'string' }
+              buttonVariant: { type: 'string' },
+              favicon: { type: 'string' }
             }
           }
         },
-        theme: { type: 'string' }
+        theme: { type: 'string' },
+        windowState: {
+          type: 'object',
+          properties: {
+            x: { type: 'number' },
+            y: { type: 'number' },
+            width: { type: 'number' },
+            height: { type: 'number' }
+          }
+        }
       }
     }
   }
@@ -94,6 +105,26 @@ const getAssetPath = (asset) => {
   return path.resolve(process.resourcesPath, 'assets', 'images', asset);
 };
 
+// Save window state
+function saveWindowState() {
+  if (!mainWindow.isMaximized()) {
+    const bounds = mainWindow.getBounds();
+    store.set('settings.windowState', bounds);
+  }
+}
+
+// Restore window state
+function restoreWindowState() {
+  const windowState = store.get('settings.windowState');
+  if (windowState) {
+    return windowState;
+  }
+  return {
+    width: 1450,
+    height: 800
+  };
+}
+
 // Ensure assets are copied in production
 const copyAssetsIfNeeded = async () => {
   if (!isDev) {
@@ -122,6 +153,14 @@ function createTray() {
         }
         mainWindow.show();
         mainWindow.focus();
+      }
+    },
+    {
+      label: 'Fenster maximieren',
+      click: () => {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.maximize();
       }
     },
     { 
@@ -168,9 +207,12 @@ function createSplashWindow() {
 }
 
 function createWindow() {
+  const windowState = restoreWindowState();
+  
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    ...windowState,
+    minWidth: 1000,
+    minHeight: 700,
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -198,6 +240,13 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
+  // Save window state on close and resize
+  ['resize', 'move', 'close'].forEach(event => {
+    mainWindow.on(event, () => {
+      saveWindowState();
+    });
+  });
+
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
@@ -207,8 +256,6 @@ function createWindow() {
   });
 
   mainWindow.on('minimize', (event) => {
-    // Don't prevent default minimize behavior
-    // This allows the window to show in taskbar when minimized
     mainWindow.setSkipTaskbar(false);
   });
 
@@ -217,7 +264,6 @@ function createWindow() {
   });
 
   mainWindow.on('hide', () => {
-    // When explicitly hiding (not minimizing), skip taskbar
     mainWindow.setSkipTaskbar(true);
   });
 
@@ -236,9 +282,14 @@ function createWindow() {
 }
 
 function createWebviewWindow(url, title) {
+  const settings = store.get('settings');
+  const theme = settings?.theme || 'light';
+  
   const win = new BrowserWindow({
     width: 1000,
     height: 800,
+    minWidth: 725,
+    minHeight: 700,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -252,8 +303,8 @@ function createWebviewWindow(url, title) {
 
   win.loadURL(
     isDev
-      ? `http://localhost:3000/webview.html?url=${encodeURIComponent(url)}`
-      : `file://${path.join(__dirname, '../build/webview.html')}?url=${encodeURIComponent(url)}`
+      ? `http://localhost:3000/webview.html?url=${encodeURIComponent(url)}&theme=${theme}`
+      : `file://${path.join(__dirname, '../build/webview.html')}?url=${encodeURIComponent(url)}&theme=${theme}`
   );
 
   win.setMenu(null);
@@ -293,6 +344,29 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
   } catch (error) {
     console.error('Error in save-credentials:', error);
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.on('update-badge', (event, isBadge) => {
+  if (isBadge) {
+    mainWindow?.setOverlayIcon(
+      nativeImage.createFromPath(getAssetPath('icon_badge.png')),
+      'NeueNachrichten'
+    );
+    mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      tray?.setImage(getAssetPath('tray-lowres_badge.png'));
+    } else {
+      tray?.setImage(getAssetPath('tray_badge.png'));
+    }
+  } else {
+    mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
+    mainWindow?.setIcon(getAssetPath('icon.png'));
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      tray?.setImage(getAssetPath('tray-lowres.png'));
+    } else {
+      tray?.setImage(getAssetPath('tray.png'));
+    }
   }
 });
 
@@ -411,11 +485,14 @@ app.on('web-contents-created', (event, contents) => {
     // Handle Microsoft URLs
     if (isMicrosoft(url) && !url.includes('stashcat')) {
       if (url.includes('about:blank') || url.includes('download') || url.includes('sharepoint')) {
+        const settings = store.get('settings');
+        const theme = settings?.theme || 'light';
+        
         const newWin = new BrowserWindow({
           width: 1024,
           height: 728,
-          minWidth: 600,
-          minHeight: 300,
+          minWidth: 725,
+          minHeight: 700,
           show: false,
           webPreferences: {
             nodeIntegration: false,

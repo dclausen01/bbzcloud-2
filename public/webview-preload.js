@@ -30,6 +30,24 @@ contextBridge.exposeInMainWorld(
         console.error('Error saving credentials:', error);
         return { success: false, error: error.message };
       }
+    },
+    // Get settings from electron-store
+    getSettings: async () => {
+      try {
+        return await ipcRenderer.invoke('get-settings');
+      } catch (error) {
+        console.error('Error getting settings:', error);
+        return { success: false, error: error.message };
+      }
+    },
+    // Execute JavaScript in webview
+    executeJavaScript: async (params) => {
+      try {
+        return await ipcRenderer.invoke('inject-js', params);
+      } catch (error) {
+        console.error('Error executing JavaScript:', error);
+        return { success: false, error: error.message };
+      }
     }
   }
 );
