@@ -18,9 +18,27 @@ const defaultSettings = {
     },
     bbb: { 
       visible: true, 
-      url: 'https://bbb.bbz-rd-eck.de', 
+      url: 'https://bbb.bbz-rd-eck.de/b', 
       title: 'BigBlueButton',
       buttonVariant: 'bbb'
+    },
+    outlook: {
+      visible: true,
+      url: 'https://exchange.bbz-rd-eck.de/owa/#path=/mail',
+      title: 'Outlook',
+      buttonVariant: 'blue'
+    },
+    office: {
+      visible: true,
+      url: 'https://www.microsoft365.com/?auth=2',
+      title: 'Office',
+      buttonVariant: 'lilac'
+    },
+    cryptpad: {
+      visible: true,
+      url: 'https://cryptpad.fr/drive',
+      title: 'CryptPad',
+      buttonVariant: 'cryptpad'
     },
     taskcards: {
       visible: true,
@@ -28,11 +46,11 @@ const defaultSettings = {
       title: 'TaskCards',
       buttonVariant: 'taskcards'
     },
-    cryptpad: {
+    webuntis: {
       visible: true,
-      url: 'https://cryptpad.fr/drive',
-      title: 'CryptPad',
-      buttonVariant: 'cryptpad'
+      url: 'https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login',
+      title: 'WebUntis',
+      buttonVariant: 'orange'
     },
     wiki: {
       visible: true,

@@ -101,6 +101,42 @@ const colors = {
     700: '#007891',
     800: '#006787',
     900: '#004a74',
+  },
+  lilac: {
+    50: '#f3e5f5',
+    100: '#e1bee7',
+    200: '#ce93d8',
+    300: '#ba68c8',
+    400: '#ab47bc',
+    500: '#9c27b0',
+    600: '#8e24aa',
+    700: '#7b1fa2',
+    800: '#6a1b9a',
+    900: '#4a148c',
+  },
+  blue: {
+    50: '#e3f2fd',
+    100: '#bbdefb',
+    200: '#90caf9',
+    300: '#64b5f6',
+    400: '#42a5f5',
+    500: '#2196f3',
+    600: '#1e88e5',
+    700: '#1976d2',
+    800: '#1565c0',
+    900: '#0d47a1',
+  },
+  orange: {
+    50: '#fff3e0',
+    100: '#ffe0b2',
+    200: '#ffcc80',
+    300: '#ffb74d',
+    400: '#ffa726',
+    500: '#ff9800',
+    600: '#fb8c00',
+    700: '#f57c00',
+    800: '#ef6c00',
+    900: '#e65100',
   }
 };
 
@@ -172,6 +208,27 @@ const components = {
         color: 'white',
         _hover: {
           bg: props.colorMode === 'dark' ? 'cryptpad.700' : 'cryptpad.600',
+        },
+      }),
+      lilac: (props) => ({
+        bg: props.colorMode === 'dark' ? 'lilac.600' : 'lilac.500',
+        color: 'white',
+        _hover: {
+          bg: props.colorMode === 'dark' ? 'lilac.700' : 'lilac.600',
+        },
+      }),
+      blue: (props) => ({
+        bg: props.colorMode === 'dark' ? 'blue.600' : 'blue.500',
+        color: 'white',
+        _hover: {
+          bg: props.colorMode === 'dark' ? 'blue.700' : 'blue.600',
+        },
+      }),
+      orange: (props) => ({
+        bg: props.colorMode === 'dark' ? 'orange.600' : 'orange.500',
+        color: 'white',
+        _hover: {
+          bg: props.colorMode === 'dark' ? 'orange.700' : 'orange.600',
         },
       }),
     },
