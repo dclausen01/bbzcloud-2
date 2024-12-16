@@ -26,7 +26,7 @@ function CustomAppsMenu({ apps, onAppClick, onNewWindow }) {
         _hover={{ bg: 'transparent' }}
         height="28px"
       >
-        Keine benutzerdefinierten Apps
+        Apps
       </Button>
     );
   }
