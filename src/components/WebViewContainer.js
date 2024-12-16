@@ -214,15 +214,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
       });
 
-      // Handle BBB redirects
-      webview.addEventListener('will-navigate', (e) => {
-        const url = e.url;
-        if (url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?')) {
-          e.preventDefault();
-          window.electron.send('open-external', url);
-        }
-      });
-
       webview.addEventListener('did-fail-load', (error) => {
         console.error(`[DEBUG] Load error for ${id}:`, error);
         setIsLoading(prev => ({ ...prev, [id]: false }));

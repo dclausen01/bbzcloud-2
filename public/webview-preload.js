@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld(
     // IPC communication
     send: (channel, data) => {
       // whitelist channels
-      const validChannels = ['update-badge', 'contextMenu'];
+      const validChannels = ['update-badge', 'contextMenu', 'open-external'];
       if (validChannels.includes(channel)) {
         ipcRenderer.send(channel, data);
       }
@@ -47,6 +47,15 @@ contextBridge.exposeInMainWorld(
       } catch (error) {
         console.error('Error executing JavaScript:', error);
         return { success: false, error: error.message };
+      }
+    },
+    // Resolve asset path
+    resolveAssetPath: async (asset) => {
+      try {
+        return await ipcRenderer.invoke('get-asset-path', asset);
+      } catch (error) {
+        console.error('Error resolving asset path:', error);
+        throw error;
       }
     }
   }
