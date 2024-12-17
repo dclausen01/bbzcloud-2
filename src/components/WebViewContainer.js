@@ -92,18 +92,40 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     if (!webview || credsAreSet[id]) return;
 
     try {
-      const settings = await window.electron.getSettings();
-      if (!settings.success || !settings.settings) return;
+      // Get email address
+      const emailResult = await window.electron.getCredentials({
+        service: 'bbzcloud',
+        account: 'emailAddress'
+      });
+      
+      // Get outlook password
+      const outlookResult = await window.electron.getCredentials({
+        service: 'bbzcloud',
+        account: 'outlookPassword'
+      });
+      
+      // Get BBB password if needed
+      const bbbResult = id === 'bbb' ? await window.electron.getCredentials({
+        service: 'bbzcloud',
+        account: 'bbbPassword'
+      }) : null;
 
-      const creds = settings.settings;
+      if (!emailResult.success || !outlookResult.success || (id === 'bbb' && !bbbResult.success)) {
+        console.error('Failed to retrieve credentials');
+        return;
+      }
+
+      const emailAddress = emailResult.password;
+      const outlookPassword = outlookResult.password;
+      const bbbPassword = bbbResult?.password;
 
       switch (id) {
         case 'outlook':
           await webview.executeJavaScript(
-            `document.querySelector('#userNameInput').value = "${creds.emailAddress}"; void(0);`
+            `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = "${creds.outlookPassword}"; void(0);`
+            `document.querySelector('#passwordInput').value = "${outlookPassword}"; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
@@ -114,10 +136,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'moodle':
           await webview.executeJavaScript(
-            `document.querySelector('#username').value = "${creds.emailAddress.toLowerCase()}"; void(0);`
+            `document.querySelector('#username').value = "${emailAddress.toLowerCase()}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#password').value = "${creds.outlookPassword}"; void(0);`
+            `document.querySelector('#password').value = "${outlookPassword}"; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('#loginbtn').click();`
@@ -126,22 +148,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'bbb':
           await webview.executeJavaScript(
-            `document.querySelector('#session_email').value = "${creds.emailAddress}"; void(0);`
+            `document.querySelector('#session_email').value = "${emailAddress}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#session_password').value = "${creds.bbbPassword}"; void(0);`
+            `document.querySelector('#session_password').value = "${bbbPassword}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.getElementsByClassName('signin-button')[0].click();`
+            `document.querySelector('.signin-button')[0].click();`
           );
           break;
 
         case 'bbzhandbuch':
           await webview.executeJavaScript(
-            `document.querySelector('#userNameInput').value = "${creds.emailAddress}"; void(0);`
+            `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = "${creds.outlookPassword}"; void(0);`
+            `document.querySelector('#passwordInput').value = "${outlookPassword}"; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
@@ -319,7 +341,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 display: 'flex',
               }}
               allowpopups="true"
-              preload="webview-preload.js"
               partition={`persist:${id}`}
             />
           </Box>
@@ -357,7 +378,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               display: 'flex',
             }}
             allowpopups="true"
-            preload="webview-preload.js"
             partition="persist:custom"
           />
         </Box>

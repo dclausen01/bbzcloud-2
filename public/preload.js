@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
+  // Existing methods
   getAssetPath: (asset) => ipcRenderer.invoke('get-asset-path', asset),
   openExternalWindow: (data) => ipcRenderer.invoke('open-external-window', data),
   injectJs: (data) => ipcRenderer.invoke('inject-js', data),
@@ -22,7 +23,17 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeListener('download', subscription);
     };
   },
-  // Add specific asset path resolution
+  
+  // Added methods from webview-preload.js
+  send: (channel, data) => {
+    // whitelist channels
+    const validChannels = ['update-badge', 'contextMenu', 'open-external'];
+    if (validChannels.includes(channel)) {
+      ipcRenderer.send(channel, data);
+    }
+  },
+  
+  // Enhanced resolveAssetPath (combining both implementations)
   resolveAssetPath: async (asset) => {
     try {
       const assetPath = await ipcRenderer.invoke('get-asset-path', asset);
@@ -30,6 +41,16 @@ contextBridge.exposeInMainWorld('electron', {
     } catch (error) {
       console.error('Error resolving asset path:', error);
       throw error;
+    }
+  },
+  
+  // Enhanced executeJavaScript method
+  executeJavaScript: async (params) => {
+    try {
+      return await ipcRenderer.invoke('inject-js', params);
+    } catch (error) {
+      console.error('Error executing JavaScript:', error);
+      return { success: false, error: error.message };
     }
   }
 });

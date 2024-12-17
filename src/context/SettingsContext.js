@@ -18,7 +18,7 @@ const defaultSettings = {
     },
     bbb: { 
       visible: true, 
-      url: 'https://bbb.bbz-rd-eck.de/b/', 
+      url: 'https://bbb.bbz-rd-eck.de/b/signin', 
       title: 'BigBlueButton',
       buttonVariant: 'bbb'
     },
