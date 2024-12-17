@@ -24,6 +24,15 @@ contextBridge.exposeInMainWorld('electron', {
     };
   },
   
+  // Theme change listener
+  onThemeChanged: (callback) => {
+    const subscription = (event, theme) => callback(theme);
+    ipcRenderer.on('theme-changed', subscription);
+    return () => {
+      ipcRenderer.removeListener('theme-changed', subscription);
+    };
+  },
+  
   // Added methods from webview-preload.js
   send: (channel, data) => {
     // whitelist channels

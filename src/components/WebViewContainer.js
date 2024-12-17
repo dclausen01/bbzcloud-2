@@ -17,7 +17,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [imageError, setImageError] = useState(false);
   const [credsAreSet, setCredsAreSet] = useState({});
   const toast = useToast();
-  const { colorMode } = useColorMode();
+  const { colorMode, setColorMode } = useColorMode();
+
+  // Listen for theme changes from main process
+  useEffect(() => {
+    const unsubscribe = window.electron.onThemeChanged((theme) => {
+      setColorMode(theme);
+    });
+    return () => unsubscribe();
+  }, [setColorMode]);
 
   useEffect(() => {
     const loadOverviewImage = async () => {
@@ -43,59 +51,99 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     });
   }, [standardApps]);
 
-  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  // Set up SchulCloud notification checking
+  useEffect(() => {
+    const schulcloudWebview = document.querySelector('#wv-schulcloud');
+    if (!schulcloudWebview) return;
 
-  // Helper function to check if favicon indicates new messages
-  const checkForNotifications = (base64Image) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = function () {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-        
-        // Get lower right quadrant
-        const imageData = ctx.getImageData(
-          img.width / 2,
-          img.height / 2,
-          img.width / 2,
-          img.height / 2
-        ).data;
-        
-        let redPixelCount = 0;
-        let totalPixels = 0;
-        
-        // Check each pixel in the lower right quadrant
-        for (let i = 0; i < imageData.length; i += 4) {
-          const red = imageData[i];
-          const green = imageData[i + 1];
-          const blue = imageData[i + 2];
-          const alpha = imageData[i + 3];
+    const checkForNotifications = (base64Image) => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, img.width, img.height);
           
-          // Only count non-transparent pixels
-          if (alpha > 0) {
-            totalPixels++;
-            // Check if pixel matches the exact notification color (234, 109, 132)
-            if (red === 234 && green === 109 && blue === 132) {
-              redPixelCount++;
+          // Get lower right quadrant
+          const imageData = ctx.getImageData(
+            img.width / 2,
+            img.height / 2,
+            img.width / 2,
+            img.height / 2
+          ).data;
+          
+          let redPixelCount = 0;
+          let totalPixels = 0;
+          
+          // Check each pixel in the lower right quadrant
+          for (let i = 0; i < imageData.length; i += 4) {
+            const red = imageData[i];
+            const green = imageData[i + 1];
+            const blue = imageData[i + 2];
+            const alpha = imageData[i + 3];
+            
+            // Only count non-transparent pixels
+            if (alpha > 0) {
+              totalPixels++;
+              // Check if pixel matches the exact notification color (234, 109, 132)
+              if (red === 234 && green === 109 && blue === 132) {
+                redPixelCount++;
+              }
             }
           }
-        }
+          
+          // Calculate percentage of matching pixels
+          const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
+          resolve(redPercentage > 0.5); // If more than 50% of pixels match
+        };
         
-        // Calculate percentage of matching pixels
-        const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
-        resolve(redPercentage > 0.5); // If more than 50% of pixels match
-      };
-      
-      img.onerror = function () {
-        reject(new Error('Failed to load favicon'));
-      };
-      
-      img.src = base64Image;
-    });
-  };
+        img.onerror = function () {
+          reject(new Error('Failed to load favicon'));
+        };
+        
+        img.src = base64Image;
+      });
+    };
+
+    const checkNotifications = async () => {
+      try {
+        // Get the favicon URL from the webview
+        const faviconUrl = await schulcloudWebview.executeJavaScript(`
+          (function() {
+            const link = document.querySelector("link[rel*='icon']") || document.querySelector("link[rel*='shortcut icon']");
+            return link ? link.href : null;
+          })();
+        `);
+
+        if (!faviconUrl) {
+          console.log('No favicon found');
+          return;
+        }
+
+        // Check for notifications in the renderer process
+        const hasNotification = await checkForNotifications(faviconUrl);
+        console.log('SchulCloud notification check:', hasNotification);
+        
+        // Send the result to the main process to update icons
+        window.electron.send('update-badge', hasNotification);
+      } catch (error) {
+        console.error('Error checking SchulCloud notifications:', error);
+      }
+    };
+
+    // Initial check
+    checkNotifications();
+    
+    // Set up interval for periodic checks
+    const interval = setInterval(checkNotifications, 3000); // Check every 3 seconds
+    
+    // Cleanup interval when component unmounts
+    return () => clearInterval(interval);
+  }, []); // Empty dependency array means this runs once when component mounts
+
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // Function to inject credentials based on webview ID
   const injectCredentials = async (webview, id) => {
@@ -228,8 +276,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         // Inject credentials if needed
         await injectCredentials(webview, id);
 
-        // Set up context menu for specific webviews
-        if (['schulcloud', 'moodle', 'bigbluebutton', 'bbzhandbuch', 'bbzwiki', 'webuntis'].includes(id)) {
+        // Check if this webview should have context menu
+        const url = webview.getURL();
+        if (
+          url.includes('schul.cloud') ||
+          url.includes('portal.bbz-rd-eck.com') || // Moodle
+          url.includes('taskcards.app') ||
+          url.includes('wiki.bbz-rd-eck.com')
+        ) {
           webview.addEventListener('context-menu', (e) => {
             e.preventDefault();
             window.electron.send('contextMenu', {
@@ -238,41 +292,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               selectionText: e.selectionText,
             });
           });
-        }
-
-        // Check SchulCloud notifications
-        if (id === 'schulcloud') {
-          const checkNotifications = async () => {
-            try {
-              // Get the favicon URL from the webview
-              const faviconUrl = await webview.executeJavaScript(`
-                (function() {
-                  const link = document.querySelector("link[rel*='icon']") || document.querySelector("link[rel*='shortcut icon']");
-                  return link ? link.href : null;
-                })();
-              `);
-
-              if (!faviconUrl) {
-                console.log('No favicon found');
-                return;
-              }
-
-              // Check for notifications in the renderer process
-              const hasNotification = await checkForNotifications(faviconUrl);
-              
-              // Send the result to the main process to update icons
-              window.electron.send('update-badge', hasNotification);
-            } catch (error) {
-              console.error('Error checking SchulCloud notifications:', error);
-            }
-          };
-
-          // Initial check
-          checkNotifications();
-          
-          // Set up interval for periodic checks
-          const interval = setInterval(checkNotifications, 8000);
-          return () => clearInterval(interval);
         }
       });
 

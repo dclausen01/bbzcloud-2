@@ -314,6 +314,8 @@ function createWebviewWindow(url, title) {
   win.on('closed', () => {
     windowRegistry.delete(url);
   });
+
+  return win;
 }
 
 // Handle credentials
@@ -334,6 +336,27 @@ async function getCredentials(service, account) {
     console.error('Error getting credentials:', error);
     return null;
   }
+}
+
+// Context menu for specific webviews
+function createContextMenu(webContents) {
+  return Menu.buildFromTemplate([
+    { 
+      label: 'Ausschneiden',
+      accelerator: 'CmdOrCtrl+X',
+      role: 'cut'
+    },
+    { 
+      label: 'Kopieren',
+      accelerator: 'CmdOrCtrl+C',
+      role: 'copy'
+    },
+    { 
+      label: 'Einfügen',
+      accelerator: 'CmdOrCtrl+V',
+      role: 'paste'
+    }
+  ]);
 }
 
 // IPC handlers
@@ -400,6 +423,11 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
 ipcMain.handle('save-settings', async (event, settings) => {
   try {
     store.set('settings', settings);
+    // Update theme for all open windows
+    const theme = settings.theme || 'light';
+    windowRegistry.forEach((win) => {
+      win.webContents.send('theme-changed', theme);
+    });
     return { success: true };
   } catch (error) {
     console.error('Error saving settings:', error);
@@ -469,6 +497,21 @@ app.on('web-contents-created', (event, contents) => {
         }
       });
       shell.openExternal(url);
+    }
+  });
+
+  // Add context menu for specific webviews
+  contents.on('context-menu', (e, params) => {
+    const url = contents.getURL();
+    if (
+      url.includes('schul.cloud') ||
+      url.includes('portal.bbz-rd-eck.com') || // Moodle
+      url.includes('taskcards.app') ||
+      url.includes('wiki.bbz-rd-eck.com')
+    ) {
+      e.preventDefault();
+      const menu = createContextMenu(contents);
+      menu.popup();
     }
   });
 
