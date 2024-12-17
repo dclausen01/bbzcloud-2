@@ -14,11 +14,6 @@ import {
   Image,
   Spacer,
   Tooltip,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverBody,
-  PopoverArrow,
   Text,
   useToast,
   ButtonGroup,
@@ -176,33 +171,15 @@ function App() {
               </Tooltip>
             </ButtonGroup>
 
-            <ButtonGroup size="sm" isAttached variant="outline">
-              <Popover placement="bottom" trigger="click">
-                <PopoverTrigger>
-                  <IconButton
-                    icon={<span>🔗</span>}
-                    aria-label="URL anzeigen"
-                    height="28px"
-                  />
-                </PopoverTrigger>
-                <PopoverContent width="auto" maxW="600px">
-                  <PopoverArrow />
-                  <PopoverBody>
-                    <Text fontSize="sm" noOfLines={1}>
-                      {currentUrl}
-                    </Text>
-                  </PopoverBody>
-                </PopoverContent>
-              </Popover>
-              <Tooltip label="Link kopieren" placement="top">
-                <IconButton
-                  icon={<span>📋</span>}
-                  onClick={handleCopyUrl}
-                  aria-label="Link kopieren"
-                  height="28px"
-                />
-              </Tooltip>
-            </ButtonGroup>
+            <Tooltip label="Link kopieren" placement="top">
+              <IconButton
+                icon={<span>📋</span>}
+                onClick={handleCopyUrl}
+                aria-label="Link kopieren"
+                height="28px"
+                variant="outline"
+              />
+            </Tooltip>
           </Flex>
         )}
 

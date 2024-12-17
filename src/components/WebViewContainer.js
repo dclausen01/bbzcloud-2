@@ -1,3 +1,4 @@
+/* eslint-disable default-case */
 import React, { useRef, useEffect, useState, forwardRef } from 'react';
 import {
   Box,
@@ -45,10 +46,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // Helper function to check if favicon indicates new messages
-  const isRedDominant = (base64Image, threshold = 0.5) => {
-    const img = new Image();
-    img.src = base64Image;
+  const checkForNotifications = (base64Image) => {
     return new Promise((resolve, reject) => {
+      const img = new Image();
       img.onload = function () {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
@@ -65,25 +65,35 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         ).data;
         
         let redPixelCount = 0;
-        // Check each pixel for exact badge color
+        let totalPixels = 0;
+        
+        // Check each pixel in the lower right quadrant
         for (let i = 0; i < imageData.length; i += 4) {
-          if (
-            imageData[i] === 234 &&     // Red
-            imageData[i + 1] === 109 && // Green
-            imageData[i + 2] === 132    // Blue
-          ) {
-            redPixelCount++;
+          const red = imageData[i];
+          const green = imageData[i + 1];
+          const blue = imageData[i + 2];
+          const alpha = imageData[i + 3];
+          
+          // Only count non-transparent pixels
+          if (alpha > 0) {
+            totalPixels++;
+            // Check if pixel matches the exact notification color (234, 109, 132)
+            if (red === 234 && green === 109 && blue === 132) {
+              redPixelCount++;
+            }
           }
         }
         
         // Calculate percentage of matching pixels
-        const redPercentage = redPixelCount / (imageData.length / 4);
-        const isDominant = redPercentage > threshold;
-        resolve(isDominant);
+        const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
+        resolve(redPercentage > 0.5); // If more than 50% of pixels match
       };
+      
       img.onerror = function () {
-        reject('Error loading favicon');
+        reject(new Error('Failed to load favicon'));
       };
+      
+      img.src = base64Image;
     });
   };
 
@@ -92,32 +102,45 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     if (!webview || credsAreSet[id]) return;
 
     try {
-      // Get email address
+      console.log(`Retrieving credentials for ${id}...`);
+      
+      // Get credentials from keytar using the correct service/account names
       const emailResult = await window.electron.getCredentials({
         service: 'bbzcloud',
-        account: 'emailAddress'
+        account: 'email'
       });
-      
-      // Get outlook password
-      const outlookResult = await window.electron.getCredentials({
+
+      const passwordResult = await window.electron.getCredentials({
         service: 'bbzcloud',
-        account: 'outlookPassword'
+        account: 'password'
       });
-      
-      // Get BBB password if needed
-      const bbbResult = id === 'bbb' ? await window.electron.getCredentials({
+
+      const bbbPasswordResult = id === 'bbb' ? await window.electron.getCredentials({
         service: 'bbzcloud',
         account: 'bbbPassword'
       }) : null;
 
-      if (!emailResult.success || !outlookResult.success || (id === 'bbb' && !bbbResult.success)) {
+      console.log('Credentials retrieved:', {
+        emailSuccess: emailResult.success,
+        passwordSuccess: passwordResult.success,
+        bbbSuccess: bbbPasswordResult?.success
+      });
+
+      if (!emailResult.success || !passwordResult.success || (id === 'bbb' && !bbbPasswordResult?.success)) {
         console.error('Failed to retrieve credentials');
         return;
       }
 
       const emailAddress = emailResult.password;
-      const outlookPassword = outlookResult.password;
-      const bbbPassword = bbbResult?.password;
+      const password = passwordResult.password;
+      const bbbPassword = bbbPasswordResult?.password;
+
+      if (!emailAddress || !password || (id === 'bbb' && !bbbPassword)) {
+        console.error('One or more credentials are missing');
+        return;
+      }
+
+      console.log(`Injecting credentials for ${id}...`);
 
       switch (id) {
         case 'outlook':
@@ -125,7 +148,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = "${outlookPassword}"; void(0);`
+            `document.querySelector('#passwordInput').value = "${password}"; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
@@ -136,13 +159,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'moodle':
           await webview.executeJavaScript(
-            `document.querySelector('#username').value = "${emailAddress.toLowerCase()}"; void(0);`
+            `document.querySelector('input[name="username"][id="username"]').value = "${emailAddress.toLowerCase()}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#password').value = "${outlookPassword}"; void(0);`
+            `document.querySelector('input[name="password"][id="password"]').value = "${password}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#loginbtn').click();`
+            `document.querySelector('button[type="submit"][id="loginbtn"]').click();`
           );
           break;
 
@@ -154,7 +177,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `document.querySelector('#session_password').value = "${bbbPassword}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('.signin-button')[0].click();`
+            `document.querySelector('.signin-button').click();`
           );
           break;
 
@@ -163,7 +186,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = "${outlookPassword}"; void(0);`
+            `document.querySelector('#passwordInput').value = "${password}"; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
@@ -173,6 +196,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           break;
       }
 
+      console.log(`Credentials injected for ${id}`);
       setCredsAreSet(prev => ({ ...prev, [id]: true }));
     } catch (error) {
       console.error(`Error injecting credentials for ${id}:`, error);
@@ -220,17 +244,33 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         if (id === 'schulcloud') {
           const checkNotifications = async () => {
             try {
-              const favicon = await webview.executeJavaScript(
-                `document.getElementsByTagName("link")[0].href;`
-              );
-              const hasNotification = await isRedDominant(favicon);
+              // Get the favicon URL from the webview
+              const faviconUrl = await webview.executeJavaScript(`
+                (function() {
+                  const link = document.querySelector("link[rel*='icon']") || document.querySelector("link[rel*='shortcut icon']");
+                  return link ? link.href : null;
+                })();
+              `);
+
+              if (!faviconUrl) {
+                console.log('No favicon found');
+                return;
+              }
+
+              // Check for notifications in the renderer process
+              const hasNotification = await checkForNotifications(faviconUrl);
+              
+              // Send the result to the main process to update icons
               window.electron.send('update-badge', hasNotification);
             } catch (error) {
               console.error('Error checking SchulCloud notifications:', error);
             }
           };
 
+          // Initial check
           checkNotifications();
+          
+          // Set up interval for periodic checks
           const interval = setInterval(checkNotifications, 8000);
           return () => clearInterval(interval);
         }

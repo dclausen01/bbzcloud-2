@@ -60,7 +60,7 @@ const defaultSettings = {
     },
     handbook: {
       visible: true,
-      url: 'https://viflow.bbz-rd-eck.de/viflow',
+      url: 'https://viflow.bbz-rd-eck.de/viflow/',
       title: 'BBZ Handbuch',
       buttonVariant: 'handbook'
     }
