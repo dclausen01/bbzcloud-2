@@ -16,11 +16,16 @@ import {
   InputGroup,
   InputRightElement,
   Spinner,
+  Slider,
+  SliderTrack,
+  SliderFilledTrack,
+  SliderThumb,
+  Tooltip,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateZoom, updateGlobalZoom } = useSettings();
   const { colorMode, toggleColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -177,6 +182,18 @@ function SettingsPanel({ onClose }) {
     }
   };
 
+  const handleGlobalZoomChange = (value) => {
+    updateGlobalZoom(value);
+  };
+
+  const handleIndividualZoomChange = (buttonId, value) => {
+    updateZoom(buttonId, value);
+  };
+
+  const resetZoom = () => {
+    updateGlobalZoom(1.0);
+  };
+
   if (isLoading) {
     return (
       <VStack spacing={4} align="center" justify="center" h="100%">
@@ -193,14 +210,59 @@ function SettingsPanel({ onClose }) {
           Navigationsbuttons
         </Text>
         {Object.entries(settings.navigationButtons).map(([id, config]) => (
-          <FormControl key={id} display="flex" alignItems="center" mb={2}>
-            <FormLabel mb={0}>{config.title}</FormLabel>
-            <Switch
-              isChecked={config.visible}
-              onChange={() => toggleButtonVisibility(id)}
-            />
+          <FormControl key={id} mb={4}>
+            <HStack justify="space-between" mb={2}>
+              <FormLabel mb={0}>{config.title}</FormLabel>
+              <Switch
+                isChecked={config.visible}
+                onChange={() => toggleButtonVisibility(id)}
+              />
+            </HStack>
+            <Tooltip label={`Zoom: ${Math.round(config.zoom * 100)}%`} placement="top">
+              <Slider
+                aria-label={`${config.title} zoom`}
+                min={0.5}
+                max={2}
+                step={0.1}
+                value={config.zoom}
+                onChange={(value) => handleIndividualZoomChange(id, value)}
+              >
+                <SliderTrack>
+                  <SliderFilledTrack />
+                </SliderTrack>
+                <SliderThumb />
+              </Slider>
+            </Tooltip>
           </FormControl>
         ))}
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <Text fontSize="lg" fontWeight="bold" mb={4}>
+          Globaler Zoom
+        </Text>
+        <FormControl mb={2}>
+          <Tooltip label={`Zoom: ${Math.round(settings.globalZoom * 100)}%`} placement="top">
+            <Slider
+              aria-label="Globaler Zoom"
+              min={0.5}
+              max={2}
+              step={0.1}
+              value={settings.globalZoom}
+              onChange={handleGlobalZoomChange}
+            >
+              <SliderTrack>
+                <SliderFilledTrack />
+              </SliderTrack>
+              <SliderThumb />
+            </Slider>
+          </Tooltip>
+        </FormControl>
+        <Button size="sm" onClick={resetZoom}>
+          Zoom zurücksetzen
+        </Button>
       </Box>
 
       <Divider />

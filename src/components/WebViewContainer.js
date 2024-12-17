@@ -9,6 +9,7 @@ import {
   Image,
   Text,
 } from '@chakra-ui/react';
+import { useSettings } from '../context/SettingsContext';
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   const webviewRefs = useRef({});
@@ -18,6 +19,28 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [credsAreSet, setCredsAreSet] = useState({});
   const toast = useToast();
   const { colorMode, setColorMode } = useColorMode();
+  const { settings } = useSettings();
+
+  // Apply zoom level to a webview
+  const applyZoom = async (webview, id) => {
+    if (!webview) return;
+    
+    try {
+      const zoomLevel = standardApps[id]?.zoom || settings.globalZoom;
+      await webview.setZoomLevel(Math.log2(zoomLevel)); // Convert zoom factor to zoom level
+    } catch (error) {
+      console.error(`Error setting zoom for ${id}:`, error);
+    }
+  };
+
+  // Update zoom levels when settings change
+  useEffect(() => {
+    Object.entries(webviewRefs.current).forEach(([id, ref]) => {
+      if (ref.current) {
+        applyZoom(ref.current, id);
+      }
+    });
+  }, [settings.globalZoom, standardApps]);
 
   // Listen for theme changes from main process
   useEffect(() => {
@@ -51,99 +74,59 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     });
   }, [standardApps]);
 
-  // Set up SchulCloud notification checking
-  useEffect(() => {
-    const schulcloudWebview = document.querySelector('#wv-schulcloud');
-    if (!schulcloudWebview) return;
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    const checkForNotifications = (base64Image) => {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = function () {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, img.width, img.height);
+  // Helper function to check if favicon indicates new messages
+  const checkForNotifications = (base64Image) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = function () {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        
+        // Get lower right quadrant
+        const imageData = ctx.getImageData(
+          img.width / 2,
+          img.height / 2,
+          img.width / 2,
+          img.height / 2
+        ).data;
+        
+        let redPixelCount = 0;
+        let totalPixels = 0;
+        
+        // Check each pixel in the lower right quadrant
+        for (let i = 0; i < imageData.length; i += 4) {
+          const red = imageData[i];
+          const green = imageData[i + 1];
+          const blue = imageData[i + 2];
+          const alpha = imageData[i + 3];
           
-          // Get lower right quadrant
-          const imageData = ctx.getImageData(
-            img.width / 2,
-            img.height / 2,
-            img.width / 2,
-            img.height / 2
-          ).data;
-          
-          let redPixelCount = 0;
-          let totalPixels = 0;
-          
-          // Check each pixel in the lower right quadrant
-          for (let i = 0; i < imageData.length; i += 4) {
-            const red = imageData[i];
-            const green = imageData[i + 1];
-            const blue = imageData[i + 2];
-            const alpha = imageData[i + 3];
-            
-            // Only count non-transparent pixels
-            if (alpha > 0) {
-              totalPixels++;
-              // Check if pixel matches the exact notification color (234, 109, 132)
-              if (red === 234 && green === 109 && blue === 132) {
-                redPixelCount++;
-              }
+          // Only count non-transparent pixels
+          if (alpha > 0) {
+            totalPixels++;
+            // Check if pixel matches the exact notification color (234, 109, 132)
+            if (red === 234 && green === 109 && blue === 132) {
+              redPixelCount++;
             }
           }
-          
-          // Calculate percentage of matching pixels
-          const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
-          resolve(redPercentage > 0.5); // If more than 50% of pixels match
-        };
-        
-        img.onerror = function () {
-          reject(new Error('Failed to load favicon'));
-        };
-        
-        img.src = base64Image;
-      });
-    };
-
-    const checkNotifications = async () => {
-      try {
-        // Get the favicon URL from the webview
-        const faviconUrl = await schulcloudWebview.executeJavaScript(`
-          (function() {
-            const link = document.querySelector("link[rel*='icon']") || document.querySelector("link[rel*='shortcut icon']");
-            return link ? link.href : null;
-          })();
-        `);
-
-        if (!faviconUrl) {
-          console.log('No favicon found');
-          return;
         }
-
-        // Check for notifications in the renderer process
-        const hasNotification = await checkForNotifications(faviconUrl);
-        console.log('SchulCloud notification check:', hasNotification);
         
-        // Send the result to the main process to update icons
-        window.electron.send('update-badge', hasNotification);
-      } catch (error) {
-        console.error('Error checking SchulCloud notifications:', error);
-      }
-    };
-
-    // Initial check
-    checkNotifications();
-    
-    // Set up interval for periodic checks
-    const interval = setInterval(checkNotifications, 3000); // Check every 3 seconds
-    
-    // Cleanup interval when component unmounts
-    return () => clearInterval(interval);
-  }, []); // Empty dependency array means this runs once when component mounts
-
-  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        // Calculate percentage of matching pixels
+        const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
+        resolve(redPercentage > 0.5); // If more than 50% of pixels match
+      };
+      
+      img.onerror = function () {
+        reject(new Error('Failed to load favicon'));
+      };
+      
+      img.src = base64Image;
+    });
+  };
 
   // Function to inject credentials based on webview ID
   const injectCredentials = async (webview, id) => {
@@ -251,6 +234,60 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     }
   };
 
+  // Set up SchulCloud notification checking
+  useEffect(() => {
+    const schulcloudWebview = document.querySelector('#wv-schulcloud');
+    if (!schulcloudWebview) return;
+
+    const checkNotifications = async () => {
+      try {
+        // Get the favicon directly from the link tag with exact selector
+        const faviconData = await schulcloudWebview.executeJavaScript(`
+          (function() {
+            const link = document.querySelector('link[rel="icon"]');
+            if (!link) {
+              console.log('No icon link found');
+              return null;
+            }
+            console.log('Found favicon with href:', link.href);
+            return link.href;
+          })();
+        `);
+
+        if (!faviconData) {
+          console.log('No favicon data returned');
+          return;
+        }
+
+        // Log the first 100 characters of the favicon data to verify it's correct
+        console.log('Favicon data (first 100 chars):', faviconData.substring(0, 100));
+        
+        // Check for notifications in the renderer process
+        const hasNotification = await checkForNotifications(faviconData);
+        console.log('SchulCloud notification check result:', hasNotification, 'at:', new Date().toISOString());
+        
+        // Send the result to the main process to update icons
+        window.electron.send('update-badge', hasNotification);
+      } catch (error) {
+        console.error('Error checking SchulCloud notifications:', error);
+      }
+    };
+
+    console.log('Setting up SchulCloud notification checking');
+    
+    // Initial check
+    checkNotifications();
+    
+    // Set up interval for periodic checks
+    const interval = setInterval(checkNotifications, 3000); // Check every 3 seconds
+    
+    // Cleanup interval when component unmounts
+    return () => {
+      console.log('Cleaning up SchulCloud notification checking');
+      clearInterval(interval);
+    };
+  }, []); // Empty dependency array means this runs once when component mounts
+
   useEffect(() => {
     // Set up event listeners for all webviews
     document.querySelectorAll('webview').forEach((webview) => {
@@ -272,6 +309,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         if (activeWebView && activeWebView.id === id) {
           onNavigate(webview.getURL());
         }
+
+        // Apply zoom level
+        await applyZoom(webview, id);
 
         // Inject credentials if needed
         await injectCredentials(webview, id);

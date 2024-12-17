@@ -8,66 +8,77 @@ const defaultSettings = {
       visible: true, 
       url: 'https://app.schul.cloud', 
       title: 'schul.cloud',
-      buttonVariant: 'schulcloud'
+      buttonVariant: 'schulcloud',
+      zoom: 1.0
     },
     moodle: { 
       visible: true, 
       url: 'https://portal.bbz-rd-eck.com', 
       title: 'Moodle',
-      buttonVariant: 'moodle'
+      buttonVariant: 'moodle',
+      zoom: 1.0
     },
     bbb: { 
       visible: true, 
       url: 'https://bbb.bbz-rd-eck.de/b/signin', 
       title: 'BigBlueButton',
-      buttonVariant: 'bbb'
+      buttonVariant: 'bbb',
+      zoom: 1.0
     },
     outlook: {
       visible: true,
       url: 'https://exchange.bbz-rd-eck.de/owa/#path=/mail',
       title: 'Outlook',
-      buttonVariant: 'blue'
+      buttonVariant: 'blue',
+      zoom: 1.0
     },
     office: {
       visible: true,
       url: 'https://www.microsoft365.com/?auth=2',
       title: 'Office',
-      buttonVariant: 'lilac'
+      buttonVariant: 'lilac',
+      zoom: 1.0
     },
     cryptpad: {
       visible: true,
       url: 'https://cryptpad.fr/drive',
       title: 'CryptPad',
-      buttonVariant: 'cryptpad'
+      buttonVariant: 'cryptpad',
+      zoom: 1.0
     },
     taskcards: {
       visible: true,
       url: 'https://bbzrdeck.taskcards.app',
       title: 'TaskCards',
-      buttonVariant: 'taskcards'
+      buttonVariant: 'taskcards',
+      zoom: 1.0
     },
     webuntis: {
       visible: true,
       url: 'https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login',
       title: 'WebUntis',
-      buttonVariant: 'orange'
+      buttonVariant: 'orange',
+      zoom: 1.0
     },
     wiki: {
       visible: true,
       url: 'https://wiki.bbz-rd-eck.com',
       title: 'BBZ Wiki',
-      buttonVariant: 'wiki'
+      buttonVariant: 'wiki',
+      zoom: 1.0
     },
     handbook: {
       visible: true,
       url: 'https://viflow.bbz-rd-eck.de/viflow/',
       title: 'BBZ Handbuch',
-      buttonVariant: 'handbook'
+      buttonVariant: 'handbook',
+      zoom: 1.0
     }
   },
   customApps: [],
   theme: 'light',
   startupDelay: 3000,
+  globalZoom: 1.0
 };
 
 export function SettingsProvider({ children }) {
@@ -145,6 +156,33 @@ export function SettingsProvider({ children }) {
     }));
   };
 
+  const updateZoom = (buttonId, zoom) => {
+    setSettings(prevSettings => ({
+      ...prevSettings,
+      navigationButtons: {
+        ...prevSettings.navigationButtons,
+        [buttonId]: {
+          ...prevSettings.navigationButtons[buttonId],
+          zoom: zoom
+        }
+      }
+    }));
+  };
+
+  const updateGlobalZoom = (zoom) => {
+    setSettings(prevSettings => ({
+      ...prevSettings,
+      globalZoom: zoom,
+      navigationButtons: Object.entries(prevSettings.navigationButtons).reduce((acc, [id, config]) => ({
+        ...acc,
+        [id]: {
+          ...config,
+          zoom: zoom
+        }
+      }), {})
+    }));
+  };
+
   const addCustomApp = (app) => {
     setSettings(prevSettings => {
       // Ensure customApps is an array
@@ -156,7 +194,8 @@ export function SettingsProvider({ children }) {
         ...prevSettings,
         customApps: [...currentCustomApps, {
           ...app,
-          buttonVariant: 'solid'
+          buttonVariant: 'solid',
+          zoom: prevSettings.globalZoom
         }]
       };
     });
@@ -173,6 +212,8 @@ export function SettingsProvider({ children }) {
     settings,
     updateSettings,
     toggleButtonVisibility,
+    updateZoom,
+    updateGlobalZoom,
     addCustomApp,
     removeCustomApp,
     isLoading
