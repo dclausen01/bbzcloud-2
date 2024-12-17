@@ -156,31 +156,29 @@ export function SettingsProvider({ children }) {
     }));
   };
 
-  const updateZoom = (buttonId, zoom) => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      navigationButtons: {
-        ...prevSettings.navigationButtons,
-        [buttonId]: {
-          ...prevSettings.navigationButtons[buttonId],
-          zoom: zoom
-        }
-      }
-    }));
-  };
-
   const updateGlobalZoom = (zoom) => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      globalZoom: zoom,
-      navigationButtons: Object.entries(prevSettings.navigationButtons).reduce((acc, [id, config]) => ({
+    setSettings(prevSettings => {
+      // Update global zoom and sync all navigation buttons and custom apps to use the same zoom
+      const updatedNavigationButtons = Object.entries(prevSettings.navigationButtons).reduce((acc, [id, config]) => ({
         ...acc,
         [id]: {
           ...config,
           zoom: zoom
         }
-      }), {})
-    }));
+      }), {});
+
+      const updatedCustomApps = prevSettings.customApps.map(app => ({
+        ...app,
+        zoom: zoom
+      }));
+
+      return {
+        ...prevSettings,
+        globalZoom: zoom,
+        navigationButtons: updatedNavigationButtons,
+        customApps: updatedCustomApps
+      };
+    });
   };
 
   const addCustomApp = (app) => {
@@ -212,7 +210,6 @@ export function SettingsProvider({ children }) {
     settings,
     updateSettings,
     toggleButtonVisibility,
-    updateZoom,
     updateGlobalZoom,
     addCustomApp,
     removeCustomApp,

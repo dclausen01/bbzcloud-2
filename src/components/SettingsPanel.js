@@ -25,7 +25,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateZoom, updateGlobalZoom } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom } = useSettings();
   const { colorMode, toggleColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -186,10 +186,6 @@ function SettingsPanel({ onClose }) {
     updateGlobalZoom(value);
   };
 
-  const handleIndividualZoomChange = (buttonId, value) => {
-    updateZoom(buttonId, value);
-  };
-
   const resetZoom = () => {
     updateGlobalZoom(1.0);
   };
@@ -211,28 +207,13 @@ function SettingsPanel({ onClose }) {
         </Text>
         {Object.entries(settings.navigationButtons).map(([id, config]) => (
           <FormControl key={id} mb={4}>
-            <HStack justify="space-between" mb={2}>
+            <HStack justify="space-between">
               <FormLabel mb={0}>{config.title}</FormLabel>
               <Switch
                 isChecked={config.visible}
                 onChange={() => toggleButtonVisibility(id)}
               />
             </HStack>
-            <Tooltip label={`Zoom: ${Math.round(config.zoom * 100)}%`} placement="top">
-              <Slider
-                aria-label={`${config.title} zoom`}
-                min={0.5}
-                max={2}
-                step={0.1}
-                value={config.zoom}
-                onChange={(value) => handleIndividualZoomChange(id, value)}
-              >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <SliderThumb />
-              </Slider>
-            </Tooltip>
           </FormControl>
         ))}
       </Box>
@@ -241,12 +222,12 @@ function SettingsPanel({ onClose }) {
 
       <Box>
         <Text fontSize="lg" fontWeight="bold" mb={4}>
-          Globaler Zoom
+          Zoom
         </Text>
         <FormControl mb={2}>
           <Tooltip label={`Zoom: ${Math.round(settings.globalZoom * 100)}%`} placement="top">
             <Slider
-              aria-label="Globaler Zoom"
+              aria-label="Zoom"
               min={0.5}
               max={2}
               step={0.1}

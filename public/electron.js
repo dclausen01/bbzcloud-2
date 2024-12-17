@@ -41,7 +41,8 @@ const store = new Store({
               url: { type: 'string' },
               title: { type: 'string' },
               buttonVariant: { type: 'string' },
-              favicon: { type: 'string' }
+              favicon: { type: 'string' },
+              zoom: { type: 'number' }
             }
           }
         },
@@ -54,11 +55,13 @@ const store = new Store({
               title: { type: 'string' },
               url: { type: 'string' },
               buttonVariant: { type: 'string' },
-              favicon: { type: 'string' }
+              favicon: { type: 'string' },
+              zoom: { type: 'number' }
             }
           }
         },
         theme: { type: 'string' },
+        globalZoom: { type: 'number' },
         windowState: {
           type: 'object',
           properties: {
@@ -70,8 +73,22 @@ const store = new Store({
         }
       }
     }
-  }
+  },
+  migrations: {
+    // Add a migration to update BBB URL
+    '1.0.0': store => {
+      const settings = store.get('settings');
+      if (settings?.navigationButtons?.bbb) {
+        settings.navigationButtons.bbb.url = 'https://bbb.bbz-rd-eck.de/b/signin';
+        store.set('settings', settings);
+      }
+    }
+  },
+  clearInvalidConfig: true
 });
+
+// Run migrations
+store.get('settings');
 
 let mainWindow;
 let splashWindow;

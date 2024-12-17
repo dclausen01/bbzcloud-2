@@ -212,7 +212,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           );
           break;
 
-        case 'bbzhandbuch':
+        case 'handbook':
+          // Don't reload immediately, wait for the page to load first
+          await sleep(1000); // Wait for initial page load
           await webview.executeJavaScript(
             `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
           );
@@ -222,7 +224,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
           );
-          await sleep(5000);
+          await sleep(3000);
           webview.reload();
           break;
       }
@@ -335,6 +337,19 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
       });
 
+      // Add navigation event listener
+      webview.addEventListener('will-navigate', (e) => {
+        console.log(`[DEBUG] Navigation for ${id} to: ${e.url}`);
+      });
+
+      webview.addEventListener('did-navigate', (e) => {
+        console.log(`[DEBUG] Navigated ${id} to: ${e.url}`);
+        // Reset credentials flag on navigation to allow re-injection if needed
+        if (id === 'handbook') {
+          setCredsAreSet(prev => ({ ...prev, [id]: false }));
+        }
+      });
+
       webview.addEventListener('did-fail-load', (error) => {
         console.error(`[DEBUG] Load error for ${id}:`, error);
         setIsLoading(prev => ({ ...prev, [id]: false }));
@@ -345,6 +360,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           duration: 5000,
           isClosable: true,
         });
+      });
+
+      // Add console message listener for debugging
+      webview.addEventListener('console-message', (e) => {
+        console.log(`[WebView ${id}] ${e.message}`);
       });
     });
   }, []);
@@ -440,7 +460,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 display: 'flex',
               }}
               allowpopups="true"
-              partition={`persist:${id}`}
+              partition="persist:main"
+              webpreferences="allowRunningInsecureContent"
             />
           </Box>
         );
@@ -477,7 +498,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               display: 'flex',
             }}
             allowpopups="true"
-            partition="persist:custom"
+            partition="persist:main"
+            webpreferences="allowRunningInsecureContent"
           />
         </Box>
       )}
