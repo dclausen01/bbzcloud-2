@@ -95,7 +95,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": ["AppImage", "deb", "pacman"],
       "icon": "assets/images/icon.png",
       "category": "Education",
       "desktop": {

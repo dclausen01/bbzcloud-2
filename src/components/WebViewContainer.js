@@ -247,60 +247,38 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     let observer = null;
     let checkInterval = null;
 
-    const setupNotificationChecking = (webview) => {
-      if (!webview) return;
+const setupNotificationChecking = (webview) => {
+  if (!webview) return;
 
-      console.log('Setting up notification checking for SchulCloud webview');
+  const checkNotifications = async () => {
+    try {
+      const faviconData = await webview.executeJavaScript(`
+        document.querySelector('link[rel="icon"][type="image/png"]')?.href;
+      `);
 
-      const checkNotifications = async () => {
-        try {
-          // Get the favicon using the exact selector
-          const faviconData = await webview.executeJavaScript(`
-            (function() {
-              if (document.readyState !== 'complete') {
-                console.log('Page not fully loaded yet');
-                return null;
-              }
+      if (!faviconData) return;
 
-              const iconLink = document.querySelector('link[rel="icon"][type="image/png"]');
-              if (!iconLink) {
-                console.log('Favicon link not found');
-                return null;
-              }
+      const hasNotification = await checkForNotifications(faviconData);
+      window.electron.send('update-badge', hasNotification);
+    } catch (error) {
+      // Silent fail and try again next interval
+    }
+  };
 
-              console.log('Found favicon:', iconLink.href);
-              return iconLink.href;
-            })();
-          `);
+  // Clear any existing interval
+  if (notificationCheckIntervalRef.current) {
+    clearInterval(notificationCheckIntervalRef.current);
+  }
 
-          if (!faviconData) {
-            console.log('No favicon data available');
-            return;
-          }
-
-          // Check for notifications
-          const hasNotification = await checkForNotifications(faviconData);
-          console.log('SchulCloud notification check result:', hasNotification, 'at:', new Date().toISOString());
-          
-          // Send the result to the main process
-          window.electron.send('update-badge', hasNotification);
-        } catch (error) {
-          console.error('Error in notification check:', error);
-        }
-      };
-
-      // Clear any existing interval
-      if (notificationCheckIntervalRef.current) {
-        clearInterval(notificationCheckIntervalRef.current);
-      }
-
-      // Initial check after a delay
-      setTimeout(checkNotifications, 5000);
-
-      // Set up new interval
-      notificationCheckIntervalRef.current = setInterval(checkNotifications, 5000);
-      console.log('Notification check interval set up');
-    };
+  // Only start checking when DOM is ready
+  webview.addEventListener('dom-ready', () => {
+    // Initial check
+    checkNotifications();
+    
+    // Set up interval
+    notificationCheckIntervalRef.current = setInterval(checkNotifications, 5000);
+  });
+};
 
     // Set up observer to watch for the webview
     observer = new MutationObserver((mutations) => {
