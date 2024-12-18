@@ -62,7 +62,7 @@ const store = new Store({
         },
         theme: { type: 'string' },
         globalZoom: { type: 'number' },
-        autostart: { type: 'boolean', default: true }, // Added autostart to schema
+        autostart: { type: 'boolean', default: true },
         windowState: {
           type: 'object',
           properties: {
@@ -76,7 +76,6 @@ const store = new Store({
     }
   },
   migrations: {
-    // Add a migration to update BBB URL
     '1.0.0': store => {
       const settings = store.get('settings');
       if (settings?.navigationButtons?.bbb) {
@@ -108,28 +107,25 @@ const keywordsMicrosoft = ['onedrive', 'onenote', 'download.aspx'];
 // Update autostart based on settings
 function updateAutostart() {
   const settings = store.get('settings');
-  const shouldAutostart = settings?.autostart ?? true; // Default to true if not set
+  const shouldAutostart = settings?.autostart ?? true;
   
-  if (!isDev) { // Only set autostart in production
+  if (!isDev) {
     app.setLoginItemSettings({
       openAtLogin: shouldAutostart,
       path: app.getPath('exe'),
-      args: ['--hidden'] // Start minimized in system tray
+      args: ['--hidden']
     });
   }
 }
 
-// Filter out Download types
 function isDownloadType(url) {
   return downloadTypes.some(type => url.includes(type));
 }
 
-// Detect if URL is MS-related
 function isMicrosoft(url) {
   return keywordsMicrosoft.some(keyword => url.includes(keyword));
 }
 
-// Get the correct assets path
 const getAssetPath = (asset) => {
   if (isDev) {
     return path.resolve(app.getAppPath(), 'assets', 'images', asset);
@@ -137,7 +133,6 @@ const getAssetPath = (asset) => {
   return path.resolve(process.resourcesPath, 'assets', 'images', asset);
 };
 
-// Save window state
 function saveWindowState() {
   if (!mainWindow.isMaximized()) {
     const bounds = mainWindow.getBounds();
@@ -145,7 +140,6 @@ function saveWindowState() {
   }
 }
 
-// Restore window state
 function restoreWindowState() {
   const windowState = store.get('settings.windowState');
   if (windowState) {
@@ -157,7 +151,6 @@ function restoreWindowState() {
   };
 }
 
-// Ensure assets are copied in production
 const copyAssetsIfNeeded = async () => {
   if (!isDev) {
     try {
@@ -272,7 +265,6 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // Save window state on close and resize
   ['resize', 'move', 'close'].forEach(event => {
     mainWindow.on(event, () => {
       saveWindowState();
@@ -344,7 +336,6 @@ function createWebviewWindow(url, title) {
 
   win.setMenu(null);
 
-  // Register window for theme updates
   windowRegistry.set(url, win);
 
   win.on('closed', () => {
@@ -354,7 +345,6 @@ function createWebviewWindow(url, title) {
   return win;
 }
 
-// Handle credentials
 async function saveCredentials(service, account, password) {
   try {
     await keytar.setPassword(service, account, password);
@@ -374,7 +364,6 @@ async function getCredentials(service, account) {
   }
 }
 
-// Context menu for specific webviews
 function createContextMenu(webContents) {
   return Menu.buildFromTemplate([
     { 
@@ -395,7 +384,6 @@ function createContextMenu(webContents) {
   ]);
 }
 
-// IPC handlers
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
   try {
     const result = await saveCredentials(service, account, password);
@@ -459,9 +447,7 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
 ipcMain.handle('save-settings', async (event, settings) => {
   try {
     store.set('settings', settings);
-    // Update autostart setting
     updateAutostart();
-    // Update theme for all open windows
     const theme = settings.theme || 'light';
     windowRegistry.forEach((win) => {
       win.webContents.send('theme-changed', theme);
@@ -494,7 +480,6 @@ ipcMain.handle('get-asset-path', async (event, asset) => {
   }
 });
 
-// Auto updater events
 autoUpdater.on('checking-for-update', () => {
   mainWindow.webContents.send('update-status', 'Suche nach Updates...');
 });
@@ -519,16 +504,13 @@ autoUpdater.on('update-downloaded', (info) => {
   mainWindow.webContents.send('update-status', 'Update heruntergeladen. Installation beim nächsten Neustart.');
 });
 
-// Handle special URLs and downloads
 app.on('web-contents-created', (event, contents) => {
-  // Handle redirects for BBB and Jitsi
   contents.on('will-redirect', (e, url) => {
     if (
       url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
       url.includes('meet.stashcat.com')
     ) {
       e.preventDefault();
-      // Close any empty windows
       BrowserWindow.getAllWindows().forEach((w) => {
         if (w.getTitle() === 'Electron' || w.getTitle() === 'BBZ Cloud') {
           w.close();
@@ -538,12 +520,11 @@ app.on('web-contents-created', (event, contents) => {
     }
   });
 
-  // Add context menu for specific webviews
   contents.on('context-menu', (e, params) => {
     const url = contents.getURL();
     if (
       url.includes('schul.cloud') ||
-      url.includes('portal.bbz-rd-eck.com') || // Moodle
+      url.includes('portal.bbz-rd-eck.com') ||
       url.includes('taskcards.app') ||
       url.includes('wiki.bbz-rd-eck.com')
     ) {
@@ -553,7 +534,6 @@ app.on('web-contents-created', (event, contents) => {
     }
   });
 
-  // Handle new window creation
   contents.setWindowOpenHandler(({ url }) => {
     if (
       url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
@@ -563,10 +543,8 @@ app.on('web-contents-created', (event, contents) => {
       return { action: 'deny' };
     }
 
-    // Handle Microsoft URLs
     if (isMicrosoft(url) && !url.includes('stashcat')) {
       if (url.includes('about:blank') || url.includes('download') || url.includes('sharepoint')) {
-        // Use createWebviewWindow instead of creating a new BrowserWindow directly
         createWebviewWindow(url, 'Microsoft');
         return { action: 'deny' };
       }
@@ -575,7 +553,6 @@ app.on('web-contents-created', (event, contents) => {
     return { action: 'allow' };
   });
 
-  // Handle downloads
   contents.session.on('will-download', (event, item, webContents) => {
     item.on('updated', (event, state) => {
       if (state === 'interrupted') {
@@ -633,7 +610,7 @@ app.on('ready', async () => {
   }
   
   await copyAssetsIfNeeded();
-  updateAutostart(); // Initialize autostart setting
+  updateAutostart();
   createTray();
   createSplashWindow();
   createWindow();
