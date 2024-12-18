@@ -138,6 +138,7 @@ function App() {
         
         <CustomAppsMenu
           apps={settings.customApps}
+          standardApps={settings.standardApps}
           onAppClick={handleCustomAppClick}
           onNewWindow={handleOpenInNewWindow}
         />

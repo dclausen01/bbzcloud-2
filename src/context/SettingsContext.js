@@ -2,6 +2,69 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const SettingsContext = createContext();
 
+const standardApps = {
+  "SchulSHPortal": {
+    "id": "SchulSHPortal",
+    "title": "Schul.SH Portal",
+    "url": "https://portal.schule-sh.de/univention/portal/",
+    "buttonVariant": "solid"
+  },
+  "Hubbs": {
+    "id": "Hubbs",
+    "title": "Hubbs",
+    "url": "https://hubbs.schule/",
+    "buttonVariant": "solid"
+  },
+  "OneNote": {
+    "id": "OneNote",
+    "title": "OneNote",
+    "url": "https://www.onenote.com/notebooks?auth=2&nf=1",
+    "buttonVariant": "solid"
+  },
+  "Oncoo": {
+    "id": "Oncoo",
+    "title": "Oncoo",
+    "url": "https://www.oncoo.de/",
+    "buttonVariant": "solid"
+  },
+  "Miro": {
+    "id": "Miro",
+    "title": "Miro",
+    "url": "https://miro.com/app/dashboard/",
+    "buttonVariant": "solid"
+  },
+  "fobizz": {
+    "id": "fobizz",
+    "title": "fobizz Tools",
+    "url": "https://tools.fobizz.com/",
+    "buttonVariant": "solid"
+  },
+  "Digiscreen": {
+    "id": "Digiscreen",
+    "title": "Digiscreen",
+    "url": "https://ladigitale.dev/digiscreen/",
+    "buttonVariant": "solid"
+  },
+  "ClassroomScreen": {
+    "id": "ClassroomScreen",
+    "title": "ClassroomScreen",
+    "url": "https://classroomscreen.com/app/screen/",
+    "buttonVariant": "solid"
+  },
+  "PlagScan": {
+    "id": "PlagScan",
+    "title": "PlagScan",
+    "url": "https://my.plagaware.com/dashboard",
+    "buttonVariant": "solid"
+  },
+  "KurzeLinks": {
+    "id": "KurzeLinks",
+    "title": "Kurze Links",
+    "url": "https://kurzelinks.de",
+    "buttonVariant": "solid"
+  }
+};
+
 const defaultSettings = {
   navigationButtons: {
     schulcloud: { 
@@ -75,10 +138,12 @@ const defaultSettings = {
       zoom: 1.0
     }
   },
+  standardApps: Object.values(standardApps),
   customApps: [],
   theme: 'light',
   startupDelay: 3000,
-  globalZoom: 1.0
+  globalZoom: 1.0,
+  autostart: true // Added autostart setting with default value true
 };
 
 export function SettingsProvider({ children }) {
@@ -102,6 +167,7 @@ export function SettingsProvider({ children }) {
             ...defaultSettings,
             ...result.settings,
             navigationButtons: updatedNavigationButtons,
+            standardApps: defaultSettings.standardApps, // Always use default standard apps
             // Ensure customApps is always an array
             customApps: Array.isArray(result.settings.customApps) 
               ? result.settings.customApps 
@@ -127,6 +193,8 @@ export function SettingsProvider({ children }) {
           if (!result.success) {
             console.error('Failed to save settings:', result.error);
           }
+          // Update autostart setting in electron
+          await window.electron.setAutostart(settings.autostart);
         } catch (error) {
           console.error('Error saving settings:', error);
         }
@@ -206,6 +274,13 @@ export function SettingsProvider({ children }) {
     }));
   };
 
+  const toggleAutostart = () => {
+    setSettings(prevSettings => ({
+      ...prevSettings,
+      autostart: !prevSettings.autostart
+    }));
+  };
+
   const value = {
     settings,
     updateSettings,
@@ -213,6 +288,7 @@ export function SettingsProvider({ children }) {
     updateGlobalZoom,
     addCustomApp,
     removeCustomApp,
+    toggleAutostart,
     isLoading
   };
 

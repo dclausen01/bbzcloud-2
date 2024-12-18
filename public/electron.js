@@ -62,6 +62,7 @@ const store = new Store({
         },
         theme: { type: 'string' },
         globalZoom: { type: 'number' },
+        autostart: { type: 'boolean', default: true }, // Added autostart to schema
         windowState: {
           type: 'object',
           properties: {
@@ -103,6 +104,20 @@ const downloadTypes = [
 ];
 
 const keywordsMicrosoft = ['onedrive', 'onenote', 'download.aspx'];
+
+// Update autostart based on settings
+function updateAutostart() {
+  const settings = store.get('settings');
+  const shouldAutostart = settings?.autostart ?? true; // Default to true if not set
+  
+  if (!isDev) { // Only set autostart in production
+    app.setLoginItemSettings({
+      openAtLogin: shouldAutostart,
+      path: app.getPath('exe'),
+      args: ['--hidden'] // Start minimized in system tray
+    });
+  }
+}
 
 // Filter out Download types
 function isDownloadType(url) {
@@ -313,7 +328,10 @@ function createWebviewWindow(url, title) {
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true,
       webSecurity: false,
-      partition: 'persist:main'
+      partition: 'persist:main',
+      additionalArguments: [
+        `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
+      ]
     },
     icon: getAssetPath('icon.ico')
   });
@@ -326,6 +344,7 @@ function createWebviewWindow(url, title) {
 
   win.setMenu(null);
 
+  // Register window for theme updates
   windowRegistry.set(url, win);
 
   win.on('closed', () => {
@@ -440,6 +459,8 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
 ipcMain.handle('save-settings', async (event, settings) => {
   try {
     store.set('settings', settings);
+    // Update autostart setting
+    updateAutostart();
     // Update theme for all open windows
     const theme = settings.theme || 'light';
     windowRegistry.forEach((win) => {
@@ -541,30 +562,16 @@ app.on('web-contents-created', (event, contents) => {
       shell.openExternal(url);
       return { action: 'deny' };
     }
-    
+
     // Handle Microsoft URLs
     if (isMicrosoft(url) && !url.includes('stashcat')) {
       if (url.includes('about:blank') || url.includes('download') || url.includes('sharepoint')) {
-        const settings = store.get('settings');
-        const theme = settings?.theme || 'light';
-        
-        const newWin = new BrowserWindow({
-          width: 1024,
-          height: 728,
-          minWidth: 725,
-          minHeight: 700,
-          show: false,
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            webviewTag: true
-          }
-        });
-        newWin.loadURL(url);
+        // Use createWebviewWindow instead of creating a new BrowserWindow directly
+        createWebviewWindow(url, 'Microsoft');
         return { action: 'deny' };
       }
     }
-    
+
     return { action: 'allow' };
   });
 
@@ -626,6 +633,7 @@ app.on('ready', async () => {
   }
   
   await copyAssetsIfNeeded();
+  updateAutostart(); // Initialize autostart setting
   createTray();
   createSplashWindow();
   createWindow();

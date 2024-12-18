@@ -20,6 +20,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const toast = useToast();
   const { colorMode, setColorMode } = useColorMode();
   const { settings } = useSettings();
+  const notificationCheckIntervalRef = useRef(null);
 
   // Apply zoom level to a webview
   const applyZoom = async (webview, id) => {
@@ -89,10 +90,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         
         // Get lower right quadrant
         const imageData = ctx.getImageData(
-          img.width / 2,
-          img.height / 2,
-          img.width / 2,
-          img.height / 2
+          Math.floor(img.width * 0.5),  // Start at 60% of width
+          Math.floor(img.height * 0.5), // Start at 60% of height
+          Math.floor(img.width * 0.5),  // Check remaining 40%
+          Math.floor(img.height * 0.5)  // Check remaining 40%
         ).data;
         
         let redPixelCount = 0;
@@ -106,10 +107,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           const alpha = imageData[i + 3];
           
           // Only count non-transparent pixels
-          if (alpha > 0) {
+          if (alpha > 200) { // More strict alpha threshold
             totalPixels++;
-            // Check if pixel matches the exact notification color (234, 109, 132)
-            if (red === 234 && green === 109 && blue === 132) {
+            // Check if pixel is in the red range (more lenient)
+            // Original color is rgb(234, 109, 132)
+            if (red > 200 && // High red value
+                green > 80 && green < 190 && // Medium green value
+                blue > 100 && blue < 190) { // Medium blue value
               redPixelCount++;
             }
           }
@@ -117,10 +121,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         
         // Calculate percentage of matching pixels
         const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
-        resolve(redPercentage > 0.5); // If more than 50% of pixels match
+        console.log('Red pixel percentage:', redPercentage);
+        resolve(redPercentage > 0.4); // More lenient threshold (40% instead of 50%)
       };
       
-      img.onerror = function () {
+      img.onerror = function (error) {
+        console.error('Failed to load favicon:', error);
         reject(new Error('Failed to load favicon'));
       };
       
@@ -236,57 +242,99 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     }
   };
 
-  // Set up SchulCloud notification checking
+  // Set up SchulCloud notification checking with MutationObserver
   useEffect(() => {
-    const schulcloudWebview = document.querySelector('#wv-schulcloud');
-    if (!schulcloudWebview) return;
+    let observer = null;
+    let checkInterval = null;
 
-    const checkNotifications = async () => {
-      try {
-        // Get the favicon directly from the link tag with exact selector
-        const faviconData = await schulcloudWebview.executeJavaScript(`
-          (function() {
-            const link = document.querySelector('link[rel="icon"]');
-            if (!link) {
-              console.log('No icon link found');
-              return null;
-            }
-            console.log('Found favicon with href:', link.href);
-            return link.href;
-          })();
-        `);
+    const setupNotificationChecking = (webview) => {
+      if (!webview) return;
 
-        if (!faviconData) {
-          console.log('No favicon data returned');
-          return;
+      console.log('Setting up notification checking for SchulCloud webview');
+
+      const checkNotifications = async () => {
+        try {
+          // Get the favicon using the exact selector
+          const faviconData = await webview.executeJavaScript(`
+            (function() {
+              if (document.readyState !== 'complete') {
+                console.log('Page not fully loaded yet');
+                return null;
+              }
+
+              const iconLink = document.querySelector('link[rel="icon"][type="image/png"]');
+              if (!iconLink) {
+                console.log('Favicon link not found');
+                return null;
+              }
+
+              console.log('Found favicon:', iconLink.href);
+              return iconLink.href;
+            })();
+          `);
+
+          if (!faviconData) {
+            console.log('No favicon data available');
+            return;
+          }
+
+          // Check for notifications
+          const hasNotification = await checkForNotifications(faviconData);
+          console.log('SchulCloud notification check result:', hasNotification, 'at:', new Date().toISOString());
+          
+          // Send the result to the main process
+          window.electron.send('update-badge', hasNotification);
+        } catch (error) {
+          console.error('Error in notification check:', error);
         }
+      };
 
-        // Log the first 100 characters of the favicon data to verify it's correct
-        console.log('Favicon data (first 100 chars):', faviconData.substring(0, 100));
-        
-        // Check for notifications in the renderer process
-        const hasNotification = await checkForNotifications(faviconData);
-        console.log('SchulCloud notification check result:', hasNotification, 'at:', new Date().toISOString());
-        
-        // Send the result to the main process to update icons
-        window.electron.send('update-badge', hasNotification);
-      } catch (error) {
-        console.error('Error checking SchulCloud notifications:', error);
+      // Clear any existing interval
+      if (notificationCheckIntervalRef.current) {
+        clearInterval(notificationCheckIntervalRef.current);
       }
+
+      // Initial check after a delay
+      setTimeout(checkNotifications, 5000);
+
+      // Set up new interval
+      notificationCheckIntervalRef.current = setInterval(checkNotifications, 5000);
+      console.log('Notification check interval set up');
     };
 
-    console.log('Setting up SchulCloud notification checking');
-    
-    // Initial check
-    checkNotifications();
-    
-    // Set up interval for periodic checks
-    const interval = setInterval(checkNotifications, 3000); // Check every 3 seconds
-    
-    // Cleanup interval when component unmounts
+    // Set up observer to watch for the webview
+    observer = new MutationObserver((mutations) => {
+      const schulcloudWebview = document.querySelector('#wv-schulcloud');
+      if (schulcloudWebview) {
+        console.log('SchulCloud webview found');
+        setupNotificationChecking(schulcloudWebview);
+        observer.disconnect();
+      }
+    });
+
+    // Start observing with a configuration
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    // Check immediately in case the webview already exists
+    const existingWebview = document.querySelector('#wv-schulcloud');
+    if (existingWebview) {
+      console.log('SchulCloud webview found immediately');
+      setupNotificationChecking(existingWebview);
+      observer.disconnect();
+    }
+
+    // Cleanup function
     return () => {
-      console.log('Cleaning up SchulCloud notification checking');
-      clearInterval(interval);
+      console.log('Cleaning up notification checking');
+      if (observer) {
+        observer.disconnect();
+      }
+      if (notificationCheckIntervalRef.current) {
+        clearInterval(notificationCheckIntervalRef.current);
+      }
     };
   }, []); // Empty dependency array means this runs once when component mounts
 

@@ -13,10 +13,14 @@ import {
   Image,
 } from '@chakra-ui/react';
 
-function CustomAppsMenu({ apps, onAppClick, onNewWindow }) {
+function CustomAppsMenu({ apps, standardApps, onAppClick, onNewWindow }) {
   const { colorMode } = useColorMode();
 
-  if (!apps || apps.length === 0) {
+  const hasStandardApps = standardApps && standardApps.length > 0;
+  const hasCustomApps = apps && apps.length > 0;
+  const hasAnyApps = hasStandardApps || hasCustomApps;
+
+  if (!hasAnyApps) {
     return (
       <Button
         variant="ghost"
@@ -50,47 +54,91 @@ function CustomAppsMenu({ apps, onAppClick, onNewWindow }) {
         borderColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
         boxShadow="md"
       >
-        {apps.map((app) => (
-          <React.Fragment key={app.id}>
-            <MenuItem
-              onClick={() => onAppClick(app)}
-              _hover={{
-                bg: colorMode === 'light' ? 'gray.100' : 'gray.700',
-              }}
-            >
-              <HStack justify="space-between" width="100%" spacing={2}>
-                <HStack spacing={2}>
-                  {app.favicon && (
-                    <Image
-                      src={app.favicon}
-                      alt={`${app.title} icon`}
-                      width="16px"
-                      height="16px"
-                      objectFit="contain"
-                    />
-                  )}
-                  <Text fontSize="xs">{app.title}</Text>
-                </HStack>
-                <IconButton
-                  size="xs"
-                  variant="ghost"
-                  icon={<span>↗️</span>}
-                  aria-label={`${app.title} in neuem Fenster öffnen`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onNewWindow(app.url, app.title);
-                  }}
-                  _hover={{
-                    bg: colorMode === 'light' ? 'gray.200' : 'gray.600',
-                  }}
-                  height="20px"
-                  minW="20px"
-                  p={0}
-                />
+        {/* Standard Apps */}
+        {hasStandardApps && standardApps.map((app) => (
+          <MenuItem
+            key={app.id}
+            onClick={() => onAppClick(app)}
+            _hover={{
+              bg: colorMode === 'light' ? 'gray.100' : 'gray.700',
+            }}
+          >
+            <HStack justify="space-between" width="100%" spacing={2}>
+              <HStack spacing={2}>
+                {app.favicon && (
+                  <Image
+                    src={app.favicon}
+                    alt={`${app.title} icon`}
+                    width="16px"
+                    height="16px"
+                    objectFit="contain"
+                  />
+                )}
+                <Text fontSize="xs">{app.title}</Text>
               </HStack>
-            </MenuItem>
-            <MenuDivider />
-          </React.Fragment>
+              <IconButton
+                size="xs"
+                variant="ghost"
+                icon={<span>↗️</span>}
+                aria-label={`${app.title} in neuem Fenster öffnen`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNewWindow(app.url, app.title);
+                }}
+                _hover={{
+                  bg: colorMode === 'light' ? 'gray.200' : 'gray.600',
+                }}
+                height="20px"
+                minW="20px"
+                p={0}
+              />
+            </HStack>
+          </MenuItem>
+        ))}
+
+        {/* Divider between standard and custom apps */}
+        {hasStandardApps && hasCustomApps && <MenuDivider />}
+
+        {/* Custom Apps */}
+        {hasCustomApps && apps.map((app) => (
+          <MenuItem
+            key={app.id}
+            onClick={() => onAppClick(app)}
+            _hover={{
+              bg: colorMode === 'light' ? 'gray.100' : 'gray.700',
+            }}
+          >
+            <HStack justify="space-between" width="100%" spacing={2}>
+              <HStack spacing={2}>
+                {app.favicon && (
+                  <Image
+                    src={app.favicon}
+                    alt={`${app.title} icon`}
+                    width="16px"
+                    height="16px"
+                    objectFit="contain"
+                  />
+                )}
+                <Text fontSize="xs">{app.title}</Text>
+              </HStack>
+              <IconButton
+                size="xs"
+                variant="ghost"
+                icon={<span>↗️</span>}
+                aria-label={`${app.title} in neuem Fenster öffnen`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNewWindow(app.url, app.title);
+                }}
+                _hover={{
+                  bg: colorMode === 'light' ? 'gray.200' : 'gray.600',
+                }}
+                height="20px"
+                minW="20px"
+                p={0}
+              />
+            </HStack>
+          </MenuItem>
         ))}
       </MenuList>
     </Menu>

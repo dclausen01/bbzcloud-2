@@ -25,7 +25,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart } = useSettings();
   const { colorMode, toggleColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -203,6 +203,22 @@ function SettingsPanel({ onClose }) {
     <VStack spacing={6} align="stretch">
       <Box>
         <Text fontSize="lg" fontWeight="bold" mb={4}>
+          Allgemein
+        </Text>
+        <FormControl display="flex" alignItems="center" mb={4}>
+          <FormLabel mb={0}>Automatisch starten</FormLabel>
+          <Switch isChecked={settings.autostart} onChange={toggleAutostart} />
+        </FormControl>
+        <FormControl display="flex" alignItems="center">
+          <FormLabel mb={0}>Dunkler Modus</FormLabel>
+          <Switch isChecked={colorMode === 'dark'} onChange={toggleColorMode} />
+        </FormControl>
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <Text fontSize="lg" fontWeight="bold" mb={4}>
           Navigationsbuttons
         </Text>
         {Object.entries(settings.navigationButtons).map(([id, config]) => (
@@ -225,21 +241,32 @@ function SettingsPanel({ onClose }) {
           Zoom
         </Text>
         <FormControl mb={2}>
-          <Tooltip label={`Zoom: ${Math.round(settings.globalZoom * 100)}%`} placement="top">
-            <Slider
-              aria-label="Zoom"
-              min={0.5}
-              max={2}
-              step={0.1}
-              value={settings.globalZoom}
-              onChange={handleGlobalZoomChange}
-            >
-              <SliderTrack>
-                <SliderFilledTrack />
-              </SliderTrack>
-              <SliderThumb />
-            </Slider>
-          </Tooltip>
+          <HStack spacing={4} align="center">
+            <Box flex="1">
+              <Slider
+                aria-label="Zoom"
+                min={0.5}
+                max={2}
+                step={0.1}
+                value={settings.globalZoom}
+                onChange={handleGlobalZoomChange}
+              >
+                <SliderTrack>
+                  <SliderFilledTrack />
+                </SliderTrack>
+                <Tooltip 
+                  label={`${Math.round(settings.globalZoom * 100)}%`} 
+                  placement="top" 
+                  isOpen={true}
+                >
+                  <SliderThumb />
+                </Tooltip>
+              </Slider>
+            </Box>
+            <Text minW="45px" textAlign="right">
+              {Math.round(settings.globalZoom * 100)}%
+            </Text>
+          </HStack>
         </FormControl>
         <Button size="sm" onClick={resetZoom}>
           Zoom zurücksetzen
@@ -350,13 +377,6 @@ function SettingsPanel({ onClose }) {
           </Button>
         </VStack>
       </Box>
-
-      <Divider />
-
-      <FormControl display="flex" alignItems="center">
-        <FormLabel mb={0}>Dunkler Modus</FormLabel>
-        <Switch isChecked={colorMode === 'dark'} onChange={toggleColorMode} />
-      </FormControl>
 
       <Button onClick={onClose} mt={4}>
         Schließen
