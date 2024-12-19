@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Box,
   Flex,
@@ -16,6 +16,16 @@ import {
   Text,
   useToast,
   ButtonGroup,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  FormControl,
+  FormLabel,
+  Input,
+  Button,
 } from '@chakra-ui/react';
 import { useSettings } from './context/SettingsContext';
 import NavigationBar from './components/NavigationBar';
@@ -26,11 +36,72 @@ import CustomAppsMenu from './components/CustomAppsMenu';
 function App() {
   const { setColorMode } = useColorMode();
   const { settings } = useSettings();
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [email, setEmail] = useState('');
+  const [isLoadingEmail, setIsLoadingEmail] = useState(true);
 
-  // Sync Chakra color mode with settings
   useEffect(() => {
     setColorMode(settings.theme);
   }, [settings.theme, setColorMode]);
+
+  useEffect(() => {
+    const loadEmail = async () => {
+      try {
+        const result = await window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'email'
+        });
+        if (result.success && result.password) {
+          setEmail(result.password);
+        } else {
+          setShowEmailModal(true);
+        }
+      } catch (error) {
+        console.error('Error loading email:', error);
+      } finally {
+        setIsLoadingEmail(false);
+      }
+    };
+    loadEmail();
+  }, []);
+
+  const handleEmailSubmit = async () => {
+    if (!email) return;
+    
+    try {
+      await window.electron.saveCredentials({
+        service: 'bbzcloud',
+        account: 'email',
+        password: email
+      });
+      setShowEmailModal(false);
+    } catch (error) {
+      console.error('Error saving email:', error);
+      toast({
+        title: 'Fehler beim Speichern',
+        description: error.message,
+        status: 'error',
+        duration: 5000,
+      });
+    }
+  };
+
+  const filterNavigationButtons = useCallback(() => {
+    if (!settings.navigationButtons) return {};
+
+    const isTeacher = email.endsWith('@bbz-rd-eck.de');
+    const isStudent = email.endsWith('@sus.bbz-rd-eck.de');
+
+    if (isTeacher) {
+      return settings.navigationButtons;
+    }
+
+    const allowedApps = ['schulcloud', 'moodle', 'office', 'cryptpad', 'webuntis', 'wiki'];
+    return Object.entries(settings.navigationButtons)
+      .filter(([key]) => allowedApps.includes(key))
+      .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+  }, [email, settings.navigationButtons]);
+
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [activeWebView, setActiveWebView] = useState(null);
   const webViewRef = useRef(null);
@@ -50,10 +121,10 @@ function App() {
     loadAppIcon();
   }, []);
 
-  // Set first visible app as active on startup
   useEffect(() => {
     if (!activeWebView && settings.navigationButtons) {
-      const firstVisibleApp = Object.entries(settings.navigationButtons)
+      const filteredButtons = filterNavigationButtons();
+      const firstVisibleApp = Object.entries(filteredButtons)
         .find(([_, config]) => config.visible);
       
       if (firstVisibleApp) {
@@ -66,10 +137,11 @@ function App() {
         setCurrentUrl(config.url);
       }
     }
-  }, [settings.navigationButtons, activeWebView]);
+  }, [settings.navigationButtons, activeWebView, filterNavigationButtons]);
 
   const handleNavigationClick = (buttonId) => {
-    const buttonConfig = settings.navigationButtons[buttonId];
+    const filteredButtons = filterNavigationButtons();
+    const buttonConfig = filteredButtons[buttonId];
     if (buttonConfig) {
       setActiveWebView({
         id: buttonId,
@@ -111,6 +183,8 @@ function App() {
     }
   };
 
+  const filteredNavigationButtons = filterNavigationButtons();
+
   return (
     <Box h="100vh" display="flex" flexDirection="column" overflow="hidden">
       <Flex
@@ -139,7 +213,7 @@ function App() {
         {/* Center section */}
         <Flex flex="1" justify="center" align="center">
           <NavigationBar
-            buttons={settings.navigationButtons}
+            buttons={filteredNavigationButtons}
             onButtonClick={handleNavigationClick}
             onNewWindow={handleOpenInNewWindow}
           />
@@ -209,20 +283,22 @@ function App() {
       </Flex>
 
       <Box flex="1" position="relative" overflow="hidden">
-        <WebViewContainer
-          ref={webViewRef}
-          activeWebView={activeWebView}
-          standardApps={settings.navigationButtons}
-          onNavigate={(url) => {
-            setCurrentUrl(url);
-            if (activeWebView) {
-              setActiveWebView({
-                ...activeWebView,
-                url,
-              });
-            }
-          }}
-        />
+        {!isLoadingEmail && (
+          <WebViewContainer
+            ref={webViewRef}
+            activeWebView={activeWebView}
+            standardApps={filteredNavigationButtons}
+            onNavigate={(url) => {
+              setCurrentUrl(url);
+              if (activeWebView) {
+                setActiveWebView({
+                  ...activeWebView,
+                  url,
+                });
+              }
+            }}
+          />
+        )}
       </Box>
 
       <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="md">
@@ -235,6 +311,29 @@ function App() {
           </DrawerBody>
         </DrawerContent>
       </Drawer>
+
+      <Modal isOpen={showEmailModal} onClose={() => {}} closeOnOverlayClick={false}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Willkommen bei BBZCloud</ModalHeader>
+          <ModalBody>
+            <FormControl isRequired>
+              <FormLabel>Bitte geben Sie Ihre E-Mail-Adresse ein</FormLabel>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="beispiel@bbz-rd-eck.de"
+              />
+            </FormControl>
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="blue" onClick={handleEmailSubmit} isDisabled={!email}>
+              Bestätigen
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 }
