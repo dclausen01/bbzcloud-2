@@ -32,6 +32,15 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeListener('theme-changed', subscription);
     };
   },
+
+  // System resume listener
+  onSystemResumed: (callback) => {
+    const subscription = (event, webviewsToReload) => callback(webviewsToReload);
+    ipcRenderer.on('system-resumed', subscription);
+    return () => {
+      ipcRenderer.removeListener('system-resumed', subscription);
+    };
+  },
   
   // Added methods from webview-preload.js
   send: (channel, data) => {

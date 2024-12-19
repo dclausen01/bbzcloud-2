@@ -202,8 +202,7 @@ export function SettingsProvider({ children }) {
   const updateSettings = (newSettings) => {
     setSettings(prevSettings => ({
       ...prevSettings,
-      ...newSettings,
-      theme: prevSettings.theme // Preserve theme when updating other settings
+      ...newSettings
     }));
   };
 
@@ -239,8 +238,7 @@ export function SettingsProvider({ children }) {
         ...prevSettings,
         globalZoom: zoom,
         navigationButtons: updatedNavigationButtons,
-        customApps: updatedCustomApps,
-        theme: prevSettings.theme // Preserve theme when updating zoom
+        customApps: updatedCustomApps
       };
     });
   };
@@ -272,16 +270,21 @@ export function SettingsProvider({ children }) {
   const toggleAutostart = () => {
     setSettings(prevSettings => ({
       ...prevSettings,
-      autostart: !prevSettings.autostart,
-      theme: prevSettings.theme // Preserve theme when toggling autostart
+      autostart: !prevSettings.autostart
     }));
   };
 
   const toggleMinimizedStart = () => {
     setSettings(prevSettings => ({
       ...prevSettings,
-      minimizedStart: !prevSettings.minimizedStart,
-      theme: prevSettings.theme // Preserve theme when toggling minimizedStart
+      minimizedStart: !prevSettings.minimizedStart
+    }));
+  };
+
+  const toggleDarkMode = () => {
+    setSettings(prevSettings => ({
+      ...prevSettings,
+      theme: prevSettings.theme === 'dark' ? 'light' : 'dark'
     }));
   };
 
@@ -294,7 +297,8 @@ export function SettingsProvider({ children }) {
     removeCustomApp,
     toggleAutostart,
     toggleMinimizedStart,
-    isLoading
+    isLoading,
+    toggleDarkMode
   };
 
   return (

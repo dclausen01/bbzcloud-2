@@ -2,7 +2,11 @@ import { extendTheme } from '@chakra-ui/react';
 
 const config = {
   initialColorMode: 'light',
-  useSystemColorMode: true,
+  useSystemColorMode: false,
+  cssVarPrefix: 'bbz',
+  // Enable color mode storage in localStorage
+  storageKey: 'bbz-color-mode',
+  initialColorMode: 'light',
 };
 
 const colors = {
@@ -249,6 +253,17 @@ const styles = {
     'html, body': {
       bg: props.colorMode === 'dark' ? 'gray.900' : 'gray.50',
       overflow: 'hidden',
+    },
+    '.navigation-bar': {
+      bg: props.colorMode === 'dark' ? 'gray.800' : 'white',
+      borderBottomColor: props.colorMode === 'dark' ? 'gray.700' : 'gray.200',
+    },
+    '.nav-button': {
+      bg: props.colorMode === 'dark' ? 'gray.700' : 'gray.100',
+      color: props.colorMode === 'dark' ? 'white' : 'black',
+    },
+    '.nav-button:hover': {
+      bg: props.colorMode === 'dark' ? 'gray.600' : 'gray.200',
     },
   }),
 };

@@ -51,6 +51,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     return () => unsubscribe();
   }, [setColorMode]);
 
+  // Listen for system resume events
+  useEffect(() => {
+    const unsubscribe = window.electron.onSystemResumed((webviewsToReload) => {
+      webviewsToReload.forEach(id => {
+        const webview = webviewRefs.current[id]?.current;
+        if (webview) {
+          webview.reload();
+          console.log(`Reloading webview: ${id}`);
+        }
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     const loadOverviewImage = async () => {
       try {
@@ -216,7 +230,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
           );
-          await sleep(3000);
+          await sleep(5000);
           webview.reload();
           break;
       }

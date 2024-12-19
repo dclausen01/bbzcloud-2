@@ -24,8 +24,13 @@ import SettingsPanel from './components/SettingsPanel';
 import CustomAppsMenu from './components/CustomAppsMenu';
 
 function App() {
-  const { colorMode } = useColorMode();
+  const { setColorMode } = useColorMode();
   const { settings } = useSettings();
+
+  // Sync Chakra color mode with settings
+  useEffect(() => {
+    setColorMode(settings.theme);
+  }, [settings.theme, setColorMode]);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [activeWebView, setActiveWebView] = useState(null);
   const webViewRef = useRef(null);
@@ -113,10 +118,10 @@ function App() {
         align="center"
         p={2}
         borderBottom="1px"
-        borderColor={colorMode === 'light' ? 'gray.200' : 'gray.700'}
+        borderColor={settings.theme === 'light' ? 'gray.200' : 'gray.700'}
       >
         {/* Left section */}
-        <Flex flex="1" minW="200px" justify="flex-start" align="center">
+        <Flex minW="fit-content" justify="flex-start" align="center">
           {appIconPath && (
             <Image
               src={`file://${appIconPath}`}
@@ -125,12 +130,14 @@ function App() {
               width="28px"
               objectFit="contain"
               mr={2}
+              cursor="pointer"
+              onClick={() => handleOpenInNewWindow('https://www.bbz-rd-eck.de', 'BBZ Rendsburg-Eckernförde')}
             />
           )}
         </Flex>
 
         {/* Center section */}
-        <Flex flex="2" justify="center" align="center">
+        <Flex flex="1" justify="center" align="center">
           <NavigationBar
             buttons={settings.navigationButtons}
             onButtonClick={handleNavigationClick}
@@ -139,7 +146,7 @@ function App() {
         </Flex>
 
         {/* Right section */}
-        <Flex flex="1" minW="200px" justify="flex-end" align="center" gap={2}>
+        <Flex minW="fit-content" justify="flex-end" align="center" gap={2}>
           <CustomAppsMenu
             apps={settings.customApps}
             standardApps={settings.standardApps}

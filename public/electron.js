@@ -1,5 +1,8 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor } = require('electron');
 const path = require('path');
+
+// List of webviews that need to be reloaded on system resume
+const webviewsToReload = ['outlook', 'wiki', 'handbook', 'moodle', 'webuntis'];
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
@@ -28,51 +31,52 @@ if (!gotTheLock) {
 
 // Initialize electron store with schema
 const store = new Store({
-  schema: {
-    settings: {
-      type: 'object',
-      properties: {
-        navigationButtons: {
-          type: 'object',
-          additionalProperties: {
+    schema: {
+      settings: {
+        type: 'object',
+        properties: {
+          navigationButtons: {
+            type: 'object',
+            additionalProperties: {
+              type: 'object',
+              properties: {
+                visible: { type: 'boolean' },
+                url: { type: 'string' },
+                title: { type: 'string' },
+                buttonVariant: { type: 'string' },
+                favicon: { type: 'string' },
+                zoom: { type: 'number' }
+              }
+            }
+          },
+          customApps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                title: { type: 'string' },
+                url: { type: 'string' },
+                buttonVariant: { type: 'string' },
+                favicon: { type: 'string' },
+                zoom: { type: 'number' }
+              }
+            }
+          },
+          theme: { type: 'string' },
+          globalZoom: { type: 'number' },
+          autostart: { type: 'boolean', default: true },
+          minimizedStart: { type: 'boolean', default: false },
+          windowState: {
             type: 'object',
             properties: {
-              visible: { type: 'boolean' },
-              url: { type: 'string' },
-              title: { type: 'string' },
-              buttonVariant: { type: 'string' },
-              favicon: { type: 'string' },
-              zoom: { type: 'number' }
+              x: { type: 'number' },
+              y: { type: 'number' },
+              width: { type: 'number' },
+              height: { type: 'number' },
+              isMaximized: { type: 'boolean' }
             }
           }
-        },
-        customApps: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              title: { type: 'string' },
-              url: { type: 'string' },
-              buttonVariant: { type: 'string' },
-              favicon: { type: 'string' },
-              zoom: { type: 'number' }
-            }
-          }
-        },
-        theme: { type: 'string' },
-        globalZoom: { type: 'number' },
-        autostart: { type: 'boolean', default: true },
-        minimizedStart: { type: 'boolean', default: false },
-        windowState: {
-          type: 'object',
-          properties: {
-            x: { type: 'number' },
-            y: { type: 'number' },
-            width: { type: 'number' },
-            height: { type: 'number' }
-          }
-        }
       }
     }
   },
@@ -135,9 +139,15 @@ const getAssetPath = (asset) => {
 };
 
 function saveWindowState() {
-  if (!mainWindow.isMaximized()) {
+  const isMaximized = mainWindow.isMaximized();
+  if (isMaximized) {
+    store.set('settings.windowState.isMaximized', true);
+  } else {
     const bounds = mainWindow.getBounds();
-    store.set('settings.windowState', bounds);
+    store.set('settings.windowState', {
+      ...bounds,
+      isMaximized: false
+    });
   }
 }
 
@@ -237,7 +247,7 @@ function createWindow() {
   const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
   
   mainWindow = new BrowserWindow({
-    ...windowState,
+    ...(windowState.isMaximized ? { width: 1450, height: 800 } : windowState),
     minWidth: 1000,
     minHeight: 700,
     show: false,
@@ -267,7 +277,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  ['resize', 'move', 'close'].forEach(event => {
+  ['resize', 'move', 'close', 'maximize'].forEach(event => {
     mainWindow.on(event, () => {
       saveWindowState();
     });
@@ -295,6 +305,9 @@ function createWindow() {
 
   mainWindow.on('show', () => {
     mainWindow.setSkipTaskbar(false);
+    if (windowState.isMaximized) {
+      mainWindow.maximize();
+    }
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -306,6 +319,9 @@ function createWindow() {
         mainWindow.minimize();
       } else {
         mainWindow.show();
+        if (windowState.isMaximized) {
+          mainWindow.maximize();
+        }
       }
     }, 3000);
   });
@@ -624,6 +640,19 @@ app.on('ready', async () => {
   createSplashWindow();
   createWindow();
   autoUpdater.checkForUpdatesAndNotify();
+
+  // Handle system resume events
+  powerMonitor.on('resume', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('system-resumed', webviewsToReload);
+    }
+  });
+
+  powerMonitor.on('unlock-screen', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('system-resumed', webviewsToReload);
+    }
+  });
 });
 
 app.on('window-all-closed', () => {

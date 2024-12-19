@@ -25,8 +25,8 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart, toggleMinimizedStart } = useSettings();
-  const { colorMode, toggleColorMode } = useColorMode();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode } = useSettings();
+  const { setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -215,7 +215,13 @@ function SettingsPanel({ onClose }) {
         </FormControl>
         <FormControl display="flex" alignItems="center">
           <FormLabel mb={0}>Dunkler Modus</FormLabel>
-          <Switch isChecked={colorMode === 'dark'} onChange={toggleColorMode} />
+          <Switch 
+            isChecked={settings.theme === 'dark'} 
+            onChange={() => {
+              toggleDarkMode();
+              setColorMode(settings.theme === 'dark' ? 'light' : 'dark');
+            }} 
+          />
         </FormControl>
       </Box>
 

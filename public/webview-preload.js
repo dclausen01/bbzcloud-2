@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld(
         console.error('Error resolving asset path:', error);
         throw error;
       }
+    },
+    // Listen for theme changes
+    onThemeChanged: (callback) => {
+      ipcRenderer.on('theme-changed', (_, theme) => callback(theme));
     }
   }
 );
