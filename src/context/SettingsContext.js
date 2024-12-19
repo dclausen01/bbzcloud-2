@@ -33,12 +33,6 @@ const standardApps = {
     "url": "https://miro.com/app/dashboard/",
     "buttonVariant": "solid"
   },
-  "fobizz": {
-    "id": "fobizz",
-    "title": "fobizz Tools",
-    "url": "https://tools.fobizz.com/",
-    "buttonVariant": "solid"
-  },
   "Digiscreen": {
     "id": "Digiscreen",
     "title": "Digiscreen",
@@ -123,17 +117,24 @@ const defaultSettings = {
       buttonVariant: 'orange',
       zoom: 1.0
     },
+    fobizz: {
+      visible: true,
+      url: 'https://tools.fobizz.com/',
+      title: 'Fobizz Tools',
+      buttonVariant: 'darkred',
+      zoom: 1.0
+    },
     wiki: {
       visible: true,
       url: 'https://wiki.bbz-rd-eck.com',
-      title: 'BBZ Wiki',
+      title: 'Wiki',
       buttonVariant: 'wiki',
       zoom: 1.0
     },
     handbook: {
       visible: true,
       url: 'https://viflow.bbz-rd-eck.de/viflow/',
-      title: 'BBZ Handbuch',
+      title: 'Handbuch',
       buttonVariant: 'handbook',
       zoom: 1.0
     }
@@ -156,10 +157,19 @@ export function SettingsProvider({ children }) {
       try {
         const result = await window.electron.getSettings();
         if (result.success && result.settings) {
-          const updatedNavigationButtons = {
-            ...defaultSettings.navigationButtons,
-            ...result.settings.navigationButtons,
-          };
+          // Merge navigation buttons while preserving hardcoded titles
+          const updatedNavigationButtons = Object.entries(defaultSettings.navigationButtons).reduce((acc, [key, defaultButton]) => {
+            const savedButton = result.settings.navigationButtons?.[key] || {};
+            return {
+              ...acc,
+              [key]: {
+                ...defaultButton,
+                ...savedButton,
+                // Preserve the hardcoded title
+                title: defaultButton.title
+              }
+            };
+          }, {});
 
           setSettings(prevSettings => ({
             ...defaultSettings,

@@ -141,6 +141,18 @@ const colors = {
     700: '#f57c00',
     800: '#ef6c00',
     900: '#e65100',
+  },
+  darkred: {
+    50: '#ffebee',
+    100: '#ffcdd2',
+    200: '#ef9a9a',
+    300: '#e57373',
+    400: '#ef5350',
+    500: '#b71c1c',
+    600: '#c62828',
+    700: '#d32f2f',
+    800: '#c62828',
+    900: '#b71c1c',
   }
 };
 
@@ -233,6 +245,13 @@ const components = {
         color: 'white',
         _hover: {
           bg: props.colorMode === 'dark' ? 'orange.700' : 'orange.600',
+        },
+      }),
+      darkred: (props) => ({
+        bg: props.colorMode === 'dark' ? 'darkred.600' : 'darkred.500',
+        color: 'white',
+        _hover: {
+          bg: props.colorMode === 'dark' ? 'darkred.700' : 'darkred.600',
         },
       }),
     },
