@@ -259,6 +259,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 700,
     show: false,
+    skipTaskbar: shouldStartMinimized,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -676,6 +677,10 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
+    const settings = store.get('settings');
+    if (settings?.minimizedStart || process.argv.includes('--hidden')) {
+      mainWindow?.minimize();
+    }
   } else {
     if (mainWindow.isMinimized()) {
       mainWindow.restore();

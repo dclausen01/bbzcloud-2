@@ -26,6 +26,9 @@ import {
   FormLabel,
   Input,
   Button,
+  InputGroup,
+  InputRightElement,
+  VStack,
 } from '@chakra-ui/react';
 import { useSettings } from './context/SettingsContext';
 import NavigationBar from './components/NavigationBar';
@@ -38,6 +41,10 @@ function App() {
   const { settings } = useSettings();
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [bbbPassword, setBbbPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showBBBPassword, setShowBBBPassword] = useState(false);
   const [isLoadingEmail, setIsLoadingEmail] = useState(true);
 
   useEffect(() => {
@@ -45,38 +52,70 @@ function App() {
   }, [settings.theme, setColorMode]);
 
   useEffect(() => {
-    const loadEmail = async () => {
+    const loadCredentials = async () => {
       try {
-        const result = await window.electron.getCredentials({
-          service: 'bbzcloud',
-          account: 'email'
-        });
-        if (result.success && result.password) {
-          setEmail(result.password);
+        const [emailResult, passwordResult, bbbPasswordResult] = await Promise.all([
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'email'
+          }),
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'password'
+          }),
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'bbbPassword'
+          })
+        ]);
+
+        if (emailResult.success && emailResult.password) {
+          setEmail(emailResult.password);
         } else {
           setShowEmailModal(true);
         }
+
+        if (passwordResult.success && passwordResult.password) {
+          setPassword(passwordResult.password);
+        }
+
+        if (bbbPasswordResult.success && bbbPasswordResult.password) {
+          setBbbPassword(bbbPasswordResult.password);
+        }
       } catch (error) {
-        console.error('Error loading email:', error);
+        console.error('Error loading credentials:', error);
       } finally {
         setIsLoadingEmail(false);
       }
     };
-    loadEmail();
+    loadCredentials();
   }, []);
 
-  const handleEmailSubmit = async () => {
+  const handleCredentialsSubmit = async () => {
     if (!email) return;
     
     try {
-      await window.electron.saveCredentials({
-        service: 'bbzcloud',
-        account: 'email',
-        password: email
-      });
+      await Promise.all([
+        window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'email',
+          password: email
+        }),
+        password ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'password',
+          password: password
+        }) : Promise.resolve(),
+        bbbPassword ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'bbbPassword',
+          password: bbbPassword
+        }) : Promise.resolve()
+      ]);
+      
       setShowEmailModal(false);
     } catch (error) {
-      console.error('Error saving email:', error);
+      console.error('Error saving credentials:', error);
       toast({
         title: 'Fehler beim Speichern',
         description: error.message,
@@ -317,18 +356,54 @@ function App() {
         <ModalContent>
           <ModalHeader>Willkommen bei BBZCloud</ModalHeader>
           <ModalBody>
-            <FormControl isRequired>
-              <FormLabel>Bitte geben Sie Ihre E-Mail-Adresse ein</FormLabel>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="beispiel@bbz-rd-eck.de"
-              />
-            </FormControl>
+            <VStack spacing={4}>
+              <FormControl isRequired>
+                <FormLabel>E-Mail-Adresse</FormLabel>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="vorname.nachname@bbz-rd-eck.de oder @sus.bbz-rd-eck.de"
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Passwort</FormLabel>
+                <InputGroup>
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Passwort (optional)"
+                  />
+                  <InputRightElement width="4.5rem">
+                    <Button h="1.75rem" size="sm" onClick={() => setShowPassword(!showPassword)}>
+                      {showPassword ? 'Verbergen' : 'Zeigen'}
+                    </Button>
+                  </InputRightElement>
+                </InputGroup>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Passwort für BigBlueButton</FormLabel>
+                <InputGroup>
+                  <Input
+                    type={showBBBPassword ? 'text' : 'password'}
+                    value={bbbPassword}
+                    onChange={(e) => setBbbPassword(e.target.value)}
+                    placeholder="BBB Passwort (optional)"
+                  />
+                  <InputRightElement width="4.5rem">
+                    <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
+                      {showBBBPassword ? 'Verbergen' : 'Zeigen'}
+                    </Button>
+                  </InputRightElement>
+                </InputGroup>
+              </FormControl>
+            </VStack>
           </ModalBody>
           <ModalFooter>
-            <Button colorScheme="blue" onClick={handleEmailSubmit} isDisabled={!email}>
+            <Button colorScheme="blue" onClick={handleCredentialsSubmit} isDisabled={!email}>
               Bestätigen
             </Button>
           </ModalFooter>
