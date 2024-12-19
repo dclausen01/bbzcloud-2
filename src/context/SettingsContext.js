@@ -144,32 +144,28 @@ const defaultSettings = {
   startupDelay: 3000,
   globalZoom: 1.0,
   autostart: true,
-  minimizedStart: false // Added minimizedStart setting with default value false
+  minimizedStart: false
 };
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load settings from electron-store on mount
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const result = await window.electron.getSettings();
         if (result.success && result.settings) {
-          // Ensure all default buttons exist in stored settings
           const updatedNavigationButtons = {
             ...defaultSettings.navigationButtons,
             ...result.settings.navigationButtons,
           };
 
-          // Load stored settings but keep default values as fallback
           setSettings(prevSettings => ({
             ...defaultSettings,
             ...result.settings,
             navigationButtons: updatedNavigationButtons,
-            standardApps: defaultSettings.standardApps, // Always use default standard apps
-            // Ensure customApps is always an array
+            standardApps: defaultSettings.standardApps,
             customApps: Array.isArray(result.settings.customApps) 
               ? result.settings.customApps 
               : [],
@@ -185,7 +181,6 @@ export function SettingsProvider({ children }) {
     loadSettings();
   }, []);
 
-  // Save settings whenever they change
   useEffect(() => {
     const saveSettings = async () => {
       if (!isLoading) {
@@ -194,10 +189,7 @@ export function SettingsProvider({ children }) {
           if (!result.success) {
             console.error('Failed to save settings:', result.error);
           }
-          // Update autostart setting in electron
           await window.electron.setAutostart(settings.autostart);
-          // Update minimizedStart setting in electron
-          await window.electron.setMinimizedStart(settings.minimizedStart);
         } catch (error) {
           console.error('Error saving settings:', error);
         }
@@ -210,7 +202,8 @@ export function SettingsProvider({ children }) {
   const updateSettings = (newSettings) => {
     setSettings(prevSettings => ({
       ...prevSettings,
-      ...newSettings
+      ...newSettings,
+      theme: prevSettings.theme // Preserve theme when updating other settings
     }));
   };
 
@@ -229,7 +222,6 @@ export function SettingsProvider({ children }) {
 
   const updateGlobalZoom = (zoom) => {
     setSettings(prevSettings => {
-      // Update global zoom and sync all navigation buttons and custom apps to use the same zoom
       const updatedNavigationButtons = Object.entries(prevSettings.navigationButtons).reduce((acc, [id, config]) => ({
         ...acc,
         [id]: {
@@ -247,14 +239,14 @@ export function SettingsProvider({ children }) {
         ...prevSettings,
         globalZoom: zoom,
         navigationButtons: updatedNavigationButtons,
-        customApps: updatedCustomApps
+        customApps: updatedCustomApps,
+        theme: prevSettings.theme // Preserve theme when updating zoom
       };
     });
   };
 
   const addCustomApp = (app) => {
     setSettings(prevSettings => {
-      // Ensure customApps is an array
       const currentCustomApps = Array.isArray(prevSettings.customApps) 
         ? prevSettings.customApps 
         : [];
@@ -280,14 +272,16 @@ export function SettingsProvider({ children }) {
   const toggleAutostart = () => {
     setSettings(prevSettings => ({
       ...prevSettings,
-      autostart: !prevSettings.autostart
+      autostart: !prevSettings.autostart,
+      theme: prevSettings.theme // Preserve theme when toggling autostart
     }));
   };
 
   const toggleMinimizedStart = () => {
     setSettings(prevSettings => ({
       ...prevSettings,
-      minimizedStart: !prevSettings.minimizedStart
+      minimizedStart: !prevSettings.minimizedStart,
+      theme: prevSettings.theme // Preserve theme when toggling minimizedStart
     }));
   };
 

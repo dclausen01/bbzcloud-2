@@ -93,7 +93,12 @@
       <h3>Fehler beim Laden der Seite</h3>
       <p id="error-message"></p>
     </div>
-    <webview id="webview" allowpopups></webview>
+    <webview 
+      id="webview" 
+      allowpopups 
+      partition="persist:main"
+      webpreferences="allowRunningInsecureContent"
+    ></webview>
     <script>
       const webview = document.getElementById('webview');
       const errorContainer = document.getElementById('error');

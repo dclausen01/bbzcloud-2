@@ -12,7 +12,6 @@ import {
   DrawerContent,
   DrawerCloseButton,
   Image,
-  Spacer,
   Tooltip,
   Text,
   useToast,
@@ -115,86 +114,91 @@ function App() {
         p={2}
         borderBottom="1px"
         borderColor={colorMode === 'light' ? 'gray.200' : 'gray.700'}
-        gap={2}
       >
-        {appIconPath && (
-          <Image
-            src={`file://${appIconPath}`}
-            alt="BBZCloud Logo"
-            height="28px"
-            width="28px"
-            objectFit="contain"
-            mr={2}
+        {/* Left section */}
+        <Flex flex="1" minW="200px" justify="flex-start" align="center">
+          {appIconPath && (
+            <Image
+              src={`file://${appIconPath}`}
+              alt="BBZCloud Logo"
+              height="28px"
+              width="28px"
+              objectFit="contain"
+              mr={2}
+            />
+          )}
+        </Flex>
+
+        {/* Center section */}
+        <Flex flex="2" justify="center" align="center">
+          <NavigationBar
+            buttons={settings.navigationButtons}
+            onButtonClick={handleNavigationClick}
+            onNewWindow={handleOpenInNewWindow}
           />
-        )}
+        </Flex>
 
-        <NavigationBar
-          buttons={settings.navigationButtons}
-          onButtonClick={handleNavigationClick}
-          onNewWindow={handleOpenInNewWindow}
-        />
-
-        <Spacer />
-        
-        <CustomAppsMenu
-          apps={settings.customApps}
-          standardApps={settings.standardApps}
-          onAppClick={handleCustomAppClick}
-          onNewWindow={handleOpenInNewWindow}
-        />
-
-        {activeWebView && (
-          <Flex gap={1} ml={2}>
-            <ButtonGroup size="sm" isAttached variant="outline">
-              <Tooltip label="Zurück" placement="top">
-                <IconButton
-                  icon={<span>←</span>}
-                  onClick={() => handleWebViewNavigation('goBack')}
-                  aria-label="Zurück"
-                  height="28px"
-                />
-              </Tooltip>
-              <Tooltip label="Vorwärts" placement="top">
-                <IconButton
-                  icon={<span>→</span>}
-                  onClick={() => handleWebViewNavigation('goForward')}
-                  aria-label="Vorwärts"
-                  height="28px"
-                />
-              </Tooltip>
-              <Tooltip label="Neu laden" placement="top">
-                <IconButton
-                  icon={<span>↻</span>}
-                  onClick={() => handleWebViewNavigation('reload')}
-                  aria-label="Neu laden"
-                  height="28px"
-                />
-              </Tooltip>
-            </ButtonGroup>
-
-            <Tooltip label="Link kopieren" placement="top">
-              <IconButton
-                icon={<span>📋</span>}
-                onClick={handleCopyUrl}
-                aria-label="Link kopieren"
-                height="28px"
-                variant="outline"
-              />
-            </Tooltip>
-          </Flex>
-        )}
-
-        <Tooltip label="Einstellungen" placement="top">
-          <IconButton
-            aria-label="Einstellungen öffnen"
-            icon={<span>⚙️</span>}
-            onClick={onOpen}
-            variant="ghost"
-            size="sm"
-            height="28px"
-            ml={2}
+        {/* Right section */}
+        <Flex flex="1" minW="200px" justify="flex-end" align="center" gap={2}>
+          <CustomAppsMenu
+            apps={settings.customApps}
+            standardApps={settings.standardApps}
+            onAppClick={handleCustomAppClick}
+            onNewWindow={handleOpenInNewWindow}
           />
-        </Tooltip>
+
+          {activeWebView && (
+            <Flex gap={1}>
+              <ButtonGroup size="sm" isAttached variant="outline">
+                <Tooltip label="Zurück" placement="top">
+                  <IconButton
+                    icon={<span>←</span>}
+                    onClick={() => handleWebViewNavigation('goBack')}
+                    aria-label="Zurück"
+                    height="28px"
+                  />
+                </Tooltip>
+                <Tooltip label="Vorwärts" placement="top">
+                  <IconButton
+                    icon={<span>→</span>}
+                    onClick={() => handleWebViewNavigation('goForward')}
+                    aria-label="Vorwärts"
+                    height="28px"
+                  />
+                </Tooltip>
+                <Tooltip label="Neu laden" placement="top">
+                  <IconButton
+                    icon={<span>↻</span>}
+                    onClick={() => handleWebViewNavigation('reload')}
+                    aria-label="Neu laden"
+                    height="28px"
+                  />
+                </Tooltip>
+              </ButtonGroup>
+
+              <Tooltip label="Link kopieren" placement="top">
+                <IconButton
+                  icon={<span>📋</span>}
+                  onClick={handleCopyUrl}
+                  aria-label="Link kopieren"
+                  height="28px"
+                  variant="outline"
+                />
+              </Tooltip>
+            </Flex>
+          )}
+
+          <Tooltip label="Einstellungen" placement="top">
+            <IconButton
+              aria-label="Einstellungen öffnen"
+              icon={<span>⚙️</span>}
+              onClick={onOpen}
+              variant="ghost"
+              size="sm"
+              height="28px"
+            />
+          </Tooltip>
+        </Flex>
       </Flex>
 
       <Box flex="1" position="relative" overflow="hidden">
