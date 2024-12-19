@@ -143,7 +143,8 @@ const defaultSettings = {
   theme: 'light',
   startupDelay: 3000,
   globalZoom: 1.0,
-  autostart: true // Added autostart setting with default value true
+  autostart: true,
+  minimizedStart: false // Added minimizedStart setting with default value false
 };
 
 export function SettingsProvider({ children }) {
@@ -195,6 +196,8 @@ export function SettingsProvider({ children }) {
           }
           // Update autostart setting in electron
           await window.electron.setAutostart(settings.autostart);
+          // Update minimizedStart setting in electron
+          await window.electron.setMinimizedStart(settings.minimizedStart);
         } catch (error) {
           console.error('Error saving settings:', error);
         }
@@ -281,6 +284,13 @@ export function SettingsProvider({ children }) {
     }));
   };
 
+  const toggleMinimizedStart = () => {
+    setSettings(prevSettings => ({
+      ...prevSettings,
+      minimizedStart: !prevSettings.minimizedStart
+    }));
+  };
+
   const value = {
     settings,
     updateSettings,
@@ -289,6 +299,7 @@ export function SettingsProvider({ children }) {
     addCustomApp,
     removeCustomApp,
     toggleAutostart,
+    toggleMinimizedStart,
     isLoading
   };
 

@@ -63,6 +63,7 @@ const store = new Store({
         theme: { type: 'string' },
         globalZoom: { type: 'number' },
         autostart: { type: 'boolean', default: true },
+        minimizedStart: { type: 'boolean', default: false },
         windowState: {
           type: 'object',
           properties: {
@@ -158,7 +159,6 @@ const copyAssetsIfNeeded = async () => {
       const targetDir = path.join(process.resourcesPath, 'assets');
       await fs.ensureDir(targetDir);
       await fs.copy(sourceDir, targetDir, { overwrite: true });
-      console.log('Assets copied successfully');
     } catch (error) {
       console.error('Error copying assets:', error);
     }
@@ -233,6 +233,8 @@ function createSplashWindow() {
 
 function createWindow() {
   const windowState = restoreWindowState();
+  const settings = store.get('settings');
+  const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
   
   mainWindow = new BrowserWindow({
     ...windowState,
@@ -300,7 +302,11 @@ function createWindow() {
       if (splashWindow) {
         splashWindow.close();
       }
-      mainWindow.show();
+      if (shouldStartMinimized) {
+        mainWindow.minimize();
+      } else {
+        mainWindow.show();
+      }
     }, 3000);
   });
 }
@@ -449,9 +455,12 @@ ipcMain.handle('save-settings', async (event, settings) => {
     store.set('settings', settings);
     updateAutostart();
     const theme = settings.theme || 'light';
-    windowRegistry.forEach((win) => {
+    
+    // Send theme change to all windows
+    BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('theme-changed', theme);
     });
+    
     return { success: true };
   } catch (error) {
     console.error('Error saving settings:', error);

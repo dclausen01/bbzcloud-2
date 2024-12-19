@@ -25,7 +25,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart, toggleMinimizedStart } = useSettings();
   const { colorMode, toggleColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -209,6 +209,10 @@ function SettingsPanel({ onClose }) {
           <FormLabel mb={0}>Automatisch starten</FormLabel>
           <Switch isChecked={settings.autostart} onChange={toggleAutostart} />
         </FormControl>
+        <FormControl display="flex" alignItems="center" mb={4}>
+          <FormLabel mb={0}>Anwendung immer minimiert starten</FormLabel>
+          <Switch isChecked={settings.minimizedStart} onChange={toggleMinimizedStart} />
+        </FormControl>
         <FormControl display="flex" alignItems="center">
           <FormLabel mb={0}>Dunkler Modus</FormLabel>
           <Switch isChecked={colorMode === 'dark'} onChange={toggleColorMode} />
@@ -245,9 +249,9 @@ function SettingsPanel({ onClose }) {
             <Box flex="1">
               <Slider
                 aria-label="Zoom"
-                min={0.5}
-                max={2}
-                step={0.1}
+                min={0.25}
+                max={4}
+                step={0.2}
                 value={settings.globalZoom}
                 onChange={handleGlobalZoomChange}
               >

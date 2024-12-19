@@ -24,13 +24,13 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
 
   const getSymbol = (id) => {
     const symbols = {
-      schulcloud: '🏫',
+      schulcloud: '💬',
       moodle: '📚',
       bbb: '🎥',
       outlook: '📧',
-      office: '📎',
+      office: '💼',
       cryptpad: '📝',
-      taskcards: '📋',
+      taskcards: '🗺️',
       webuntis: '📅',
       wiki: '📖',
       handbook: '📔',

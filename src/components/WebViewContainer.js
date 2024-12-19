@@ -6,7 +6,7 @@ import {
   Progress,
   useToast,
   useColorMode,
-  Image,
+  Image as ChakraImage,
   Text,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
@@ -80,7 +80,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Helper function to check if favicon indicates new messages
   const checkForNotifications = (base64Image) => {
     return new Promise((resolve, reject) => {
-      const img = new Image();
+      const img = new window.Image();
       img.onload = function () {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
@@ -121,12 +121,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         
         // Calculate percentage of matching pixels
         const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
-        console.log('Red pixel percentage:', redPercentage);
         resolve(redPercentage > 0.4); // More lenient threshold (40% instead of 50%)
       };
       
       img.onerror = function (error) {
-        console.error('Failed to load favicon:', error);
         reject(new Error('Failed to load favicon'));
       };
       
@@ -139,8 +137,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     if (!webview || credsAreSet[id]) return;
 
     try {
-      console.log(`Retrieving credentials for ${id}...`);
-      
       // Get credentials from keytar using the correct service/account names
       const emailResult = await window.electron.getCredentials({
         service: 'bbzcloud',
@@ -157,14 +153,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         account: 'bbbPassword'
       }) : null;
 
-      console.log('Credentials retrieved:', {
-        emailSuccess: emailResult.success,
-        passwordSuccess: passwordResult.success,
-        bbbSuccess: bbbPasswordResult?.success
-      });
-
       if (!emailResult.success || !passwordResult.success || (id === 'bbb' && !bbbPasswordResult?.success)) {
-        console.error('Failed to retrieve credentials');
         return;
       }
 
@@ -173,11 +162,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       const bbbPassword = bbbPasswordResult?.password;
 
       if (!emailAddress || !password || (id === 'bbb' && !bbbPassword)) {
-        console.error('One or more credentials are missing');
         return;
       }
-
-      console.log(`Injecting credentials for ${id}...`);
 
       switch (id) {
         case 'outlook':
@@ -235,7 +221,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           break;
       }
 
-      console.log(`Credentials injected for ${id}`);
       setCredsAreSet(prev => ({ ...prev, [id]: true }));
     } catch (error) {
       console.error(`Error injecting credentials for ${id}:`, error);
@@ -245,46 +230,44 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Set up SchulCloud notification checking with MutationObserver
   useEffect(() => {
     let observer = null;
-    let checkInterval = null;
 
-const setupNotificationChecking = (webview) => {
-  if (!webview) return;
+    const setupNotificationChecking = (webview) => {
+      if (!webview) return;
 
-  const checkNotifications = async () => {
-    try {
-      const faviconData = await webview.executeJavaScript(`
-        document.querySelector('link[rel="icon"][type="image/png"]')?.href;
-      `);
+      const checkNotifications = async () => {
+        try {
+          const faviconData = await webview.executeJavaScript(`
+            document.querySelector('link[rel="icon"][type="image/png"]')?.href;
+          `);
 
-      if (!faviconData) return;
+          if (!faviconData) return;
 
-      const hasNotification = await checkForNotifications(faviconData);
-      window.electron.send('update-badge', hasNotification);
-    } catch (error) {
-      // Silent fail and try again next interval
-    }
-  };
+          const hasNotification = await checkForNotifications(faviconData);
+          window.electron.send('update-badge', hasNotification);
+        } catch (error) {
+          // Silent fail and try again next interval
+        }
+      };
 
-  // Clear any existing interval
-  if (notificationCheckIntervalRef.current) {
-    clearInterval(notificationCheckIntervalRef.current);
-  }
+      // Clear any existing interval
+      if (notificationCheckIntervalRef.current) {
+        clearInterval(notificationCheckIntervalRef.current);
+      }
 
-  // Only start checking when DOM is ready
-  webview.addEventListener('dom-ready', () => {
-    // Initial check
-    checkNotifications();
-    
-    // Set up interval
-    notificationCheckIntervalRef.current = setInterval(checkNotifications, 5000);
-  });
-};
+      // Only start checking when DOM is ready
+      webview.addEventListener('dom-ready', () => {
+        // Initial check
+        checkNotifications();
+        
+        // Set up interval
+        notificationCheckIntervalRef.current = setInterval(checkNotifications, 5000);
+      });
+    };
 
     // Set up observer to watch for the webview
     observer = new MutationObserver((mutations) => {
       const schulcloudWebview = document.querySelector('#wv-schulcloud');
       if (schulcloudWebview) {
-        console.log('SchulCloud webview found');
         setupNotificationChecking(schulcloudWebview);
         observer.disconnect();
       }
@@ -299,14 +282,12 @@ const setupNotificationChecking = (webview) => {
     // Check immediately in case the webview already exists
     const existingWebview = document.querySelector('#wv-schulcloud');
     if (existingWebview) {
-      console.log('SchulCloud webview found immediately');
       setupNotificationChecking(existingWebview);
       observer.disconnect();
     }
 
     // Cleanup function
     return () => {
-      console.log('Cleaning up notification checking');
       if (observer) {
         observer.disconnect();
       }
@@ -322,18 +303,14 @@ const setupNotificationChecking = (webview) => {
       const id = webview.id.replace('wv-', '').toLowerCase();
 
       webview.addEventListener('did-start-loading', () => {
-        console.log(`[DEBUG] Load started for ${id}`);
         setIsLoading(prev => ({ ...prev, [id]: true }));
       });
 
       webview.addEventListener('did-stop-loading', () => {
-        console.log(`[DEBUG] Load stopped for ${id}`);
         setIsLoading(prev => ({ ...prev, [id]: false }));
       });
 
       webview.addEventListener('did-finish-load', async () => {
-        console.log(`[DEBUG] Load finished for ${id}`);
-        
         if (activeWebView && activeWebView.id === id) {
           onNavigate(webview.getURL());
         }
@@ -363,13 +340,7 @@ const setupNotificationChecking = (webview) => {
         }
       });
 
-      // Add navigation event listener
-      webview.addEventListener('will-navigate', (e) => {
-        console.log(`[DEBUG] Navigation for ${id} to: ${e.url}`);
-      });
-
       webview.addEventListener('did-navigate', (e) => {
-        console.log(`[DEBUG] Navigated ${id} to: ${e.url}`);
         // Reset credentials flag on navigation to allow re-injection if needed
         if (id === 'handbook') {
           setCredsAreSet(prev => ({ ...prev, [id]: false }));
@@ -377,7 +348,6 @@ const setupNotificationChecking = (webview) => {
       });
 
       webview.addEventListener('did-fail-load', (error) => {
-        console.error(`[DEBUG] Load error for ${id}:`, error);
         setIsLoading(prev => ({ ...prev, [id]: false }));
         toast({
           title: 'Fehler beim Laden der Seite',
@@ -386,11 +356,6 @@ const setupNotificationChecking = (webview) => {
           duration: 5000,
           isClosable: true,
         });
-      });
-
-      // Add console message listener for debugging
-      webview.addEventListener('console-message', (e) => {
-        console.log(`[WebView ${id}] ${e.message}`);
       });
     });
   }, []);
@@ -414,7 +379,7 @@ const setupNotificationChecking = (webview) => {
             justifyContent="center"
             overflow="hidden"
           >
-            <Image
+            <ChakraImage
               src={overviewImagePath}
               alt="Übersicht"
               maxH="90%"
