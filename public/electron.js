@@ -21,6 +21,10 @@ if (!gotTheLock) {
       if (mainWindow.isMinimized()) {
         mainWindow.restore();
       }
+      const windowState = store.get('settings.windowState');
+      if (windowState?.isMaximized) {
+        mainWindow.maximize();
+      }
       if (!mainWindow.isVisible()) {
         mainWindow.show();
       }
@@ -139,16 +143,12 @@ const getAssetPath = (asset) => {
 };
 
 function saveWindowState() {
+  const bounds = mainWindow.getBounds();
   const isMaximized = mainWindow.isMaximized();
-  if (isMaximized) {
-    store.set('settings.windowState.isMaximized', true);
-  } else {
-    const bounds = mainWindow.getBounds();
-    store.set('settings.windowState', {
-      ...bounds,
-      isMaximized: false
-    });
-  }
+  store.set('settings.windowState', {
+    ...bounds,
+    isMaximized
+  });
 }
 
 function restoreWindowState() {
@@ -186,6 +186,10 @@ function createTray() {
         if (mainWindow.isMinimized()) {
           mainWindow.restore();
         }
+        const windowState = store.get('settings.windowState');
+        if (windowState?.isMaximized) {
+          mainWindow.maximize();
+        }
         mainWindow.show();
         mainWindow.focus();
       }
@@ -212,6 +216,10 @@ function createTray() {
   tray.on('click', () => {
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
+    }
+    const windowState = store.get('settings.windowState');
+    if (windowState?.isMaximized) {
+      mainWindow.maximize();
     }
     mainWindow.show();
     mainWindow.focus();
@@ -247,7 +255,7 @@ function createWindow() {
   const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
   
   mainWindow = new BrowserWindow({
-    ...(windowState.isMaximized ? { width: 1450, height: 800 } : windowState),
+    ...windowState,
     minWidth: 1000,
     minHeight: 700,
     show: false,
@@ -277,11 +285,12 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  ['resize', 'move', 'close', 'maximize'].forEach(event => {
-    mainWindow.on(event, () => {
-      saveWindowState();
-    });
-  });
+  // Save window state on various window events
+  mainWindow.on('resize', saveWindowState);
+  mainWindow.on('move', saveWindowState);
+  mainWindow.on('close', saveWindowState);
+  mainWindow.on('maximize', saveWindowState);
+  mainWindow.on('unmaximize', saveWindowState);
 
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
@@ -318,10 +327,10 @@ function createWindow() {
       if (shouldStartMinimized) {
         mainWindow.minimize();
       } else {
-        mainWindow.show();
         if (windowState.isMaximized) {
           mainWindow.maximize();
         }
+        mainWindow.show();
       }
     }, 3000);
   });
@@ -626,6 +635,9 @@ Menu.setApplicationMenu(null);
 
 app.on('before-quit', () => {
   app.isQuitting = true;
+  if (mainWindow) {
+    saveWindowState();
+  }
 });
 
 app.on('ready', async () => {
@@ -667,6 +679,10 @@ app.on('activate', () => {
   } else {
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
+    }
+    const windowState = store.get('settings.windowState');
+    if (windowState?.isMaximized) {
+      mainWindow.maximize();
     }
     mainWindow.show();
     mainWindow.focus();
