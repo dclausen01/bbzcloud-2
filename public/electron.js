@@ -551,7 +551,8 @@ app.on('web-contents-created', (event, contents) => {
           w.close();
         }
       });
-      shell.openExternal(url);
+      // open url in external browser and activate the browser
+      shell.openExternal(url, { activate: true });
     }
   });
 
