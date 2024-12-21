@@ -1,5 +1,5 @@
 /* eslint-disable default-case */
-import React, { useRef, useEffect, useState, forwardRef } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useCallback } from 'react';
 import {
   Box,
   Flex,
@@ -23,7 +23,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const notificationCheckIntervalRef = useRef(null);
 
   // Apply zoom level to a webview
-  const applyZoom = async (webview, id) => {
+  const applyZoom = useCallback(async (webview, id) => {
     if (!webview) return;
     
     try {
@@ -32,7 +32,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     } catch (error) {
       console.error(`Error setting zoom for ${id}:`, error);
     }
-  };
+  }, [standardApps, settings.globalZoom]);
 
   // Update zoom levels when settings change
   useEffect(() => {
@@ -41,7 +41,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         applyZoom(ref.current, id);
       }
     });
-  }, [settings.globalZoom, standardApps]);
+  }, [settings.globalZoom, standardApps, applyZoom]);
 
   // Listen for theme changes from main process
   useEffect(() => {
@@ -147,7 +147,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   };
 
   // Function to inject credentials based on webview ID
-  const injectCredentials = async (webview, id) => {
+  const injectCredentials = useCallback(async (webview, id) => {
     if (!webview || credsAreSet[id]) return;
 
     try {
@@ -190,6 +190,19 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
           );
+          
+          // Save credentials after successful login
+          await window.electron.saveCredentials({
+            service: 'bbzcloud',
+            account: 'email',
+            password: emailAddress
+          });
+          await window.electron.saveCredentials({
+            service: 'bbzcloud',
+            account: 'password',
+            password: password
+          });
+          
           await sleep(5000);
           webview.reload();
           break;
@@ -203,7 +216,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           );
           await webview.executeJavaScript(
             `document.querySelector('button[type="submit"][id="loginbtn"]').click();`
-          );
+          );         
           break;
 
         case 'bbb':
@@ -216,11 +229,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           await webview.executeJavaScript(
             `document.querySelector('.signin-button').click();`
           );
+          
+          // Save credentials after successful login
+          await window.electron.saveCredentials({
+            service: 'bbzcloud',
+            account: 'bbbPassword',
+            password: bbbPassword
+          });
           break;
 
         case 'handbook':
-          // Don't reload immediately, wait for the page to load first
-          await sleep(1000); // Wait for initial page load
           await webview.executeJavaScript(
             `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
           );
@@ -229,7 +247,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           );
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
-          );
+          );        
           await sleep(5000);
           webview.reload();
           break;
@@ -239,7 +257,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     } catch (error) {
       console.error(`Error injecting credentials for ${id}:`, error);
     }
-  };
+  }, [credsAreSet, sleep]);
 
   // Set up SchulCloud notification checking with MutationObserver
   useEffect(() => {
@@ -372,7 +390,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         });
       });
     });
-  }, []);
+  }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast]);
 
   if (!activeWebView && !Object.keys(standardApps).length) {
     return (

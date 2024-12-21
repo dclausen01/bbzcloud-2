@@ -13,7 +13,6 @@ import {
   DrawerCloseButton,
   Image,
   Tooltip,
-  Text,
   useToast,
   ButtonGroup,
   Modal,
@@ -129,7 +128,6 @@ function App() {
     if (!settings.navigationButtons) return {};
 
     const isTeacher = email.endsWith('@bbz-rd-eck.de');
-    const isStudent = email.endsWith('@sus.bbz-rd-eck.de');
 
     if (isTeacher) {
       return settings.navigationButtons;

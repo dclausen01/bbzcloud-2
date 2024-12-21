@@ -5,8 +5,7 @@ const config = {
   useSystemColorMode: false,
   cssVarPrefix: 'bbz',
   // Enable color mode storage in localStorage
-  storageKey: 'bbz-color-mode',
-  initialColorMode: 'light',
+  storageKey: 'bbz-color-mode'
 };
 
 const colors = {

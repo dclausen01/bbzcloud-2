@@ -269,7 +269,8 @@ function createWindow() {
       partition: 'persist:main',
       additionalArguments: [
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
-      ]
+      ],
+      sandbox: false
     },
     icon: getAssetPath('icon.ico')
   });
@@ -355,7 +356,8 @@ function createWebviewWindow(url, title) {
       partition: 'persist:main',
       additionalArguments: [
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
-      ]
+      ],
+      sandbox: false
     },
     icon: getAssetPath('icon.ico')
   });
