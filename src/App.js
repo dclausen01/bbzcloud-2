@@ -11,10 +11,10 @@ import {
   DrawerOverlay,
   DrawerContent,
   DrawerCloseButton,
+  ButtonGroup,
   Image,
   Tooltip,
   useToast,
-  ButtonGroup,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -34,6 +34,7 @@ import NavigationBar from './components/NavigationBar';
 import WebViewContainer from './components/WebViewContainer';
 import SettingsPanel from './components/SettingsPanel';
 import CustomAppsMenu from './components/CustomAppsMenu';
+import TodoList from './components/TodoList';
 
 function App() {
   const { setColorMode } = useColorMode();
@@ -139,7 +140,29 @@ function App() {
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
   }, [email, settings.navigationButtons]);
 
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { 
+    isOpen: isSettingsOpen, 
+    onOpen: onSettingsOpen, 
+    onClose: onSettingsClose 
+  } = useDisclosure();
+  
+  const {
+    isOpen: isTodoOpen,
+    onOpen: onTodoOpen,
+    onClose: onTodoClose
+  } = useDisclosure();
+
+  // Handle todo additions from context menu
+  // State for new todo from context menu
+  const [contextMenuText, setContextMenuText] = useState('');
+
+  useEffect(() => {
+    const unsubscribe = window.electron.onAddTodo((text) => {
+      setContextMenuText(text);
+      onTodoOpen(); // Open todo drawer when text is selected
+    });
+    return () => unsubscribe();
+  }, [onTodoOpen]);
   const [activeWebView, setActiveWebView] = useState(null);
   const webViewRef = useRef(null);
   const [appIconPath, setAppIconPath] = useState('');
@@ -306,16 +329,26 @@ function App() {
             </Flex>
           )}
 
-          <Tooltip label="Einstellungen" placement="top">
-            <IconButton
-              aria-label="Einstellungen öffnen"
-              icon={<span>⚙️</span>}
-              onClick={onOpen}
-              variant="ghost"
-              size="sm"
-              height="28px"
-            />
-          </Tooltip>
+          <ButtonGroup size="sm">
+            <Tooltip label="Todo Liste" placement="top">
+              <IconButton
+                aria-label="Todo Liste öffnen"
+                icon={<span>📝</span>}
+                onClick={onTodoOpen}
+                variant="ghost"
+                height="28px"
+              />
+            </Tooltip>
+            <Tooltip label="Einstellungen" placement="top">
+              <IconButton
+                aria-label="Einstellungen öffnen"
+                icon={<span>⚙️</span>}
+                onClick={onSettingsOpen}
+                variant="ghost"
+                height="28px"
+              />
+            </Tooltip>
+          </ButtonGroup>
         </Flex>
       </Flex>
 
@@ -338,13 +371,24 @@ function App() {
         )}
       </Box>
 
-      <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="md">
+      <Drawer isOpen={isSettingsOpen} placement="right" onClose={onSettingsClose} size="md">
         <DrawerOverlay />
         <DrawerContent>
           <DrawerCloseButton aria-label="Einstellungen schließen" />
           <DrawerHeader>Einstellungen</DrawerHeader>
           <DrawerBody>
-            <SettingsPanel onClose={onClose} />
+            <SettingsPanel onClose={onSettingsClose} />
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
+
+      <Drawer isOpen={isTodoOpen} placement="right" onClose={onTodoClose} size="md">
+        <DrawerOverlay />
+        <DrawerContent>
+          <DrawerCloseButton aria-label="Todo Liste schließen" />
+          <DrawerHeader>Todo Liste</DrawerHeader>
+          <DrawerBody>
+            <TodoList initialTodoText={contextMenuText} onTodoAdded={() => setContextMenuText('')} />
           </DrawerBody>
         </DrawerContent>
       </Drawer>

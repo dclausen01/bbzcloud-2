@@ -16,8 +16,12 @@
   },
   "dependencies": {
     "@chakra-ui/react": "^2.8.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
+    "@uiw/react-md-editor": "^4.0.5",
     "axios": "^1.5.0",
     "electron-is-dev": "^2.0.0",
     "electron-store": "^8.1.0",
@@ -27,8 +31,10 @@
     "keytar": "^7.9.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.1",
     "react-router-dom": "^6.15.0",
-    "react-scripts": "5.0.1"
+    "react-scripts": "5.0.1",
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
@@ -67,7 +73,9 @@
       {
         "from": "assets",
         "to": "assets",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {
@@ -85,7 +93,9 @@
       "icon": "assets/images/icon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "assets/images/icon.png",
       "category": "public.app-category.education",
       "darkModeSupport": true,
@@ -95,7 +105,11 @@
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "linux": {
-      "target": ["AppImage", "deb", "pacman"],
+      "target": [
+        "AppImage",
+        "deb",
+        "pacman"
+      ],
       "icon": "assets/images/icon.png",
       "category": "Education",
       "desktop": {

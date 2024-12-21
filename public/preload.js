@@ -70,6 +70,24 @@ contextBridge.exposeInMainWorld('electron', {
       console.error('Error executing JavaScript:', error);
       return { success: false, error: error.message };
     }
+  },
+
+  // Todo functionality
+  saveTodos: (todos) => ipcRenderer.invoke('save-todos', todos),
+  getTodos: () => ipcRenderer.invoke('get-todos'),
+  saveTodoFolders: (folders) => ipcRenderer.invoke('save-todo-folders', folders),
+  getTodoFolders: () => ipcRenderer.invoke('get-todo-folders'),
+  saveTodoSortType: (sortType) => ipcRenderer.invoke('save-todo-sort-type', sortType),
+  getTodoSortType: () => ipcRenderer.invoke('get-todo-sort-type'),
+  scheduleNotification: (data) => ipcRenderer.invoke('schedule-notification', data),
+  
+  // Context menu todo addition listener
+  onAddTodo: (callback) => {
+    const subscription = (event, text) => callback(text);
+    ipcRenderer.on('add-todo', subscription);
+    return () => {
+      ipcRenderer.removeListener('add-todo', subscription);
+    };
   }
 });
 

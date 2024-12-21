@@ -8,6 +8,7 @@ const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
 const keytar = require('keytar');
 const fs = require('fs-extra');
+const { Notification } = require('electron');
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -35,8 +36,16 @@ if (!gotTheLock) {
 
 // Initialize electron store with schema
 const store = new Store({
-    schema: {
-      settings: {
+  schema: {
+    todos: {
+      type: 'array',
+      default: []
+    },
+    todoFolders: {
+      type: 'array',
+      default: ['Default']
+    },
+    settings: {
         type: 'object',
         properties: {
           navigationButtons: {
@@ -414,9 +423,107 @@ function createContextMenu(webContents) {
       label: 'Einfügen',
       accelerator: 'CmdOrCtrl+V',
       role: 'paste'
+    },
+    { type: 'separator' },
+    {
+      label: 'Als Todo hinzufügen',
+      click: () => {
+        webContents.executeJavaScript(`window.getSelection().toString()`)
+          .then(selectedText => {
+            if (selectedText) {
+              mainWindow.webContents.send('add-todo', selectedText);
+            }
+          })
+          .catch(error => {
+            console.error('Error getting selected text:', error);
+          });
+      }
     }
   ]);
 }
+
+// Todo related IPC handlers
+ipcMain.handle('save-todos', async (event, todos) => {
+  try {
+    store.set('todos', todos);
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving todos:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-todos', async () => {
+  try {
+    const todos = store.get('todos', []);
+    return todos;
+  } catch (error) {
+    console.error('Error getting todos:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('save-todo-folders', async (event, folders) => {
+  try {
+    store.set('todoFolders', folders);
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving todo folders:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-todo-folders', async () => {
+  try {
+    const folders = store.get('todoFolders', ['Default']);
+    return folders;
+  } catch (error) {
+    console.error('Error getting todo folders:', error);
+    return ['Default'];
+  }
+});
+
+ipcMain.handle('save-todo-sort-type', async (event, sortType) => {
+  try {
+    store.set('todoSortType', sortType);
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving todo sort type:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-todo-sort-type', async () => {
+  try {
+    const sortType = store.get('todoSortType', 'manual');
+    return sortType;
+  } catch (error) {
+    console.error('Error getting todo sort type:', error);
+    return 'manual';
+  }
+});
+
+ipcMain.handle('schedule-notification', async (event, { title, body, when }) => {
+  try {
+    const notification = new Notification({
+      title,
+      body,
+      silent: false
+    });
+
+    const delay = when - Date.now();
+    if (delay > 0) {
+      setTimeout(() => {
+        notification.show();
+      }, delay);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error scheduling notification:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
   try {
@@ -564,7 +671,8 @@ app.on('web-contents-created', (event, contents) => {
       url.includes('schul.cloud') ||
       url.includes('portal.bbz-rd-eck.com') ||
       url.includes('taskcards.app') ||
-      url.includes('wiki.bbz-rd-eck.com')
+      url.includes('wiki.bbz-rd-eck.com') ||
+      url.includes('moodle')
     ) {
       e.preventDefault();
       const menu = createContextMenu(contents);
