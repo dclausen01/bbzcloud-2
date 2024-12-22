@@ -430,8 +430,10 @@ function createContextMenu(webContents) {
       click: () => {
         webContents.executeJavaScript(`window.getSelection().toString()`)
           .then(selectedText => {
+            console.log('Context menu - Selected text:', selectedText);
             if (selectedText) {
               mainWindow.webContents.send('add-todo', selectedText);
+              console.log('Context menu - Sent text to main window');
             }
           })
           .catch(error => {

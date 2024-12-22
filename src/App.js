@@ -153,16 +153,26 @@ function App() {
   } = useDisclosure();
 
   // Handle todo additions from context menu
-  // State for new todo from context menu
   const [contextMenuText, setContextMenuText] = useState('');
 
   useEffect(() => {
     const unsubscribe = window.electron.onAddTodo((text) => {
-      setContextMenuText(text);
-      onTodoOpen(); // Open todo drawer when text is selected
+      console.log('App - Received text from context menu:', text);
+      if (text) {
+        setContextMenuText(text);
+        onTodoOpen(); // Open todo drawer when text is selected
+        window.electron.debug('App - Set context menu text and opened drawer');
+      }
     });
     return () => unsubscribe();
   }, [onTodoOpen]);
+
+  // Clear context menu text when drawer closes
+  useEffect(() => {
+    if (!isTodoOpen) {
+      setContextMenuText('');
+    }
+  }, [isTodoOpen]);
   const [activeWebView, setActiveWebView] = useState(null);
   const webViewRef = useRef(null);
   const [appIconPath, setAppIconPath] = useState('');

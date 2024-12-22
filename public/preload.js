@@ -83,12 +83,14 @@ contextBridge.exposeInMainWorld('electron', {
   
   // Context menu todo addition listener
   onAddTodo: (callback) => {
-    const subscription = (event, text) => callback(text);
+    const subscription = (_event, text) => callback(text);
     ipcRenderer.on('add-todo', subscription);
     return () => {
       ipcRenderer.removeListener('add-todo', subscription);
     };
-  }
+  },
+  // Debug helper
+  debug: (msg) => console.log('Debug:', msg)
 });
 
 // Remove this if you don't need it

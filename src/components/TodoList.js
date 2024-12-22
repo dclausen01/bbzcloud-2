@@ -147,7 +147,7 @@ const TodoList = ({ initialTodoText = '', onTodoAdded }) => {
 
   // Handle initial todo text from context menu
   useEffect(() => {
-    if (initialTodoText) {
+    if (initialTodoText.trim()) {
       const todo = {
         id: uuidv4(),
         text: initialTodoText,
@@ -155,12 +155,14 @@ const TodoList = ({ initialTodoText = '', onTodoAdded }) => {
         folder: currentFolder,
         reminder: null,
         createdAt: new Date().toISOString(),
-        order: todos.length, // Add order for manual sorting
+        order: todos.length,
       };
       setTodos(prev => [...prev, todo]);
-      onTodoAdded?.();
+      if (onTodoAdded) {
+        onTodoAdded();
+      }
     }
-  }, [initialTodoText, currentFolder, onTodoAdded, todos.length]);
+  }, [initialTodoText]); // Only depend on initialTodoText to prevent unnecessary reruns
 
   // Load todos and preferences from local storage
   useEffect(() => {
