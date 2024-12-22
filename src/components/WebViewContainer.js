@@ -361,13 +361,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           url.includes('taskcards.app') ||
           url.includes('wiki.bbz-rd-eck.com')
         ) {
-          webview.addEventListener('context-menu', (e) => {
+          webview.addEventListener('context-menu', async (e) => {
             e.preventDefault();
-            window.electron.send('contextMenu', {
-              x: e.x,
-              y: e.y,
-              selectionText: e.selectionText,
-            });
+            try {
+              // Get selected text directly from the webview
+              const selectedText = await webview.executeJavaScript(`window.getSelection().toString()`);
+              console.log('WebView - Selected text:', selectedText);
+              if (selectedText) {
+                window.electron.send('contextMenu', {
+                  x: e.x,
+                  y: e.y,
+                  selectionText: selectedText,
+                });
+              }
+            } catch (error) {
+              console.error('Error getting selected text:', error);
+            }
           });
         }
       });

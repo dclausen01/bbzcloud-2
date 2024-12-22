@@ -1,430 +1,419 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   VStack,
   HStack,
   Input,
-  Button,
-  Text,
   IconButton,
-  useToast,
-  Checkbox,
+  useColorModeValue,
+  Button,
   Menu,
   MenuButton,
   MenuList,
   MenuItem,
-  Divider,
-  Select,
-  useColorMode,
+  useToast,
+  Textarea,
+  Checkbox,
+  Badge,
   Popover,
   PopoverTrigger,
   PopoverContent,
   PopoverBody,
-  ButtonGroup,
+  Select,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react';
-import MDEditor from '@uiw/react-md-editor';
-import { v4 as uuidv4 } from 'uuid';
+import { AddIcon, DeleteIcon, EditIcon, TimeIcon, ChevronDownIcon, DragHandleIcon } from '@chakra-ui/icons';
+import { DragDropContext, Droppable as DroppableBase, Draggable } from 'react-beautiful-dnd';
+import ReactMarkdown from 'react-markdown';
+import DatePicker from 'react-datepicker';
+import { registerLocale } from 'react-datepicker';
+import de from 'date-fns/locale/de';
+import "react-datepicker/dist/react-datepicker.css";
 
-// Sortable todo item component
-const SortableTodoItem = ({ todo, onToggle, onDelete, onSetReminder }) => {
-  const { colorMode } = useColorMode();
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: todo.id });
+registerLocale('de', de);
 
-  return (
-    <HStack
-      ref={setNodeRef}
-      p={3}
-      bg={colorMode === 'light' ? 'gray.50' : 'gray.700'}
-      _hover={{ bg: colorMode === 'light' ? 'gray.100' : 'gray.600' }}
-      borderRadius="md"
-      spacing={3}
-      style={{ transition }}
-    >
-      {/* Drag handle */}
-      <Box
-        {...attributes}
-        {...listeners}
-        cursor="grab"
-        opacity={isDragging ? 0.5 : 1}
-        style={{ transform: CSS.Transform.toString(transform) }}
-        p={1}
-        color={colorMode === 'light' ? 'gray.400' : 'gray.500'}
-        _hover={{ color: colorMode === 'light' ? 'gray.600' : 'gray.300' }}
-      >
-        ⋮⋮
-      </Box>
-      <Checkbox
-        size="sm"
-        isChecked={todo.completed}
-        onChange={() => onToggle(todo.id)}
-        zIndex={1}
-      />
-      <Box 
-        flex={1} 
-        fontSize="sm"
-        className={colorMode === 'dark' ? 'wmde-markdown-dark' : 'wmde-markdown'}
-        data-color-mode={colorMode}
-        zIndex={1}
-      >
-        <MDEditor.Markdown source={todo.text} />
-      </Box>
-      <Popover>
-        <PopoverTrigger>
-          <IconButton
-            size="sm"
-            icon={<span>⏰</span>}
-            variant="ghost"
-            aria-label="Erinnerung setzen"
-            zIndex={1}
-          />
-        </PopoverTrigger>
-        <PopoverContent p={2} w="auto">
-          <PopoverBody>
-            <Input
-              size="sm"
-              type="datetime-local"
-              onChange={(e) => {
-                const date = new Date(e.target.value);
-                if (!isNaN(date.getTime())) {
-                  onSetReminder(todo.id, date);
-                }
-              }}
-            />
-          </PopoverBody>
-        </PopoverContent>
-      </Popover>
-      <IconButton
-        size="sm"
-        icon={<span>🗑️</span>}
-        variant="ghost"
-        onClick={() => onDelete(todo.id)}
-        aria-label="Aufgabe löschen"
-        zIndex={1}
-      />
-    </HStack>
-  );
+const StrictModeDroppable = ({ children, ...props }) => {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    const animation = requestAnimationFrame(() => setEnabled(true));
+    return () => {
+      cancelAnimationFrame(animation);
+      setEnabled(false);
+    };
+  }, []);
+  if (!enabled) {
+    return null;
+  }
+  return <DroppableBase {...props}>{children}</DroppableBase>;
 };
 
-const TodoList = ({ initialTodoText = '', onTodoAdded }) => {
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const { colorMode } = useColorMode();
+const TodoList = ({ initialText, onTextAdded }) => {
   const [todos, setTodos] = useState([]);
-  const [newTodo, setNewTodo] = useState('');
+  const [inputValue, setInputValue] = useState('');
   const [folders, setFolders] = useState(['Default']);
-  const [currentFolder, setCurrentFolder] = useState('Default');
-  const [newFolder, setNewFolder] = useState('');
-  const [sortType, setSortType] = useState('manual'); // 'manual' or 'dueDate'
+  const [selectedFolder, setSelectedFolder] = useState('Default');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [editingTodo, setEditingTodo] = useState(null);
+  const [sortType, setSortType] = useState('manual');
   const toast = useToast();
+  const bg = useColorModeValue('white', 'gray.800');
+  const borderColor = useColorModeValue('gray.200', 'gray.600');
 
-  // Handle initial todo text from context menu
+  const handleAddTodo = useCallback((text = inputValue) => {
+    if (!text.trim()) return;
+
+    const newTodo = {
+      id: Date.now(),
+      text,
+      completed: false,
+      folder: selectedFolder,
+      createdAt: new Date().toISOString(),
+      reminder: null
+    };
+
+    setTodos(prev => [...prev, newTodo]);
+    setInputValue('');
+  }, [inputValue, selectedFolder]);
+
+  // Handle initialText changes
   useEffect(() => {
-    if (initialTodoText.trim()) {
-      const todo = {
-        id: uuidv4(),
-        text: initialTodoText,
-        completed: false,
-        folder: currentFolder,
-        reminder: null,
-        createdAt: new Date().toISOString(),
-        order: todos.length,
-      };
-      setTodos(prev => [...prev, todo]);
-      if (onTodoAdded) {
-        onTodoAdded();
-      }
+    if (initialText) {
+      handleAddTodo(initialText);
+      onTextAdded();
     }
-  }, [initialTodoText]); // Only depend on initialTodoText to prevent unnecessary reruns
+  }, [initialText, handleAddTodo, onTextAdded]);
 
-  // Load todos and preferences from local storage
+  // Load todos and folders from electron-store on component mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [savedTodos, savedFolders, savedSortType] = await Promise.all([
-          window.electron.getTodos(),
-          window.electron.getTodoFolders(),
-          window.electron.getTodoSortType(),
-        ]);
-
-        if (savedTodos) {
-          // Ensure all todos have an order property
-          const todosWithOrder = savedTodos.map((todo, index) => ({
-            ...todo,
-            order: todo.order ?? index,
-          }));
-          setTodos(todosWithOrder);
-        }
-        
-        if (savedFolders?.length > 0) {
-          setFolders(savedFolders);
-        }
-
-        if (savedSortType) {
-          setSortType(savedSortType);
-        }
+        const savedTodos = await window.electron.getTodos();
+        const savedFolders = await window.electron.getTodoFolders();
+        const savedSortType = await window.electron.getTodoSortType();
+        setTodos(savedTodos);
+        setFolders(savedFolders);
+        setSortType(savedSortType);
       } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('Error loading todos:', error);
       }
     };
     loadData();
   }, []);
 
-  // Save todos to local storage whenever they change
+  // Save todos whenever they change
   useEffect(() => {
-    const saveTodos = async () => {
-      try {
-        await window.electron.saveTodos(todos);
-      } catch (error) {
-        console.error('Error saving todos:', error);
-      }
-    };
-    saveTodos();
+    window.electron.saveTodos(todos);
   }, [todos]);
 
-  // Save folders to local storage whenever they change
+  // Save folders whenever they change
   useEffect(() => {
-    const saveFolders = async () => {
-      try {
-        await window.electron.saveTodoFolders(folders);
-      } catch (error) {
-        console.error('Error saving folders:', error);
-      }
-    };
-    saveFolders();
+    window.electron.saveTodoFolders(folders);
   }, [folders]);
 
   // Save sort type whenever it changes
   useEffect(() => {
-    const saveSortType = async () => {
-      try {
-        await window.electron.saveTodoSortType(sortType);
-      } catch (error) {
-        console.error('Error saving sort type:', error);
-      }
-    };
-    saveSortType();
+    window.electron.saveTodoSortType(sortType);
   }, [sortType]);
 
-  const addTodo = () => {
-    if (!newTodo.trim()) return;
+  const handleAddFolder = () => {
+    if (!newFolderName.trim() || folders.includes(newFolderName)) return;
+    setFolders(prev => [...prev, newFolderName]);
+    setNewFolderName('');
+  };
 
-    const todo = {
-      id: uuidv4(),
-      text: newTodo,
-      completed: false,
-      folder: currentFolder,
-      reminder: null,
-      createdAt: new Date().toISOString(),
-      order: todos.length,
+  const handleDeleteFolder = (folder) => {
+    if (folder === 'Default') return;
+    setFolders(prev => prev.filter(f => f !== folder));
+    setTodos(prev => prev.filter(todo => todo.folder !== folder));
+    if (selectedFolder === folder) {
+      setSelectedFolder('Default');
+    }
+  };
+
+  const handleToggleTodo = (id) => {
+    setTodos(prev => prev.map(todo => 
+      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+    ));
+  };
+
+  const handleDeleteTodo = (id) => {
+    setTodos(prev => prev.filter(todo => todo.id !== id));
+  };
+
+  const handleEditTodo = (todo) => {
+    setEditingTodo(todo);
+  };
+
+  const handleUpdateTodo = (id, newText) => {
+    setTodos(prev => prev.map(todo =>
+      todo.id === id ? { ...todo, text: newText } : todo
+    ));
+    setEditingTodo(null);
+  };
+
+  const handleSetReminder = async (todo, date) => {
+    if (!date) return;
+
+    const updatedTodo = {
+      ...todo,
+      reminder: date.toISOString()
     };
 
-    setTodos([...todos, todo]);
-    setNewTodo('');
+    setTodos(prev => prev.map(t =>
+      t.id === todo.id ? updatedTodo : t
+    ));
+
+    // Schedule notification
+    await window.electron.scheduleNotification({
+      title: 'Aufgaben-Erinnerung',
+      body: todo.text,
+      when: date.getTime()
+    });
+
+    toast({
+      title: 'Erinnerung gesetzt',
+      description: `Erinnerung gesetzt für ${date.toLocaleString('de-DE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })}`,
+      status: 'success',
+      duration: 3000,
+      isClosable: true,
+    });
   };
 
-  const addFolder = () => {
-    if (!newFolder.trim() || folders.includes(newFolder)) return;
-    setFolders([...folders, newFolder]);
-    setNewFolder('');
-  };
-
-  const setDateTimeReminder = async (id, date) => {
-    const todo = todos.find((t) => t.id === id);
-    if (!todo) return;
-
-    const reminderTime = date.getTime();
-    const updatedTodo = { ...todo, reminder: date.toISOString() };
-
-    setTodos(todos.map((t) => (t.id === id ? updatedTodo : t)));
-
-    try {
-      await window.electron.scheduleNotification({
-        title: 'Todo Erinnerung',
-        body: todo.text,
-        when: reminderTime,
-      });
-
-      toast({
-        title: 'Erinnerung gesetzt',
-        description: `Erinnerung gesetzt für ${date.toLocaleString('de-DE')}`,
-        status: 'success',
-        duration: 3000,
-      });
-    } catch (error) {
-      console.error('Error scheduling notification:', error);
-      toast({
-        title: 'Fehler',
-        description: 'Erinnerung konnte nicht gesetzt werden',
-        status: 'error',
-        duration: 3000,
-      });
-    }
-  };
-
-  const toggleTodo = (id) => {
-    setTodos(
-      todos.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      )
-    );
-  };
-
-  const deleteTodo = (id) => {
-    setTodos(todos.filter((todo) => todo.id !== id));
-  };
-
-  const handleDragEnd = (event) => {
-    const { active, over } = event;
-
-    if (active.id !== over.id) {
-      setTodos((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over.id);
-
-        const reorderedItems = arrayMove(items, oldIndex, newIndex).map(
-          (item, index) => ({ ...item, order: index })
+  const visibleTodos = useMemo(() => {
+    const filteredTodos = todos.filter(todo => todo.folder === selectedFolder);
+    
+    switch (sortType) {
+      case 'date':
+        return [...filteredTodos].sort((a, b) => 
+          new Date(b.createdAt) - new Date(a.createdAt)
         );
-
-        return reorderedItems;
-      });
+      case 'completed':
+        return [...filteredTodos].sort((a, b) => 
+          Number(a.completed) - Number(b.completed)
+        );
+      default:
+        return filteredTodos;
     }
+  }, [todos, selectedFolder, sortType]);
+
+  const onDragEnd = (result) => {
+    if (!result.destination || sortType !== 'manual') return;
+
+    const allTodos = [...todos];
+    const currentFolderTodos = allTodos.filter(todo => todo.folder === selectedFolder);
+    const otherTodos = allTodos.filter(todo => todo.folder !== selectedFolder);
+    
+    const [reorderedItem] = currentFolderTodos.splice(result.source.index, 1);
+    currentFolderTodos.splice(result.destination.index, 0, reorderedItem);
+
+    setTodos([...otherTodos, ...currentFolderTodos]);
   };
-
-  // Sort todos based on current sort type and filter by folder
-  const sortedTodos = useMemo(() => {
-    const folderTodos = todos.filter((todo) => todo.folder === currentFolder);
-
-    if (sortType === 'dueDate') {
-      return [...folderTodos].sort((a, b) => {
-        // Put todos without reminders at the end
-        if (!a.reminder && !b.reminder) return 0;
-        if (!a.reminder) return 1;
-        if (!b.reminder) return -1;
-        return new Date(a.reminder) - new Date(b.reminder);
-      });
-    }
-
-    // Manual sorting based on order property
-    return [...folderTodos].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [todos, currentFolder, sortType]);
 
   return (
-    <Box p={4}>
-      <VStack spacing={3} align="stretch">
-        {/* Folder Selection and New Folder Input */}
-        <HStack spacing={2}>
-          <Select
-            size="sm"
-            value={currentFolder}
-            onChange={(e) => setCurrentFolder(e.target.value)}
-          >
-            {folders.map((folder) => (
-              <option key={folder} value={folder}>
-                {folder}
-              </option>
+    <Box>
+      <VStack spacing={4} align="stretch">
+        {/* Folder Management */}
+        <HStack>
+          <Select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>
+            {folders.map(folder => (
+              <option key={folder} value={folder}>{folder === 'Default' ? 'Standard' : folder}</option>
             ))}
           </Select>
-          <Input
-            size="sm"
-            placeholder="Neuer Ordner"
-            value={newFolder}
-            onChange={(e) => setNewFolder(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && addFolder()}
-          />
-          <IconButton
-            size="sm"
-            icon={<span>➕</span>}
-            onClick={addFolder}
-            aria-label="Ordner hinzufügen"
-          />
+          <Menu>
+            <MenuButton as={Button} rightIcon={<ChevronDownIcon />}>
+              Verwalten
+            </MenuButton>
+            <MenuList>
+              <MenuItem>
+                <HStack>
+                  <Input
+                    placeholder="Neuer Ordnername"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    size="sm"
+                  />
+                  <IconButton
+                    icon={<AddIcon />}
+                    onClick={handleAddFolder}
+                    size="sm"
+                    aria-label="Ordner hinzufügen"
+                  />
+                </HStack>
+              </MenuItem>
+              {folders.map(folder => (
+                <MenuItem key={folder}>
+                  {folder === 'Default' ? 'Standard' : folder}
+                  {folder !== 'Default' && (
+                    <IconButton
+                      icon={<DeleteIcon />}
+                      onClick={() => handleDeleteFolder(folder)}
+                      size="sm"
+                      ml={2}
+                      aria-label="Ordner löschen"
+                    />
+                  )}
+                </MenuItem>
+              ))}
+            </MenuList>
+          </Menu>
         </HStack>
 
-        {/* New Todo Input */}
-        <HStack spacing={2}>
+        {/* Sort Type Selection */}
+        <Select value={sortType} onChange={(e) => setSortType(e.target.value)}>
+          <option value="manual">Manuelle Sortierung</option>
+          <option value="date">Sortierung nach Datum</option>
+          <option value="completed">Sortierung nach offen/abgeschlossen</option>
+        </Select>
+
+        {/* Add Todo Input */}
+        <HStack>
           <Input
-            size="sm"
-            placeholder="Neue Aufgabe hinzufügen"
-            value={newTodo}
-            onChange={(e) => setNewTodo(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+            placeholder="Neue Aufgabe hinzufügen..."
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleAddTodo()}
           />
           <IconButton
-            size="sm"
-            icon={<span>➕</span>}
-            onClick={addTodo}
+            icon={<AddIcon />}
+            onClick={() => handleAddTodo()}
             aria-label="Aufgabe hinzufügen"
           />
         </HStack>
 
-        {/* Sort Type Selection */}
-        <ButtonGroup size="sm" isAttached variant="outline">
-          <Button
-            size="sm"
-            isActive={sortType === 'manual'}
-            onClick={() => setSortType('manual')}
-          >
-            Manuelle Sortierung
-          </Button>
-          <Button
-            size="sm"
-            isActive={sortType === 'dueDate'}
-            onClick={() => setSortType('dueDate')}
-          >
-            Nach Fälligkeit
-          </Button>
-        </ButtonGroup>
-
         {/* Todo List */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={sortedTodos.map(todo => todo.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <VStack align="stretch" spacing={2}>
-              {sortedTodos.map((todo) => (
-                <SortableTodoItem
-                  key={todo.id}
-                  todo={todo}
-                  onToggle={toggleTodo}
-                  onDelete={deleteTodo}
-                  onSetReminder={setDateTimeReminder}
-                />
-              ))}
-            </VStack>
-          </SortableContext>
-        </DndContext>
+        <DragDropContext onDragEnd={onDragEnd}>
+          <StrictModeDroppable droppableId="todos">
+            {(provided) => (
+              <VStack
+                spacing={2}
+                align="stretch"
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+              >
+                {visibleTodos.map((todo, index) => (
+                  <Draggable
+                    key={todo.id}
+                    draggableId={`todo-${todo.id}`}
+                    index={index}
+                    isDragDisabled={sortType !== 'manual'}
+                  >
+                    {(provided, snapshot) => (
+                      <Box
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        p={2}
+                        borderWidth="1px"
+                        borderRadius="md"
+                        borderColor={borderColor}
+                        bg={bg}
+                        boxShadow={snapshot.isDragging ? "lg" : "none"}
+                      >
+                        {editingTodo?.id === todo.id ? (
+                          <Textarea
+                            value={editingTodo.text}
+                            onChange={(e) => setEditingTodo({ ...editingTodo, text: e.target.value })}
+                            onBlur={() => handleUpdateTodo(todo.id, editingTodo.text)}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleUpdateTodo(todo.id, editingTodo.text);
+                              }
+                            }}
+                            autoFocus
+                          />
+                        ) : (
+                          <HStack justify="space-between" align="start" width="100%">
+                            <HStack align="start" flex={1} spacing={2}>
+                              {sortType === 'manual' && (
+                                <div {...provided.dragHandleProps}>
+                                  <IconButton
+                                    icon={<DragHandleIcon />}
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label="Verschieben"
+                                    cursor="grab"
+                                    _active={{ cursor: "grabbing" }}
+                                  />
+                                </div>
+                              )}
+                              <Checkbox
+                                isChecked={todo.completed}
+                                onChange={() => handleToggleTodo(todo.id)}
+                                mt={1}
+                              />
+                              <Box>
+                                <ReactMarkdown>{todo.text}</ReactMarkdown>
+                                {todo.reminder && (
+                                  <Badge colorScheme="purple" mt={1}>
+                                    Erinnerung: {new Date(todo.reminder).toLocaleString('de-DE', {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </Badge>
+                                )}
+                              </Box>
+                            </HStack>
+                            <HStack>
+                              <Popover>
+                                <PopoverTrigger>
+                                  <IconButton
+                                    icon={<TimeIcon />}
+                                    size="sm"
+                                    aria-label="Erinnerung setzen"
+                                  />
+                                </PopoverTrigger>
+                                <PopoverContent p={4}>
+                                  <PopoverBody>
+                                    <FormControl>
+                                      <FormLabel>Erinnerung setzen</FormLabel>
+                                      <DatePicker
+                                        selected={todo.reminder ? new Date(todo.reminder) : null}
+                                        onChange={(date) => handleSetReminder(todo, date)}
+                                        showTimeSelect
+                                        dateFormat="dd.MM.yyyy HH:mm"
+                                        locale="de"
+                                        timeFormat="HH:mm"
+                                        timeIntervals={15}
+                                        customInput={<Input />}
+                                      />
+                                    </FormControl>
+                                  </PopoverBody>
+                                </PopoverContent>
+                              </Popover>
+                              <IconButton
+                                icon={<EditIcon />}
+                                onClick={() => handleEditTodo(todo)}
+                                size="sm"
+                                aria-label="Bearbeiten"
+                              />
+                              <IconButton
+                                icon={<DeleteIcon />}
+                                onClick={() => handleDeleteTodo(todo.id)}
+                                size="sm"
+                                aria-label="Löschen"
+                              />
+                            </HStack>
+                          </HStack>
+                        )}
+                      </Box>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
+              </VStack>
+            )}
+          </StrictModeDroppable>
+        </DragDropContext>
       </VStack>
     </Box>
   );

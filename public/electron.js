@@ -544,16 +544,20 @@ ipcMain.on('update-badge', (event, isBadge) => {
       'NeueNachrichten'
     );
     mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
-    if (process.platform === 'win32' || process.platform === 'darwin') {
+    if (process.platform === 'win32') {
       tray?.setImage(getAssetPath('tray-lowres_badge.png'));
+    } else if (process.platform === 'darwin') {
+      tray?.setImage(getAssetPath('tray_badge.png'));
     } else {
       tray?.setImage(getAssetPath('tray_badge.png'));
     }
   } else {
     mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
     mainWindow?.setIcon(getAssetPath('icon.png'));
-    if (process.platform === 'win32' || process.platform === 'darwin') {
+    if (process.platform === 'win32') {
       tray?.setImage(getAssetPath('tray-lowres.png'));
+    } else if (process.platform === 'darwin') {
+      tray?.setImage(getAssetPath('tray.png'));
     } else {
       tray?.setImage(getAssetPath('tray.png'));
     }
@@ -648,6 +652,15 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 autoUpdater.on('update-downloaded', (info) => {
   mainWindow.webContents.send('update-status', 'Update heruntergeladen. Installation beim nächsten Neustart.');
+});
+
+// Handle context menu events from webviews
+ipcMain.on('contextMenu', (event, data) => {
+  console.log('Main process - Received context menu event:', data);
+  if (data.selectionText) {
+    mainWindow.webContents.send('add-todo', data.selectionText);
+    console.log('Main process - Sent selected text to renderer:', data.selectionText);
+  }
 });
 
 app.on('web-contents-created', (event, contents) => {

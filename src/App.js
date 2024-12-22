@@ -4,6 +4,7 @@ import {
   Flex,
   IconButton,
   useColorMode,
+  useColorModeValue,
   useDisclosure,
   Drawer,
   DrawerBody,
@@ -392,16 +393,22 @@ function App() {
         </DrawerContent>
       </Drawer>
 
-      <Drawer isOpen={isTodoOpen} placement="right" onClose={onTodoClose} size="md">
-        <DrawerOverlay />
-        <DrawerContent>
-          <DrawerCloseButton aria-label="Todo Liste schließen" />
-          <DrawerHeader>Todo Liste</DrawerHeader>
-          <DrawerBody>
-            <TodoList initialTodoText={contextMenuText} onTodoAdded={() => setContextMenuText('')} />
-          </DrawerBody>
-        </DrawerContent>
-      </Drawer>
+      <Box 
+        position="fixed" 
+        right={0} 
+        top="48px" 
+        bottom={0} 
+        width="400px" 
+        bg={useColorModeValue('white', 'gray.800')}
+        borderLeft="1px"
+        borderColor={useColorModeValue('gray.200', 'gray.600')}
+        p={4}
+        overflowY="auto"
+        display={isTodoOpen ? 'block' : 'none'}
+        zIndex={1000}
+      >
+        <TodoList initialText={contextMenuText} onTextAdded={() => setContextMenuText('')} />
+      </Box>
 
       <Modal isOpen={showEmailModal} onClose={() => {}} closeOnOverlayClick={false}>
         <ModalOverlay />
