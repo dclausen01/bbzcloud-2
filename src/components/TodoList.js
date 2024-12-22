@@ -220,14 +220,18 @@ const TodoList = ({ initialText, onTextAdded }) => {
     <Box>
       <VStack spacing={4} align="stretch">
         {/* Folder Management */}
-        <HStack>
-          <Select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)}>
+        <HStack spacing={4}>
+          <Select 
+            value={selectedFolder} 
+            onChange={(e) => setSelectedFolder(e.target.value)}
+            flex={1}
+          >
             {folders.map(folder => (
               <option key={folder} value={folder}>{folder === 'Default' ? 'Standard' : folder}</option>
             ))}
           </Select>
           <Menu>
-            <MenuButton as={Button} rightIcon={<ChevronDownIcon />}>
+            <MenuButton as={Button} rightIcon={<ChevronDownIcon />} minW="120px">
               Verwalten
             </MenuButton>
             <MenuList>
@@ -249,16 +253,17 @@ const TodoList = ({ initialText, onTextAdded }) => {
               </MenuItem>
               {folders.map(folder => (
                 <MenuItem key={folder}>
-                  {folder === 'Default' ? 'Standard' : folder}
-                  {folder !== 'Default' && (
-                    <IconButton
-                      icon={<DeleteIcon />}
-                      onClick={() => handleDeleteFolder(folder)}
-                      size="sm"
-                      ml={2}
-                      aria-label="Ordner löschen"
-                    />
-                  )}
+                  <HStack justify="space-between" width="100%">
+                    <span>{folder === 'Default' ? 'Standard' : folder}</span>
+                    {folder !== 'Default' && (
+                      <IconButton
+                        icon={<DeleteIcon />}
+                        onClick={() => handleDeleteFolder(folder)}
+                        size="sm"
+                        aria-label="Ordner löschen"
+                      />
+                    )}
+                  </HStack>
                 </MenuItem>
               ))}
             </MenuList>
@@ -329,8 +334,8 @@ const TodoList = ({ initialText, onTextAdded }) => {
                             autoFocus
                           />
                         ) : (
-                          <HStack justify="space-between" align="start" width="100%">
-                            <HStack align="start" flex={1} spacing={2}>
+                          <HStack justify="space-between" align="center" width="100%" spacing={4}>
+                            <HStack align="start" flex={1} spacing={3}>
                               {sortType === 'manual' && (
                                 <div {...provided.dragHandleProps}>
                                   <IconButton
@@ -348,7 +353,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                                 onChange={() => handleToggleTodo(todo.id)}
                                 mt={1}
                               />
-                              <Box>
+                              <Box wordBreak="break-word" maxW="100%">
                                 <ReactMarkdown>{todo.text}</ReactMarkdown>
                                 {todo.reminder && (
                                   <Badge colorScheme="purple" mt={1}>
@@ -363,7 +368,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                                 )}
                               </Box>
                             </HStack>
-                            <HStack>
+                            <HStack spacing={2}>
                               <Popover>
                                 <PopoverTrigger>
                                   <IconButton

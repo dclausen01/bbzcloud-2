@@ -407,7 +407,7 @@ async function getCredentials(service, account) {
   }
 }
 
-function createContextMenu(webContents) {
+function createContextMenu(webContents, selectedText) {
   return Menu.buildFromTemplate([
     { 
       label: 'Ausschneiden',
@@ -428,17 +428,10 @@ function createContextMenu(webContents) {
     {
       label: 'Als Todo hinzufügen',
       click: () => {
-        webContents.executeJavaScript(`window.getSelection().toString()`)
-          .then(selectedText => {
-            console.log('Context menu - Selected text:', selectedText);
-            if (selectedText) {
-              mainWindow.webContents.send('add-todo', selectedText);
-              console.log('Context menu - Sent text to main window');
-            }
-          })
-          .catch(error => {
-            console.error('Error getting selected text:', error);
-          });
+        if (selectedText) {
+          mainWindow.webContents.send('add-todo', selectedText);
+          console.log('Context menu - Sent text to main window:', selectedText);
+        }
       }
     }
   ]);
@@ -655,12 +648,10 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 // Handle context menu events from webviews
-ipcMain.on('contextMenu', (event, data) => {
+ipcMain.on('showContextMenu', (event, data) => {
   console.log('Main process - Received context menu event:', data);
-  if (data.selectionText) {
-    mainWindow.webContents.send('add-todo', data.selectionText);
-    console.log('Main process - Sent selected text to renderer:', data.selectionText);
-  }
+  const menu = createContextMenu(event.sender, data.selectionText);
+  menu.popup();
 });
 
 app.on('web-contents-created', (event, contents) => {
@@ -690,8 +681,14 @@ app.on('web-contents-created', (event, contents) => {
       url.includes('moodle')
     ) {
       e.preventDefault();
-      const menu = createContextMenu(contents);
-      menu.popup();
+      contents.executeJavaScript(`window.getSelection().toString()`)
+        .then(selectedText => {
+          const menu = createContextMenu(contents, selectedText);
+          menu.popup();
+        })
+        .catch(error => {
+          console.error('Error getting selected text:', error);
+        });
     }
   });
 

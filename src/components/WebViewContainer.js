@@ -368,7 +368,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const selectedText = await webview.executeJavaScript(`window.getSelection().toString()`);
               console.log('WebView - Selected text:', selectedText);
               if (selectedText) {
-                window.electron.send('contextMenu', {
+                window.electron.send('showContextMenu', {
                   x: e.x,
                   y: e.y,
                   selectionText: selectedText,

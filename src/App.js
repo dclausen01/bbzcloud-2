@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { CloseIcon } from '@chakra-ui/icons';
 import {
   Box,
   Flex,
@@ -159,11 +160,9 @@ function App() {
   useEffect(() => {
     const unsubscribe = window.electron.onAddTodo((text) => {
       console.log('App - Received text from context menu:', text);
-      if (text) {
-        setContextMenuText(text);
-        onTodoOpen(); // Open todo drawer when text is selected
-        window.electron.debug('App - Set context menu text and opened drawer');
-      }
+      setContextMenuText(text);
+      onTodoOpen(); // Open todo drawer when text is selected
+      window.electron.debug('App - Set context menu text and opened drawer');
     });
     return () => unsubscribe();
   }, [onTodoOpen]);
@@ -398,16 +397,26 @@ function App() {
         right={0} 
         top="48px" 
         bottom={0} 
-        width="400px" 
+        width="450px" 
         bg={useColorModeValue('white', 'gray.800')}
         borderLeft="1px"
         borderColor={useColorModeValue('gray.200', 'gray.600')}
-        p={4}
-        overflowY="auto"
         display={isTodoOpen ? 'block' : 'none'}
         zIndex={1000}
       >
-        <TodoList initialText={contextMenuText} onTextAdded={() => setContextMenuText('')} />
+        <Flex direction="column" height="100%">
+          <Flex justify="flex-end" p={2} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.600')}>
+            <IconButton
+              icon={<CloseIcon />}
+              size="sm"
+              onClick={onTodoClose}
+              aria-label="Todo Liste schließen"
+            />
+          </Flex>
+          <Box p={4} overflowY="auto" flex="1">
+            <TodoList initialText={contextMenuText} onTextAdded={() => setContextMenuText('')} />
+          </Box>
+        </Flex>
       </Box>
 
       <Modal isOpen={showEmailModal} onClose={() => {}} closeOnOverlayClick={false}>
