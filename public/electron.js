@@ -185,7 +185,14 @@ const copyAssetsIfNeeded = async () => {
 };
 
 function createTray() {
-  const trayIcon = getAssetPath('tray.png');
+  let trayIcon;
+  if (process.platform === 'darwin') {
+    trayIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
+  } else if (process.platform === 'win32') {
+    trayIcon = getAssetPath('tray-lowres.png');
+  } else {
+    trayIcon = getAssetPath('tray.png');
+  }
   tray = new Tray(trayIcon);
   
   const contextMenu = Menu.buildFromTemplate([
@@ -537,20 +544,22 @@ ipcMain.on('update-badge', (event, isBadge) => {
       'NeueNachrichten'
     );
     mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
-    if (process.platform === 'win32') {
+    if (process.platform === 'darwin') {
+      const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
+      tray?.setImage(badgeIcon);
+    } else if (process.platform === 'win32') {
       tray?.setImage(getAssetPath('tray-lowres_badge.png'));
-    } else if (process.platform === 'darwin') {
-      tray?.setImage(getAssetPath('tray_badge.png'));
     } else {
       tray?.setImage(getAssetPath('tray_badge.png'));
     }
   } else {
     mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
     mainWindow?.setIcon(getAssetPath('icon.png'));
-    if (process.platform === 'win32') {
+    if (process.platform === 'darwin') {
+      const normalIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
+      tray?.setImage(normalIcon);
+    } else if (process.platform === 'win32') {
       tray?.setImage(getAssetPath('tray-lowres.png'));
-    } else if (process.platform === 'darwin') {
-      tray?.setImage(getAssetPath('tray.png'));
     } else {
       tray?.setImage(getAssetPath('tray.png'));
     }
