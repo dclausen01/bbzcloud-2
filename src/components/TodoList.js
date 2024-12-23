@@ -61,11 +61,21 @@ const TodoList = ({ initialText, onTextAdded }) => {
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
   const handleAddTodo = useCallback((text = inputValue) => {
-    if (!text.trim()) return;
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      toast({
+        title: 'Fehler',
+        description: 'Bitte geben Sie einen Text für die Aufgabe ein.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
 
     const newTodo = {
       id: Date.now(),
-      text,
+      text: trimmedText,
       completed: false,
       folder: selectedFolder,
       createdAt: new Date().toISOString(),
@@ -74,6 +84,14 @@ const TodoList = ({ initialText, onTextAdded }) => {
 
     setTodos(prev => [...prev, newTodo]);
     setInputValue('');
+
+    toast({
+      title: 'Aufgabe hinzugefügt',
+      description: 'Die neue Aufgabe wurde erfolgreich hinzugefügt.',
+      status: 'success',
+      duration: 2000,
+      isClosable: true,
+    });
   }, [inputValue, selectedFolder]);
 
   // Handle initialText changes
@@ -84,26 +102,62 @@ const TodoList = ({ initialText, onTextAdded }) => {
     }
   }, [initialText, handleAddTodo, onTextAdded]);
 
-  // Load todos and folders from electron-store on component mount
+  // Load folders first, then todos from electron-store on component mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        const savedTodos = await window.electron.getTodos();
+        // Load folders first
         const savedFolders = await window.electron.getTodoFolders();
+        
+        // Ensure Default folder always exists
+        const folders = savedFolders.includes('Default') 
+          ? savedFolders 
+          : ['Default', ...savedFolders];
+        setFolders(folders);
+        
+        // Load todos after folders are set
+        const savedTodos = await window.electron.getTodos();
+        
+        // Filter out todos with non-existent folders and move them to Default
+        const validTodos = savedTodos.map(todo => 
+          folders.includes(todo.folder) ? todo : { ...todo, folder: 'Default' }
+        );
+        setTodos(validTodos);
+
         const savedSortType = await window.electron.getTodoSortType();
-        setTodos(savedTodos);
-        setFolders(savedFolders);
         setSortType(savedSortType);
+
+        // Set selected folder to Default if current selection is invalid
+        setSelectedFolder(prev => folders.includes(prev) ? prev : 'Default');
       } catch (error) {
         console.error('Error loading todos:', error);
+        toast({
+          title: 'Fehler beim Laden',
+          description: `Fehler beim Laden der Todos: ${error.message}`,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+        // Ensure Default folder exists even on error
+        setFolders(['Default']);
+        setSelectedFolder('Default');
       }
     };
     loadData();
-  }, []);
+  }, []); // Remove toast dependency as it's not needed
 
   // Save todos whenever they change
   useEffect(() => {
-    window.electron.saveTodos(todos);
+    // Validate todos before saving to prevent invalid data
+    const validTodos = todos.map(todo => ({
+      id: todo.id,
+      text: todo.text || '',
+      completed: Boolean(todo.completed),
+      folder: todo.folder || 'Default',
+      createdAt: todo.createdAt || new Date().toISOString(),
+      reminder: todo.reminder || null
+    }));
+    window.electron.saveTodos(validTodos);
   }, [todos]);
 
   // Save folders whenever they change
@@ -117,28 +171,167 @@ const TodoList = ({ initialText, onTextAdded }) => {
   }, [sortType]);
 
   const handleAddFolder = () => {
-    if (!newFolderName.trim() || folders.includes(newFolderName)) return;
-    setFolders(prev => [...prev, newFolderName]);
+    const trimmedName = newFolderName.trim();
+    
+    // Validation checks
+    if (!trimmedName) {
+      toast({
+        title: 'Fehler',
+        description: 'Bitte geben Sie einen Ordnernamen ein.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    
+    if (folders.includes(trimmedName)) {
+      toast({
+        title: 'Fehler',
+        description: 'Ein Ordner mit diesem Namen existiert bereits.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    
+    // Check length
+    if (trimmedName.length > 30) {
+      toast({
+        title: 'Fehler',
+        description: 'Der Ordnername darf maximal 30 Zeichen lang sein.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Check for invalid characters
+    if (!/^[a-zA-Z0-9\u00C0-\u017F\s-]+$/.test(trimmedName)) {
+      toast({
+        title: 'Fehler',
+        description: 'Der Ordnername darf nur Buchstaben, Zahlen, Leerzeichen und Bindestriche enthalten.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    
+    const folderToAdd = trimmedName;
+    
+    setFolders(prev => {
+      // Find the index of Default folder
+      const defaultIndex = prev.indexOf('Default');
+      if (defaultIndex === -1) {
+        // If Default doesn't exist, add it with the new folder
+        return ['Default', folderToAdd];
+      }
+      // Insert new folder after Default
+      const newFolders = [...prev];
+      newFolders.splice(defaultIndex + 1, 0, folderToAdd);
+      return newFolders;
+    });
+    
+    // Switch to the newly created folder
+    setSelectedFolder(folderToAdd);
     setNewFolderName('');
+    
+    toast({
+      title: 'Ordner erstellt',
+      description: `Ordner "${folderToAdd}" wurde erstellt`,
+      status: 'success',
+      duration: 3000,
+      isClosable: true,
+    });
   };
 
   const handleDeleteFolder = (folder) => {
-    if (folder === 'Default') return;
-    setFolders(prev => prev.filter(f => f !== folder));
-    setTodos(prev => prev.filter(todo => todo.folder !== folder));
-    if (selectedFolder === folder) {
-      setSelectedFolder('Default');
+    if (folder === 'Default') {
+      toast({
+        title: 'Aktion nicht möglich',
+        description: 'Der Standardordner kann nicht gelöscht werden.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Count todos in this folder
+    const todosInFolder = todos.filter(todo => todo.folder === folder).length;
+    const confirmMessage = todosInFolder > 0
+      ? `Möchten Sie den Ordner "${folder}" wirklich löschen? ${todosInFolder} Aufgabe${todosInFolder === 1 ? '' : 'n'} werden in den Standardordner verschoben.`
+      : `Möchten Sie den leeren Ordner "${folder}" wirklich löschen?`;
+
+    if (window.confirm(confirmMessage)) {
+      // Move todos from deleted folder to Default folder
+      setTodos(prev => prev.map(todo => 
+        todo.folder === folder ? { ...todo, folder: 'Default' } : todo
+      ));
+      
+      // Remove the folder
+      setFolders(prev => prev.filter(f => f !== folder));
+      
+      // Switch to Default folder if the deleted folder was selected
+      if (selectedFolder === folder) {
+        setSelectedFolder('Default');
+      }
+
+      toast({
+        title: 'Ordner gelöscht',
+        description: todosInFolder > 0
+          ? `Ordner "${folder}" wurde gelöscht. ${todosInFolder} Aufgabe${todosInFolder === 1 ? '' : 'n'} wurden in den Standardordner verschoben.`
+          : `Ordner "${folder}" wurde gelöscht.`,
+        status: 'info',
+        duration: 3000,
+        isClosable: true,
+      });
     }
   };
 
   const handleToggleTodo = (id) => {
-    setTodos(prev => prev.map(todo => 
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
+    const todo = todos.find(t => t.id === id);
+    if (!todo) return;
+
+    const newCompleted = !todo.completed;
+    setTodos(prev => prev.map(t => 
+      t.id === id ? { ...t, completed: newCompleted } : t
     ));
+
+    toast({
+      title: newCompleted ? 'Aufgabe erledigt' : 'Aufgabe wieder offen',
+      description: newCompleted 
+        ? 'Die Aufgabe wurde als erledigt markiert.'
+        : 'Die Aufgabe wurde als nicht erledigt markiert.',
+      status: 'success',
+      duration: 2000,
+      isClosable: true,
+    });
   };
 
   const handleDeleteTodo = (id) => {
-    setTodos(prev => prev.filter(todo => todo.id !== id));
+    const todoToDelete = todos.find(todo => todo.id === id);
+    if (!todoToDelete) return;
+
+    const isCompleted = todoToDelete.completed;
+    const confirmMessage = isCompleted 
+      ? 'Möchten Sie diese erledigte Aufgabe wirklich löschen?'
+      : 'Möchten Sie diese unerledigte Aufgabe wirklich löschen?';
+
+    if (window.confirm(confirmMessage)) {
+      setTodos(prev => prev.filter(todo => todo.id !== id));
+      
+      toast({
+        title: 'Aufgabe gelöscht',
+        description: 'Die Aufgabe wurde erfolgreich gelöscht.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
   };
 
   const handleEditTodo = (todo) => {
@@ -146,10 +339,30 @@ const TodoList = ({ initialText, onTextAdded }) => {
   };
 
   const handleUpdateTodo = (id, newText) => {
+    const trimmedText = newText.trim();
+    if (!trimmedText) {
+      toast({
+        title: 'Fehler',
+        description: 'Der Text der Aufgabe darf nicht leer sein.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
     setTodos(prev => prev.map(todo =>
-      todo.id === id ? { ...todo, text: newText } : todo
+      todo.id === id ? { ...todo, text: trimmedText } : todo
     ));
     setEditingTodo(null);
+
+    toast({
+      title: 'Aufgabe bearbeitet',
+      description: 'Die Änderungen wurden erfolgreich gespeichert.',
+      status: 'success',
+      duration: 2000,
+      isClosable: true,
+    });
   };
 
   const handleSetReminder = async (todo, date) => {
@@ -214,6 +427,14 @@ const TodoList = ({ initialText, onTextAdded }) => {
     currentFolderTodos.splice(result.destination.index, 0, reorderedItem);
 
     setTodos([...otherTodos, ...currentFolderTodos]);
+
+    toast({
+      title: 'Reihenfolge geändert',
+      description: 'Die Aufgaben wurden erfolgreich neu angeordnet.',
+      status: 'success',
+      duration: 2000,
+      isClosable: true,
+    });
   };
 
   return (
@@ -241,6 +462,13 @@ const TodoList = ({ initialText, onTextAdded }) => {
                     placeholder="Neuer Ordnername"
                     value={newFolderName}
                     onChange={(e) => setNewFolderName(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleAddFolder();
+                      }
+                    }}
                     size="sm"
                   />
                   <IconButton
@@ -274,7 +502,23 @@ const TodoList = ({ initialText, onTextAdded }) => {
         </HStack>
 
         {/* Sort Type Selection */}
-        <Select value={sortType} onChange={(e) => setSortType(e.target.value)}>
+        <Select 
+          value={sortType} 
+          onChange={(e) => {
+            setSortType(e.target.value);
+            toast({
+              title: 'Sortierung geändert',
+              description: `Die Aufgaben werden jetzt ${
+                e.target.value === 'manual' ? 'manuell' :
+                e.target.value === 'date' ? 'nach Datum' :
+                'nach Status'
+              } sortiert.`,
+              status: 'info',
+              duration: 2000,
+              isClosable: true,
+            });
+          }}
+        >
           <option value="manual">Manuelle Sortierung</option>
           <option value="date">Sortierung nach Datum</option>
           <option value="completed">Sortierung nach offen/abgeschlossen</option>

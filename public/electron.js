@@ -45,6 +45,11 @@ const store = new Store({
       type: 'array',
       default: ['Default']
     },
+    todoSortType: {
+      type: 'string',
+      enum: ['manual', 'date', 'completed'],
+      default: 'manual'
+    },
     settings: {
         type: 'object',
         properties: {
@@ -105,8 +110,11 @@ const store = new Store({
   clearInvalidConfig: true
 });
 
-// Run migrations
+// Run migrations and ensure all data is properly initialized
 store.get('settings');
+store.get('todos');
+store.get('todoFolders');
+store.get('todoSortType');
 
 let mainWindow;
 let splashWindow;
