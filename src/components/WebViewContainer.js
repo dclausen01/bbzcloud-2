@@ -493,7 +493,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               }}
               allowpopups="true"
               partition="persist:main"
-              webpreferences="allowRunningInsecureContent"
+              webpreferences="nativeWindowOpen=yes"
             />
           </Box>
         );
@@ -531,7 +531,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }}
             allowpopups="true"
             partition="persist:main"
-            webpreferences="allowRunningInsecureContent"
+            webpreferences="nativeWindowOpen=yes"
           />
         </Box>
       )}

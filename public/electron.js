@@ -281,7 +281,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true,
-      webSecurity: false,
+      webSecurity: true,
       partition: 'persist:main',
       additionalArguments: [
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
@@ -368,7 +368,7 @@ function createWebviewWindow(url, title) {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true,
-      webSecurity: false,
+      webSecurity: true,
       partition: 'persist:main',
       additionalArguments: [
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`

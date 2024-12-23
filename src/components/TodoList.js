@@ -235,8 +235,8 @@ const TodoList = ({ initialText, onTextAdded }) => {
               Verwalten
             </MenuButton>
             <MenuList>
-              <MenuItem>
-                <HStack>
+              <MenuItem closeOnSelect={false}>
+                <HStack onClick={(e) => e.stopPropagation()}>
                   <Input
                     placeholder="Neuer Ordnername"
                     value={newFolderName}
@@ -245,7 +245,10 @@ const TodoList = ({ initialText, onTextAdded }) => {
                   />
                   <IconButton
                     icon={<AddIcon />}
-                    onClick={handleAddFolder}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddFolder();
+                    }}
                     size="sm"
                     aria-label="Ordner hinzufügen"
                   />
