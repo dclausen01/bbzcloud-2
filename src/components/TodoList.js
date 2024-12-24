@@ -49,16 +49,42 @@ const StrictModeDroppable = ({ children, ...props }) => {
 };
 
 const TodoList = ({ initialText, onTextAdded }) => {
-  const [todos, setTodos] = useState([]);
+  const [todoState, setTodoState] = useState({
+    todos: [],
+    folders: ['Default'],
+    sortType: 'manual',
+    selectedFolder: 'Default'
+  });
   const [inputValue, setInputValue] = useState('');
-  const [folders, setFolders] = useState(['Default']);
-  const [selectedFolder, setSelectedFolder] = useState('Default');
   const [newFolderName, setNewFolderName] = useState('');
   const [editingTodo, setEditingTodo] = useState(null);
-  const [sortType, setSortType] = useState('manual');
   const toast = useToast();
   const bg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
+
+  // Load todo state on mount and save on changes
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const { todoState: savedState } = await window.electron.getTodoState();
+        setTodoState(savedState);
+      } catch (error) {
+        console.error('Error loading todo state:', error);
+        toast({
+          title: 'Fehler beim Laden',
+          description: `Fehler beim Laden der Todos: ${error.message}`,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    };
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    window.electron.saveTodoState(todoState);
+  }, [todoState]);
 
   const handleAddTodo = useCallback((text = inputValue) => {
     const trimmedText = text.trim();
@@ -77,12 +103,15 @@ const TodoList = ({ initialText, onTextAdded }) => {
       id: Date.now(),
       text: trimmedText,
       completed: false,
-      folder: selectedFolder,
+      folder: todoState.selectedFolder,
       createdAt: new Date().toISOString(),
       reminder: null
     };
 
-    setTodos(prev => [...prev, newTodo]);
+    setTodoState(prev => ({
+      ...prev,
+      todos: [...prev.todos, newTodo]
+    }));
     setInputValue('');
 
     toast({
@@ -92,7 +121,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
       duration: 2000,
       isClosable: true,
     });
-  }, [inputValue, selectedFolder]);
+  }, [inputValue, todoState.selectedFolder]);
 
   // Handle initialText changes
   useEffect(() => {
@@ -101,74 +130,6 @@ const TodoList = ({ initialText, onTextAdded }) => {
       onTextAdded();
     }
   }, [initialText, handleAddTodo, onTextAdded]);
-
-  // Load folders first, then todos from electron-store on component mount
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Load folders first
-        const savedFolders = await window.electron.getTodoFolders();
-        
-        // Ensure Default folder always exists
-        const folders = savedFolders.includes('Default') 
-          ? savedFolders 
-          : ['Default', ...savedFolders];
-        setFolders(folders);
-        
-        // Load todos after folders are set
-        const savedTodos = await window.electron.getTodos();
-        
-        // Filter out todos with non-existent folders and move them to Default
-        const validTodos = savedTodos.map(todo => 
-          folders.includes(todo.folder) ? todo : { ...todo, folder: 'Default' }
-        );
-        setTodos(validTodos);
-
-        const savedSortType = await window.electron.getTodoSortType();
-        setSortType(savedSortType);
-
-        // Set selected folder to Default if current selection is invalid
-        setSelectedFolder(prev => folders.includes(prev) ? prev : 'Default');
-      } catch (error) {
-        console.error('Error loading todos:', error);
-        toast({
-          title: 'Fehler beim Laden',
-          description: `Fehler beim Laden der Todos: ${error.message}`,
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-        // Ensure Default folder exists even on error
-        setFolders(['Default']);
-        setSelectedFolder('Default');
-      }
-    };
-    loadData();
-  }, []); // Remove toast dependency as it's not needed
-
-  // Save todos whenever they change
-  useEffect(() => {
-    // Validate todos before saving to prevent invalid data
-    const validTodos = todos.map(todo => ({
-      id: todo.id,
-      text: todo.text || '',
-      completed: Boolean(todo.completed),
-      folder: todo.folder || 'Default',
-      createdAt: todo.createdAt || new Date().toISOString(),
-      reminder: todo.reminder || null
-    }));
-    window.electron.saveTodos(validTodos);
-  }, [todos]);
-
-  // Save folders whenever they change
-  useEffect(() => {
-    window.electron.saveTodoFolders(folders);
-  }, [folders]);
-
-  // Save sort type whenever it changes
-  useEffect(() => {
-    window.electron.saveTodoSortType(sortType);
-  }, [sortType]);
 
   const handleAddFolder = () => {
     const trimmedName = newFolderName.trim();
@@ -185,7 +146,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
       return;
     }
     
-    if (folders.includes(trimmedName)) {
+    if (todoState.folders.includes(trimmedName)) {
       toast({
         title: 'Fehler',
         description: 'Ein Ordner mit diesem Namen existiert bereits.',
@@ -222,21 +183,19 @@ const TodoList = ({ initialText, onTextAdded }) => {
     
     const folderToAdd = trimmedName;
     
-    setFolders(prev => {
-      // Find the index of Default folder
-      const defaultIndex = prev.indexOf('Default');
-      if (defaultIndex === -1) {
-        // If Default doesn't exist, add it with the new folder
-        return ['Default', folderToAdd];
-      }
-      // Insert new folder after Default
-      const newFolders = [...prev];
-      newFolders.splice(defaultIndex + 1, 0, folderToAdd);
-      return newFolders;
+    setTodoState(prev => {
+      const defaultIndex = prev.folders.indexOf('Default');
+      const newFolders = defaultIndex === -1 
+        ? ['Default', folderToAdd]
+        : [...prev.folders.slice(0, defaultIndex + 1), folderToAdd, ...prev.folders.slice(defaultIndex + 1)];
+      
+      return {
+        ...prev,
+        folders: newFolders,
+        selectedFolder: folderToAdd
+      };
     });
     
-    // Switch to the newly created folder
-    setSelectedFolder(folderToAdd);
     setNewFolderName('');
     
     toast({
@@ -260,25 +219,20 @@ const TodoList = ({ initialText, onTextAdded }) => {
       return;
     }
 
-    // Count todos in this folder
-    const todosInFolder = todos.filter(todo => todo.folder === folder).length;
+    const todosInFolder = todoState.todos.filter(todo => todo.folder === folder).length;
     const confirmMessage = todosInFolder > 0
       ? `Möchten Sie den Ordner "${folder}" wirklich löschen? ${todosInFolder} Aufgabe${todosInFolder === 1 ? '' : 'n'} werden in den Standardordner verschoben.`
       : `Möchten Sie den leeren Ordner "${folder}" wirklich löschen?`;
 
     if (window.confirm(confirmMessage)) {
-      // Move todos from deleted folder to Default folder
-      setTodos(prev => prev.map(todo => 
-        todo.folder === folder ? { ...todo, folder: 'Default' } : todo
-      ));
-      
-      // Remove the folder
-      setFolders(prev => prev.filter(f => f !== folder));
-      
-      // Switch to Default folder if the deleted folder was selected
-      if (selectedFolder === folder) {
-        setSelectedFolder('Default');
-      }
+      setTodoState(prev => ({
+        ...prev,
+        todos: prev.todos.map(todo => 
+          todo.folder === folder ? { ...todo, folder: 'Default' } : todo
+        ),
+        folders: prev.folders.filter(f => f !== folder),
+        selectedFolder: prev.selectedFolder === folder ? 'Default' : prev.selectedFolder
+      }));
 
       toast({
         title: 'Ordner gelöscht',
@@ -293,13 +247,16 @@ const TodoList = ({ initialText, onTextAdded }) => {
   };
 
   const handleToggleTodo = (id) => {
-    const todo = todos.find(t => t.id === id);
+    const todo = todoState.todos.find(t => t.id === id);
     if (!todo) return;
 
     const newCompleted = !todo.completed;
-    setTodos(prev => prev.map(t => 
-      t.id === id ? { ...t, completed: newCompleted } : t
-    ));
+    setTodoState(prev => ({
+      ...prev,
+      todos: prev.todos.map(t => 
+        t.id === id ? { ...t, completed: newCompleted } : t
+      )
+    }));
 
     toast({
       title: newCompleted ? 'Aufgabe erledigt' : 'Aufgabe wieder offen',
@@ -313,7 +270,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
   };
 
   const handleDeleteTodo = (id) => {
-    const todoToDelete = todos.find(todo => todo.id === id);
+    const todoToDelete = todoState.todos.find(todo => todo.id === id);
     if (!todoToDelete) return;
 
     const isCompleted = todoToDelete.completed;
@@ -322,7 +279,10 @@ const TodoList = ({ initialText, onTextAdded }) => {
       : 'Möchten Sie diese unerledigte Aufgabe wirklich löschen?';
 
     if (window.confirm(confirmMessage)) {
-      setTodos(prev => prev.filter(todo => todo.id !== id));
+      setTodoState(prev => ({
+        ...prev,
+        todos: prev.todos.filter(todo => todo.id !== id)
+      }));
       
       toast({
         title: 'Aufgabe gelöscht',
@@ -351,9 +311,12 @@ const TodoList = ({ initialText, onTextAdded }) => {
       return;
     }
 
-    setTodos(prev => prev.map(todo =>
-      todo.id === id ? { ...todo, text: trimmedText } : todo
-    ));
+    setTodoState(prev => ({
+      ...prev,
+      todos: prev.todos.map(todo =>
+        todo.id === id ? { ...todo, text: trimmedText } : todo
+      )
+    }));
     setEditingTodo(null);
 
     toast({
@@ -373,9 +336,12 @@ const TodoList = ({ initialText, onTextAdded }) => {
       reminder: date.toISOString()
     };
 
-    setTodos(prev => prev.map(t =>
-      t.id === todo.id ? updatedTodo : t
-    ));
+    setTodoState(prev => ({
+      ...prev,
+      todos: prev.todos.map(t =>
+        t.id === todo.id ? updatedTodo : t
+      )
+    }));
 
     // Schedule notification
     await window.electron.scheduleNotification({
@@ -400,9 +366,9 @@ const TodoList = ({ initialText, onTextAdded }) => {
   };
 
   const visibleTodos = useMemo(() => {
-    const filteredTodos = todos.filter(todo => todo.folder === selectedFolder);
+    const filteredTodos = todoState.todos.filter(todo => todo.folder === todoState.selectedFolder);
     
-    switch (sortType) {
+    switch (todoState.sortType) {
       case 'date':
         return [...filteredTodos].sort((a, b) => 
           new Date(b.createdAt) - new Date(a.createdAt)
@@ -414,19 +380,22 @@ const TodoList = ({ initialText, onTextAdded }) => {
       default:
         return filteredTodos;
     }
-  }, [todos, selectedFolder, sortType]);
+  }, [todoState]);
 
   const onDragEnd = (result) => {
-    if (!result.destination || sortType !== 'manual') return;
+    if (!result.destination || todoState.sortType !== 'manual') return;
 
-    const allTodos = [...todos];
-    const currentFolderTodos = allTodos.filter(todo => todo.folder === selectedFolder);
-    const otherTodos = allTodos.filter(todo => todo.folder !== selectedFolder);
+    const allTodos = [...todoState.todos];
+    const currentFolderTodos = allTodos.filter(todo => todo.folder === todoState.selectedFolder);
+    const otherTodos = allTodos.filter(todo => todo.folder !== todoState.selectedFolder);
     
     const [reorderedItem] = currentFolderTodos.splice(result.source.index, 1);
     currentFolderTodos.splice(result.destination.index, 0, reorderedItem);
 
-    setTodos([...otherTodos, ...currentFolderTodos]);
+    setTodoState(prev => ({
+      ...prev,
+      todos: [...otherTodos, ...currentFolderTodos]
+    }));
 
     toast({
       title: 'Reihenfolge geändert',
@@ -443,11 +412,11 @@ const TodoList = ({ initialText, onTextAdded }) => {
         {/* Folder Management */}
         <HStack spacing={4}>
           <Select 
-            value={selectedFolder} 
-            onChange={(e) => setSelectedFolder(e.target.value)}
+            value={todoState.selectedFolder} 
+            onChange={(e) => setTodoState(prev => ({ ...prev, selectedFolder: e.target.value }))}
             flex={1}
           >
-            {folders.map(folder => (
+            {todoState.folders.map(folder => (
               <option key={folder} value={folder}>{folder === 'Default' ? 'Standard' : folder}</option>
             ))}
           </Select>
@@ -482,7 +451,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                   />
                 </HStack>
               </MenuItem>
-              {folders.map(folder => (
+              {todoState.folders.map(folder => (
                 <MenuItem key={folder}>
                   <HStack justify="space-between" width="100%">
                     <span>{folder === 'Default' ? 'Standard' : folder}</span>
@@ -503,9 +472,9 @@ const TodoList = ({ initialText, onTextAdded }) => {
 
         {/* Sort Type Selection */}
         <Select 
-          value={sortType} 
+          value={todoState.sortType} 
           onChange={(e) => {
-            setSortType(e.target.value);
+            setTodoState(prev => ({ ...prev, sortType: e.target.value }));
             toast({
               title: 'Sortierung geändert',
               description: `Die Aufgaben werden jetzt ${
@@ -554,7 +523,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                     key={todo.id}
                     draggableId={`todo-${todo.id}`}
                     index={index}
-                    isDragDisabled={sortType !== 'manual'}
+                    isDragDisabled={todoState.sortType !== 'manual'}
                   >
                     {(provided, snapshot) => (
                       <Box
@@ -583,7 +552,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                         ) : (
                           <HStack justify="space-between" align="center" width="100%" spacing={4}>
                             <HStack align="start" flex={1} spacing={3}>
-                              {sortType === 'manual' && (
+                              {todoState.sortType === 'manual' && (
                                 <div {...provided.dragHandleProps}>
                                   <IconButton
                                     icon={<DragHandleIcon />}

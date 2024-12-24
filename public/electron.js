@@ -37,18 +37,33 @@ if (!gotTheLock) {
 // Initialize electron store with schema
 const store = new Store({
   schema: {
-    todos: {
-      type: 'array',
-      default: []
-    },
-    todoFolders: {
-      type: 'array',
-      default: ['Default']
-    },
-    todoSortType: {
-      type: 'string',
-      enum: ['manual', 'date', 'completed'],
-      default: 'manual'
+    todoState: {
+      type: 'object',
+      properties: {
+        todos: {
+          type: 'array',
+          default: []
+        },
+        folders: {
+          type: 'array',
+          default: ['Default']
+        },
+        sortType: {
+          type: 'string',
+          enum: ['manual', 'date', 'completed'],
+          default: 'manual'
+        },
+        selectedFolder: {
+          type: 'string',
+          default: 'Default'
+        }
+      },
+      default: {
+        todos: [],
+        folders: ['Default'],
+        sortType: 'manual',
+        selectedFolder: 'Default'
+      }
     },
     settings: {
         type: 'object',
@@ -453,63 +468,37 @@ function createContextMenu(webContents, selectedText) {
 }
 
 // Todo related IPC handlers
-ipcMain.handle('save-todos', async (event, todos) => {
+ipcMain.handle('get-todo-state', async () => {
   try {
-    store.set('todos', todos);
+    const todoState = store.get('todoState', {
+      todos: [],
+      folders: ['Default'],
+      sortType: 'manual',
+      selectedFolder: 'Default'
+    });
+    return { success: true, todoState };
+  } catch (error) {
+    console.error('Error getting todo state:', error);
+    return { 
+      success: false, 
+      error: error.message,
+      todoState: {
+        todos: [],
+        folders: ['Default'],
+        sortType: 'manual',
+        selectedFolder: 'Default'
+      }
+    };
+  }
+});
+
+ipcMain.handle('save-todo-state', async (event, todoState) => {
+  try {
+    store.set('todoState', todoState);
     return { success: true };
   } catch (error) {
-    console.error('Error saving todos:', error);
+    console.error('Error saving todo state:', error);
     return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('get-todos', async () => {
-  try {
-    const todos = store.get('todos', []);
-    return todos;
-  } catch (error) {
-    console.error('Error getting todos:', error);
-    return [];
-  }
-});
-
-ipcMain.handle('save-todo-folders', async (event, folders) => {
-  try {
-    store.set('todoFolders', folders);
-    return { success: true };
-  } catch (error) {
-    console.error('Error saving todo folders:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('get-todo-folders', async () => {
-  try {
-    const folders = store.get('todoFolders', ['Default']);
-    return folders;
-  } catch (error) {
-    console.error('Error getting todo folders:', error);
-    return ['Default'];
-  }
-});
-
-ipcMain.handle('save-todo-sort-type', async (event, sortType) => {
-  try {
-    store.set('todoSortType', sortType);
-    return { success: true };
-  } catch (error) {
-    console.error('Error saving todo sort type:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('get-todo-sort-type', async () => {
-  try {
-    const sortType = store.get('todoSortType', 'manual');
-    return sortType;
-  } catch (error) {
-    console.error('Error getting todo sort type:', error);
-    return 'manual';
   }
 });
 
