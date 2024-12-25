@@ -30,6 +30,88 @@ import DatePicker from 'react-datepicker';
 import { registerLocale } from 'react-datepicker';
 import de from 'date-fns/locale/de';
 import "react-datepicker/dist/react-datepicker.css";
+import { css } from '@emotion/react';
+
+const datePickerStyles = css`
+  .react-datepicker {
+    font-family: inherit;
+    border: 1px solid var(--chakra-colors-gray-200);
+    border-radius: var(--chakra-radii-md);
+    background-color: var(--chakra-colors-white);
+  }
+  .react-datepicker__header {
+    background-color: var(--chakra-colors-gray-50);
+    border-bottom: 1px solid var(--chakra-colors-gray-200);
+    padding: 12px 8px 8px;
+  }
+  .react-datepicker__navigation {
+    top: 12px;
+  }
+  .react-datepicker__navigation--previous {
+    left: 7px;
+  }
+  .react-datepicker__navigation--next {
+    right: 7px;
+  }
+  .react-datepicker__current-month {
+    margin-bottom: 4px;
+  }
+  .react-datepicker__time-container {
+    border-left: 1px solid var(--chakra-colors-gray-200);
+  }
+  .react-datepicker__time-list-item {
+    height: auto !important;
+    padding: 8px !important;
+  }
+  .react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box {
+    width: 100px;
+  }
+  .chakra-ui-dark .react-datepicker {
+    background-color: var(--chakra-colors-gray-700);
+    border-color: var(--chakra-colors-gray-600);
+    color: var(--chakra-colors-gray-200);
+  }
+  .chakra-ui-dark .react-datepicker__header {
+    background-color: var(--chakra-colors-gray-800);
+    border-color: var(--chakra-colors-gray-600);
+  }
+  .chakra-ui-dark .react-datepicker__time-container {
+    border-color: var(--chakra-colors-gray-600);
+  }
+  .chakra-ui-dark .react-datepicker__time-list-item {
+    color: var(--chakra-colors-gray-200) !important;
+  }
+  .chakra-ui-dark .react-datepicker__time-list-item:hover {
+    background-color: var(--chakra-colors-gray-600) !important;
+  }
+  .chakra-ui-dark .react-datepicker__time-list-item--selected {
+    background-color: var(--chakra-colors-blue-500) !important;
+    color: white !important;
+  }
+  .chakra-ui-dark .react-datepicker__day {
+    color: var(--chakra-colors-gray-200);
+  }
+  .chakra-ui-dark .react-datepicker__day:hover {
+    background-color: var(--chakra-colors-gray-600);
+  }
+  .chakra-ui-dark .react-datepicker__day--selected {
+    background-color: var(--chakra-colors-blue-500);
+    color: white;
+  }
+  .chakra-ui-dark .react-datepicker__day-name {
+    color: var(--chakra-colors-gray-200);
+  }
+  .chakra-ui-dark .react-datepicker__current-month {
+    color: var(--chakra-colors-gray-200);
+  }
+  .chakra-ui-dark .react-datepicker__navigation-icon::before {
+    border-color: var(--chakra-colors-gray-200);
+  }
+  .chakra-ui-dark .react-datepicker__year-read-view--down-arrow,
+  .chakra-ui-dark .react-datepicker__month-read-view--down-arrow {
+    border-color: var(--chakra-colors-gray-200);
+  }
+`;
 
 registerLocale('de', de);
 
@@ -597,16 +679,31 @@ const TodoList = ({ initialText, onTextAdded }) => {
                                   <PopoverBody>
                                     <FormControl>
                                       <FormLabel>Erinnerung setzen</FormLabel>
-                                      <DatePicker
-                                        selected={todo.reminder ? new Date(todo.reminder) : null}
-                                        onChange={(date) => handleSetReminder(todo, date)}
-                                        showTimeSelect
-                                        dateFormat="dd.MM.yyyy HH:mm"
-                                        locale="de"
-                                        timeFormat="HH:mm"
-                                        timeIntervals={15}
-                                        customInput={<Input />}
-                                      />
+                                      <Box css={datePickerStyles}>
+                                        <HStack spacing={2}>
+                                          <Box flex="1">
+                                            <DatePicker
+                                              selected={todo.reminder ? new Date(todo.reminder) : null}
+                                              onChange={(date) => handleSetReminder(todo, date)}
+                                              showTimeSelect
+                                              dateFormat="dd.MM.yyyy HH:mm"
+                                              locale="de"
+                                              timeFormat="HH:mm"
+                                              timeIntervals={15}
+                                              customInput={<Input />}
+                                              popperModifiers={[
+                                                {
+                                                  name: "preventOverflow",
+                                                  options: {
+                                                    padding: 10
+                                                  }
+                                                }
+                                              ]}
+                                              popperPlacement="bottom-start"
+                                            />
+                                          </Box>
+                                        </HStack>
+                                      </Box>
                                     </FormControl>
                                   </PopoverBody>
                                 </PopoverContent>
