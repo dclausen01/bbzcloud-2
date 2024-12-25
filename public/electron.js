@@ -38,31 +38,33 @@ if (!gotTheLock) {
 const store = new Store({
   version: '1.0.1',
   schema: {
-    todos: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'number' },
-          text: { type: 'string' },
-          completed: { type: 'boolean' },
-          folder: { type: 'string' },
-          createdAt: { type: 'string' },
-          reminder: { type: ['string', 'null'] }
+    todoState: {
+      type: 'object',
+      properties: {
+        todos: {
+          type: 'array',
+          default: []
         },
-        required: ['id', 'text', 'completed', 'folder', 'createdAt'],
-        additionalProperties: false
+        folders: {
+          type: 'array',
+          default: ['Default']
+        },
+        sortType: {
+          type: 'string',
+          enum: ['manual', 'date', 'completed'],
+          default: 'manual'
+        },
+        selectedFolder: {
+          type: 'string',
+          default: 'Default'
+        }
       },
-      default: []
-    },
-    todoFolders: {
-      type: 'array',
-      default: ['Default']
-    },
-    todoSortType: {
-      type: 'string',
-      enum: ['manual', 'date', 'completed'],
-      default: 'manual'
+      default: {
+        todos: [],
+        folders: ['Default'],
+        sortType: 'manual',
+        selectedFolder: 'Default'
+      }
     },
     settings: {
         type: 'object',
@@ -527,145 +529,37 @@ function createContextMenu(webContents, selectedText) {
 }
 
 // Todo related IPC handlers
-ipcMain.handle('save-todos', async (event, todos) => {
+ipcMain.handle('get-todo-state', async () => {
   try {
-    // Get existing todos as backup
-    const existingTodos = store.get('todos', []);
-    
-    // Validate todo structure before saving
-    const validTodos = todos.map(todo => {
-      if (!todo || typeof todo !== 'object') return null;
-      
-      return {
-        id: Number(todo.id) || Date.now(),
-        text: String(todo.text || ''),
-        completed: Boolean(todo.completed),
-        folder: String(todo.folder || 'Default'),
-        createdAt: todo.createdAt && new Date(todo.createdAt).toISOString() || new Date().toISOString(),
-        reminder: todo.reminder ? new Date(todo.reminder).toISOString() : null
-      };
-    }).filter(todo => todo !== null);
-
-    if (validTodos.length === 0 && todos.length > 0) {
-      // If validation removed all todos but we had input, something is wrong
-      throw new Error('Todo validation failed - no valid todos');
-    }
-
-    // Save and verify atomically
-    try {
-      store.set('todos', validTodos);
-      const savedTodos = store.get('todos', []);
-      
-      // Verify save was successful
-      if (savedTodos.length !== validTodos.length) {
-        // If verification fails, restore backup
-        store.set('todos', existingTodos);
-        throw new Error('Todo save verification failed');
+    const todoState = store.get('todoState', {
+      todos: [],
+      folders: ['Default'],
+      sortType: 'manual',
+      selectedFolder: 'Default'
+    });
+    return { success: true, todoState };
+  } catch (error) {
+    console.error('Error getting todo state:', error);
+    return { 
+      success: false, 
+      error: error.message,
+      todoState: {
+        todos: [],
+        folders: ['Default'],
+        sortType: 'manual',
+        selectedFolder: 'Default'
       }
-    } catch (saveError) {
-      // If save fails, restore backup
-      store.set('todos', existingTodos);
-      throw saveError;
-    }
-    
+    };
+  }
+});
+
+ipcMain.handle('save-todo-state', async (event, todoState) => {
+  try {
+    store.set('todoState', todoState);
     return { success: true };
   } catch (error) {
-    console.error('Error saving todos:', error);
+    console.error('Error saving todo state:', error);
     return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('get-todos', async () => {
-  try {
-    const todos = store.get('todos', []);
-    
-    // Validate and repair any corrupted todos
-    const validTodos = todos.map(todo => {
-      if (!todo || typeof todo !== 'object') return null;
-      
-      return {
-        id: Number(todo.id) || Date.now(),
-        text: String(todo.text || ''),
-        completed: Boolean(todo.completed),
-        folder: String(todo.folder || 'Default'),
-        createdAt: todo.createdAt && new Date(todo.createdAt).toISOString() || new Date().toISOString(),
-        reminder: todo.reminder ? new Date(todo.reminder).toISOString() : null
-      };
-    }).filter(todo => todo !== null);
-
-    // If we had to repair any todos, save the repaired version
-    if (validTodos.length !== todos.length) {
-      store.set('todos', validTodos);
-    }
-    
-    return validTodos;
-  } catch (error) {
-    console.error('Error getting todos:', error);
-    return [];
-  }
-});
-
-ipcMain.handle('save-todo-folders', async (event, folders) => {
-  try {
-    // Get existing folders as backup
-    const existingFolders = store.get('todoFolders', ['Default']);
-    
-    // Ensure Default folder is always present
-    const validFolders = folders.includes('Default') 
-      ? folders 
-      : ['Default', ...folders.filter(f => f !== 'Default')];
-
-    // Save and verify atomically
-    try {
-      store.set('todoFolders', validFolders);
-      const savedFolders = store.get('todoFolders', ['Default']);
-      
-      // Verify save was successful
-      if (!savedFolders.includes('Default')) {
-        // If verification fails, restore backup
-        store.set('todoFolders', existingFolders);
-        throw new Error('Folder save verification failed - Default folder missing');
-      }
-    } catch (saveError) {
-      // If save fails, restore backup
-      store.set('todoFolders', existingFolders);
-      throw saveError;
-    }
-    
-    return { success: true };
-  } catch (error) {
-    console.error('Error saving todo folders:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('get-todo-folders', async () => {
-  try {
-    const folders = store.get('todoFolders', ['Default']);
-    return folders;
-  } catch (error) {
-    console.error('Error getting todo folders:', error);
-    return ['Default'];
-  }
-});
-
-ipcMain.handle('save-todo-sort-type', async (event, sortType) => {
-  try {
-    store.set('todoSortType', sortType);
-    return { success: true };
-  } catch (error) {
-    console.error('Error saving todo sort type:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('get-todo-sort-type', async () => {
-  try {
-    const sortType = store.get('todoSortType', 'manual');
-    return sortType;
-  } catch (error) {
-    console.error('Error getting todo sort type:', error);
-    return 'manual';
   }
 });
 

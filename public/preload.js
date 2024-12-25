@@ -73,12 +73,8 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // Todo functionality
-  saveTodos: (todos) => ipcRenderer.invoke('save-todos', todos),
-  getTodos: () => ipcRenderer.invoke('get-todos'),
-  saveTodoFolders: (folders) => ipcRenderer.invoke('save-todo-folders', folders),
-  getTodoFolders: () => ipcRenderer.invoke('get-todo-folders'),
-  saveTodoSortType: (sortType) => ipcRenderer.invoke('save-todo-sort-type', sortType),
-  getTodoSortType: () => ipcRenderer.invoke('get-todo-sort-type'),
+  getTodoState: () => ipcRenderer.invoke('get-todo-state'),
+  saveTodoState: (state) => ipcRenderer.invoke('save-todo-state', state),
   scheduleNotification: (data) => ipcRenderer.invoke('schedule-notification', data),
   
   // Context menu todo addition listener
