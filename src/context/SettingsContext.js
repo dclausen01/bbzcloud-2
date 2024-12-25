@@ -51,6 +51,12 @@ const standardApps = {
     "url": "https://my.plagaware.com/dashboard",
     "buttonVariant": "solid"
   },
+  "ExcaliDraw": {
+    "id": "ExcaliDraw",
+    "title": "ExcaliDraw",
+    "url": "https://excalidraw.com/",
+    "buttonVariant": "solid"
+  },
   "KurzeLinks": {
     "id": "KurzeLinks",
     "title": "Kurze Links",
