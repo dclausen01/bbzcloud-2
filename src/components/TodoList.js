@@ -51,35 +51,74 @@ const datePickerStyles = css`
     left: 7px;
   }
   .react-datepicker__navigation--next {
-    right: 7px;
+    right: 105px;
   }
   .react-datepicker__current-month {
     margin-bottom: 4px;
   }
+  .react-datepicker {
+    display: flex !important;
+    flex-direction: row !important;
+    font-size: 0.9rem !important;
+  }
+  .react-datepicker__month-container {
+    float: none !important;
+    width: 220px !important;
+  }
   .react-datepicker__time-container {
+    float: none !important;
     border-left: 1px solid var(--chakra-colors-gray-200);
+    width: 85px !important;
   }
   .react-datepicker__time-list-item {
     height: auto !important;
     padding: 8px !important;
   }
   .react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box {
-    width: 100px;
+    width: 85px !important;
+    margin: 0 !important;
+  }
+  .react-datepicker__time-list {
+    padding: 0 !important;
+  }
+  .react-datepicker__time {
+    background-color: inherit !important;
   }
   .chakra-ui-dark .react-datepicker {
-    background-color: var(--chakra-colors-gray-700);
-    border-color: var(--chakra-colors-gray-600);
-    color: var(--chakra-colors-gray-200);
+    background-color: var(--chakra-colors-gray-600);
+    border-color: var(--chakra-colors-gray-500);
+    color: var(--chakra-colors-gray-100);
   }
   .chakra-ui-dark .react-datepicker__header {
-    background-color: var(--chakra-colors-gray-800);
-    border-color: var(--chakra-colors-gray-600);
+    background-color: var(--chakra-colors-gray-700);
+    border-color: var(--chakra-colors-gray-500);
   }
+  .react-datepicker__time-container {
+    margin-left: 24px !important;
+    border-color: var(--chakra-colors-gray-500);
+  }
+  .chakra-ui-dark {
+    color: var(--chakra-colors-gray-100);
+  }
+  .chakra-ui-dark .react-datepicker__time-container,
+  .chakra-ui-dark .react-datepicker__time,
+  .chakra-ui-dark .react-datepicker__time-box,
+  .chakra-ui-dark .react-datepicker__time-list {
+    background-color: var(--chakra-colors-gray-600) !important;
+  }
+  .chakra-ui-dark .react-datepicker__header,
+  .chakra-ui-dark .react-datepicker__current-month,
+  .chakra-ui-dark .react-datepicker__day-name,
+  .chakra-ui-dark .react-datepicker__day,
+  .chakra-ui-dark .react-datepicker__time-name,
   .chakra-ui-dark .react-datepicker__time-container {
-    border-color: var(--chakra-colors-gray-600);
+    color: var(--chakra-colors-gray-100) !important;
   }
-  .chakra-ui-dark .react-datepicker__time-list-item {
-    color: var(--chakra-colors-gray-200) !important;
+  .chakra-ui-dark .react-datepicker__time-list-item,
+  .chakra-ui-dark .react-datepicker__time-list-item:not(:hover) {
+    color: var(--chakra-colors-gray-100) !important;
+    background-color: var(--chakra-colors-gray-600) !important;
+    padding: 8px 16px !important;
   }
   .chakra-ui-dark .react-datepicker__time-list-item:hover {
     background-color: var(--chakra-colors-gray-600) !important;
@@ -89,7 +128,7 @@ const datePickerStyles = css`
     color: white !important;
   }
   .chakra-ui-dark .react-datepicker__day {
-    color: var(--chakra-colors-gray-200);
+    color: var(--chakra-colors-gray-100) !important;
   }
   .chakra-ui-dark .react-datepicker__day:hover {
     background-color: var(--chakra-colors-gray-600);
@@ -103,6 +142,10 @@ const datePickerStyles = css`
   }
   .chakra-ui-dark .react-datepicker__current-month {
     color: var(--chakra-colors-gray-200);
+  }
+  .chakra-ui-dark .react-datepicker__input-container input {
+    color: var(--chakra-colors-gray-200);
+    background-color: var(--chakra-colors-gray-700);
   }
   .chakra-ui-dark .react-datepicker__navigation-icon::before {
     border-color: var(--chakra-colors-gray-200);
@@ -502,12 +545,12 @@ const TodoList = ({ initialText, onTextAdded }) => {
               <option key={folder} value={folder}>{folder === 'Default' ? 'Standard' : folder}</option>
             ))}
           </Select>
-          <Menu>
+          <Menu closeOnSelect={false}>
             <MenuButton as={Button} rightIcon={<ChevronDownIcon />} minW="120px">
               Verwalten
             </MenuButton>
             <MenuList>
-              <MenuItem closeOnSelect={false}>
+              <MenuItem>
                 <HStack onClick={(e) => e.stopPropagation()}>
                   <Input
                     placeholder="Neuer Ordnername"
@@ -515,8 +558,6 @@ const TodoList = ({ initialText, onTextAdded }) => {
                     onChange={(e) => setNewFolderName(e.target.value)}
                     onKeyPress={(e) => {
                       if (e.key === 'Enter') {
-                        e.preventDefault();
-                        e.stopPropagation();
                         handleAddFolder();
                       }
                     }}
@@ -524,10 +565,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                   />
                   <IconButton
                     icon={<AddIcon />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAddFolder();
-                    }}
+                    onClick={() => handleAddFolder()}
                     size="sm"
                     aria-label="Ordner hinzufügen"
                   />
@@ -576,12 +614,16 @@ const TodoList = ({ initialText, onTextAdded }) => {
         </Select>
 
         {/* Add Todo Input */}
-        <HStack>
+        <HStack spacing={4}>
           <Input
             placeholder="Neue Aufgabe hinzufügen..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleAddTodo()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleAddTodo();
+              }
+            }}
           />
           <IconButton
             icon={<AddIcon />}
@@ -675,7 +717,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                                     aria-label="Erinnerung setzen"
                                   />
                                 </PopoverTrigger>
-                                <PopoverContent p={4}>
+                                <PopoverContent p={4} width="360px" position="relative" right="45px">
                                   <PopoverBody>
                                     <FormControl>
                                       <FormLabel>Erinnerung setzen</FormLabel>
@@ -693,13 +735,23 @@ const TodoList = ({ initialText, onTextAdded }) => {
                                               customInput={<Input />}
                                               popperModifiers={[
                                                 {
+                                                  name: "offset",
+                                                  options: {
+                                                    offset: [-60, 10]
+                                                  }
+                                                },
+                                                {
                                                   name: "preventOverflow",
                                                   options: {
-                                                    padding: 10
+                                                    padding: 16
                                                   }
                                                 }
                                               ]}
-                                              popperPlacement="bottom-start"
+                                              popperPlacement="bottom-end"
+                                              inline
+                                              timeCaption="Zeit"
+                                              shouldCloseOnSelect={false}
+                                              calendarClassName="side-by-side-calendar"
                                             />
                                           </Box>
                                         </HStack>
