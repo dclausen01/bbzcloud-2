@@ -31,16 +31,19 @@ function SecureDocuments() {
   }, [isReady]);
 
   const checkAccess = async () => {
-    const result = await ipcRenderer.invoke('check-secure-store-access');
-    if (result.success) {
-      setIsReady(true);
-    } else {
-      toast({
-        title: 'Fehler',
-        description: 'Bitte setzen Sie zuerst ein Passwort in den Einstellungen.',
-        status: 'error',
-        duration: 5000,
-      });
+    try {
+      const result = await ipcRenderer.invoke('check-secure-store-access');
+      if (result.success && result.hasPassword) {
+        setIsReady(true);
+      } else {
+        setIsReady(false);
+        if (!result.success) {
+          console.error('Error checking secure store access:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking secure store access:', error);
+      setIsReady(false);
     }
   };
 
@@ -94,7 +97,7 @@ function SecureDocuments() {
   if (!isReady) {
     return (
       <Box p={4}>
-        <Text>Bitte setzen Sie zuerst ein Passwort in den Einstellungen.</Text>
+        <Text>Bitte setzen Sie ein Passwort in den Einstellungen unter "Zugangsdaten", um sichere Dokumente zu verwenden.</Text>
       </Box>
     );
   }

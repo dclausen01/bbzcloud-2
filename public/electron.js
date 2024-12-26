@@ -626,8 +626,8 @@ ipcMain.handle('schedule-notification', async (event, { title, body, when }) => 
 
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
   try {
-    const result = await saveCredentials(service, account, password);
-    return { success: result };
+    await keytar.setPassword(service, account, password);
+    return { success: true };
   } catch (error) {
     console.error('Error in save-credentials:', error);
     return { success: false, error: error.message };
@@ -665,8 +665,8 @@ ipcMain.on('update-badge', (event, isBadge) => {
 
 ipcMain.handle('get-credentials', async (event, { service, account }) => {
   try {
-    const password = await getCredentials(service, account);
-    return { success: true, password };
+    const password = await keytar.getPassword(service, account);
+    return { success: true, password: password || null };
   } catch (error) {
     console.error('Error in get-credentials:', error);
     return { success: false, error: error.message };
@@ -879,7 +879,7 @@ async function getEncryptionPassword() {
   try {
     const password = await keytar.getPassword('bbzcloud', 'password');
     if (!password) {
-      throw new Error('Kein Passwort in den Einstellungen gefunden');
+      throw new Error('Bitte setzen Sie zuerst ein Passwort in den Einstellungen unter "Zugangsdaten".');
     }
     return password;
   } catch (error) {
@@ -891,9 +891,10 @@ async function getEncryptionPassword() {
 // Secure store handlers
 ipcMain.handle('check-secure-store-access', async () => {
   try {
-    const password = await getEncryptionPassword();
-    return { success: Boolean(password) };
+    const password = await keytar.getPassword('bbzcloud', 'password');
+    return { success: true, hasPassword: password !== null };
   } catch (error) {
+    console.error('Error in check-secure-store-access:', error);
     return { success: false, error: error.message };
   }
 });
