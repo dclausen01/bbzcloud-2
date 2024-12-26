@@ -37,6 +37,8 @@ import WebViewContainer from './components/WebViewContainer';
 import SettingsPanel from './components/SettingsPanel';
 import CustomAppsMenu from './components/CustomAppsMenu';
 import TodoList from './components/TodoList';
+import DocumentsMenu from './components/DocumentsMenu';
+import SecureDocuments from './components/SecureDocuments';
 
 function App() {
   const { setColorMode } = useColorMode();
@@ -152,6 +154,12 @@ function App() {
     isOpen: isTodoOpen,
     onOpen: onTodoOpen,
     onClose: onTodoClose
+  } = useDisclosure();
+
+  const {
+    isOpen: isSecureDocsOpen,
+    onOpen: onSecureDocsOpen,
+    onClose: onSecureDocsClose
   } = useDisclosure();
 
   // Handle todo additions from context menu
@@ -339,16 +347,14 @@ function App() {
             </Flex>
           )}
 
+          <DocumentsMenu onNavigate={(view) => {
+            if (view === 'todo') {
+              onTodoOpen();
+            } else if (view === 'secure-documents') {
+              onSecureDocsOpen();
+            }
+          }} />
           <ButtonGroup size="sm">
-            <Tooltip label="Todo Liste" placement="top">
-              <IconButton
-                aria-label="Todo Liste öffnen"
-                icon={<span>📝</span>}
-                onClick={onTodoOpen}
-                variant="ghost"
-                height="28px"
-              />
-            </Tooltip>
             <Tooltip label="Einstellungen" placement="top">
               <IconButton
                 aria-label="Einstellungen öffnen"
@@ -392,6 +398,7 @@ function App() {
         </DrawerContent>
       </Drawer>
 
+      {/* Todo Drawer */}
       <Box 
         position="fixed" 
         right={0} 
@@ -415,6 +422,34 @@ function App() {
           </Flex>
           <Box p={4} overflowY="auto" flex="1">
             <TodoList initialText={contextMenuText} onTextAdded={() => setContextMenuText('')} />
+          </Box>
+        </Flex>
+      </Box>
+
+      {/* Secure Documents Drawer */}
+      <Box 
+        position="fixed" 
+        right={0} 
+        top="48px" 
+        bottom={0} 
+        width="450px" 
+        bg={useColorModeValue('white', 'gray.800')}
+        borderLeft="1px"
+        borderColor={useColorModeValue('gray.200', 'gray.600')}
+        display={isSecureDocsOpen ? 'block' : 'none'}
+        zIndex={1000}
+      >
+        <Flex direction="column" height="100%">
+          <Flex justify="flex-end" p={2} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.600')}>
+            <IconButton
+              icon={<CloseIcon />}
+              size="sm"
+              onClick={onSecureDocsClose}
+              aria-label="Sichere Dokumente schließen"
+            />
+          </Flex>
+          <Box p={4} overflowY="auto" flex="1">
+            <SecureDocuments />
           </Box>
         </Flex>
       </Box>

@@ -86,7 +86,14 @@ contextBridge.exposeInMainWorld('electron', {
     };
   },
   // Debug helper
-  debug: (msg) => console.log('Debug:', msg)
+  debug: (msg) => console.log('Debug:', msg),
+
+  // Secure Documents functionality
+  checkSecureStorePassword: () => ipcRenderer.invoke('check-secure-store-password'),
+  setSecureStorePassword: (password) => ipcRenderer.invoke('set-secure-store-password', password),
+  listSecureFiles: () => ipcRenderer.invoke('list-secure-files'),
+  encryptAndStoreFile: (data) => ipcRenderer.invoke('encrypt-and-store-file', data),
+  openSecureFile: (fileId) => ipcRenderer.invoke('open-secure-file', fileId)
 });
 
 // Remove this if you don't need it

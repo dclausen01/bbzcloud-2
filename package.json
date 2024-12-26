@@ -24,6 +24,7 @@
     "@emotion/styled": "^11.11.0",
     "@uiw/react-md-editor": "^4.0.5",
     "axios": "^1.5.0",
+    "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "electron-is-dev": "^2.0.0",
     "electron-store": "^8.1.0",

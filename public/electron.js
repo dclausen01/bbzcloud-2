@@ -9,6 +9,9 @@ const Store = require('electron-store');
 const keytar = require('keytar');
 const fs = require('fs-extra');
 const { Notification } = require('electron');
+const CryptoJS = require('crypto-js');
+const os = require('os');
+const { v4: uuidv4 } = require('uuid');
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -36,8 +39,34 @@ if (!gotTheLock) {
 
 // Initialize electron store with schema and version
 const store = new Store({
-  version: '1.0.1',
+  version: '1.0.2',
   schema: {
+    secureStore: {
+      type: 'object',
+      properties: {
+        salt: { type: 'string' },
+        passwordHash: { type: 'string' },
+        files: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              size: { type: 'string' },
+              date: { type: 'string' },
+              encryptedPath: { type: 'string' }
+            }
+          },
+          default: []
+        }
+      },
+      default: {
+        salt: '',
+        passwordHash: '',
+        files: []
+      }
+    },
     todoState: {
       type: 'object',
       properties: {
@@ -115,6 +144,16 @@ const store = new Store({
     }
   },
   migrations: {
+    '1.0.2': store => {
+      // Initialize secure store
+      if (!store.has('secureStore')) {
+        store.set('secureStore', {
+          salt: '',
+          passwordHash: '',
+          files: []
+        });
+      }
+    },
     '1.0.0': store => {
       const settings = store.get('settings');
       if (settings?.navigationButtons?.bbb) {
@@ -828,6 +867,128 @@ app.on('before-quit', () => {
   app.isQuitting = true;
   if (mainWindow) {
     saveWindowState();
+  }
+});
+
+// Secure documents directory setup
+const SECURE_DOCS_DIR = path.join(app.getPath('userData'), 'secure-documents');
+fs.ensureDirSync(SECURE_DOCS_DIR);
+
+// Secure store handlers
+ipcMain.handle('check-secure-store-password', async () => {
+  const secureStore = store.get('secureStore');
+  return { exists: Boolean(secureStore.passwordHash) };
+});
+
+ipcMain.handle('set-secure-store-password', async (event, password) => {
+  try {
+    const salt = CryptoJS.lib.WordArray.random(128/8).toString();
+    const passwordHash = CryptoJS.SHA256(password + salt).toString();
+    
+    store.set('secureStore', {
+      ...store.get('secureStore'),
+      salt,
+      passwordHash
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error setting password:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('list-secure-files', async () => {
+  try {
+    const secureStore = store.get('secureStore');
+    return { success: true, files: secureStore.files };
+  } catch (error) {
+    console.error('Error listing files:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('encrypt-and-store-file', async (event, { path: filePath, name }) => {
+  try {
+    const secureStore = store.get('secureStore');
+    const fileContent = await fs.readFile(filePath);
+    const fileId = uuidv4();
+    
+    // Encrypt file content
+    const encrypted = CryptoJS.AES.encrypt(
+      fileContent.toString('base64'),
+      secureStore.passwordHash
+    ).toString();
+    
+    // Save encrypted file
+    const encryptedPath = path.join(SECURE_DOCS_DIR, `${fileId}.enc`);
+    await fs.writeFile(encryptedPath, encrypted);
+    
+    // Update store with file metadata
+    const stats = await fs.stat(filePath);
+    const fileInfo = {
+      id: fileId,
+      name,
+      size: `${(stats.size / 1024).toFixed(2)} KB`,
+      date: new Date().toISOString(),
+      encryptedPath
+    };
+    
+    store.set('secureStore.files', [...secureStore.files, fileInfo]);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error encrypting file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('open-secure-file', async (event, fileId) => {
+  try {
+    const secureStore = store.get('secureStore');
+    const file = secureStore.files.find(f => f.id === fileId);
+    if (!file) throw new Error('File not found');
+    
+    // Read encrypted content
+    const encrypted = await fs.readFile(file.encryptedPath, 'utf8');
+    
+    // Decrypt content
+    const decrypted = CryptoJS.AES.decrypt(encrypted, secureStore.passwordHash);
+    const fileContent = Buffer.from(decrypted.toString(CryptoJS.enc.Utf8), 'base64');
+    
+    // Create temp file
+    const tempPath = path.join(os.tmpdir(), file.name);
+    await fs.writeFile(tempPath, fileContent);
+    
+    // Open file with default application
+    shell.openPath(tempPath);
+    
+    // Watch for changes
+    const watcher = fs.watch(tempPath, async () => {
+      try {
+        // Re-encrypt and update when file changes
+        const updatedContent = await fs.readFile(tempPath);
+        const newEncrypted = CryptoJS.AES.encrypt(
+          updatedContent.toString('base64'),
+          secureStore.passwordHash
+        ).toString();
+        
+        await fs.writeFile(file.encryptedPath, newEncrypted);
+      } catch (error) {
+        console.error('Error updating encrypted file:', error);
+      }
+    });
+    
+    // Clean up temp file when app quits
+    app.on('before-quit', () => {
+      watcher.close();
+      fs.removeSync(tempPath);
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening secure file:', error);
+    return { success: false, error: error.message };
   }
 });
 
