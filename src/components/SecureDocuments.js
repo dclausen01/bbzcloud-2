@@ -39,11 +39,30 @@ function SecureDocuments() {
         setIsReady(false);
         if (!result.success) {
           console.error('Error checking secure store access:', result.error);
+          toast({
+            title: 'Fehler',
+            description: result.error || 'Fehler beim Prüfen der Zugangsdaten',
+            status: 'error',
+            duration: 5000,
+          });
+        } else {
+          toast({
+            title: 'Fehler',
+            description: 'Bitte setzen Sie zuerst ein Passwort in den Einstellungen unter "Zugangsdaten".',
+            status: 'error',
+            duration: 5000,
+          });
         }
       }
     } catch (error) {
       console.error('Error checking secure store access:', error);
       setIsReady(false);
+      toast({
+        title: 'Fehler',
+        description: 'Fehler beim Prüfen der Zugangsdaten',
+        status: 'error',
+        duration: 5000,
+      });
     }
   };
 

@@ -518,25 +518,6 @@ function createWebviewWindow(url, title) {
   return win;
 }
 
-async function saveCredentials(service, account, password) {
-  try {
-    await keytar.setPassword(service, account, password);
-    return true;
-  } catch (error) {
-    console.error('Error saving credentials:', error);
-    return false;
-  }
-}
-
-async function getCredentials(service, account) {
-  try {
-    return await keytar.getPassword(service, account);
-  } catch (error) {
-    console.error('Error getting credentials:', error);
-    return null;
-  }
-}
-
 function createContextMenu(webContents, selectedText) {
   return Menu.buildFromTemplate([
     { 
