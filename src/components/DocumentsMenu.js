@@ -8,7 +8,6 @@ import {
   Text,
   HStack,
   useColorMode,
-  Image,
 } from '@chakra-ui/react';
 
 function DocumentsMenu({ onNavigate }) {

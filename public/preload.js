@@ -89,8 +89,7 @@ contextBridge.exposeInMainWorld('electron', {
   debug: (msg) => console.log('Debug:', msg),
 
   // Secure Documents functionality
-  checkSecureStorePassword: () => ipcRenderer.invoke('check-secure-store-password'),
-  setSecureStorePassword: (password) => ipcRenderer.invoke('set-secure-store-password', password),
+  checkSecureStoreAccess: () => ipcRenderer.invoke('check-secure-store-access'),
   listSecureFiles: () => ipcRenderer.invoke('list-secure-files'),
   encryptAndStoreFile: (data) => ipcRenderer.invoke('encrypt-and-store-file', data),
   openSecureFile: (fileId) => ipcRenderer.invoke('open-secure-file', fileId)

@@ -874,33 +874,33 @@ app.on('before-quit', () => {
 const SECURE_DOCS_DIR = path.join(app.getPath('userData'), 'secure-documents');
 fs.ensureDirSync(SECURE_DOCS_DIR);
 
-// Secure store handlers
-ipcMain.handle('check-secure-store-password', async () => {
-  const secureStore = store.get('secureStore');
-  return { exists: Boolean(secureStore.passwordHash) };
-});
-
-ipcMain.handle('set-secure-store-password', async (event, password) => {
+// Get encryption password from keytar
+async function getEncryptionPassword() {
   try {
-    const salt = CryptoJS.lib.WordArray.random(128/8).toString();
-    const passwordHash = CryptoJS.SHA256(password + salt).toString();
-    
-    store.set('secureStore', {
-      ...store.get('secureStore'),
-      salt,
-      passwordHash
-    });
-    
-    return { success: true };
+    const password = await keytar.getPassword('bbzcloud', 'password');
+    if (!password) {
+      throw new Error('Kein Passwort in den Einstellungen gefunden');
+    }
+    return password;
   } catch (error) {
-    console.error('Error setting password:', error);
+    console.error('Error getting encryption password:', error);
+    throw error;
+  }
+}
+
+// Secure store handlers
+ipcMain.handle('check-secure-store-access', async () => {
+  try {
+    const password = await getEncryptionPassword();
+    return { success: Boolean(password) };
+  } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('list-secure-files', async () => {
   try {
-    const secureStore = store.get('secureStore');
+    const secureStore = store.get('secureStore', { files: [] });
     return { success: true, files: secureStore.files };
   } catch (error) {
     console.error('Error listing files:', error);
@@ -910,14 +910,14 @@ ipcMain.handle('list-secure-files', async () => {
 
 ipcMain.handle('encrypt-and-store-file', async (event, { path: filePath, name }) => {
   try {
-    const secureStore = store.get('secureStore');
+    const password = await getEncryptionPassword();
     const fileContent = await fs.readFile(filePath);
     const fileId = uuidv4();
     
     // Encrypt file content
     const encrypted = CryptoJS.AES.encrypt(
       fileContent.toString('base64'),
-      secureStore.passwordHash
+      password
     ).toString();
     
     // Save encrypted file
@@ -934,7 +934,11 @@ ipcMain.handle('encrypt-and-store-file', async (event, { path: filePath, name })
       encryptedPath
     };
     
-    store.set('secureStore.files', [...secureStore.files, fileInfo]);
+    const secureStore = store.get('secureStore', { files: [] });
+    store.set('secureStore', {
+      ...secureStore,
+      files: [...secureStore.files, fileInfo]
+    });
     
     return { success: true };
   } catch (error) {
@@ -945,15 +949,16 @@ ipcMain.handle('encrypt-and-store-file', async (event, { path: filePath, name })
 
 ipcMain.handle('open-secure-file', async (event, fileId) => {
   try {
-    const secureStore = store.get('secureStore');
+    const password = await getEncryptionPassword();
+    const secureStore = store.get('secureStore', { files: [] });
     const file = secureStore.files.find(f => f.id === fileId);
-    if (!file) throw new Error('File not found');
+    if (!file) throw new Error('Datei nicht gefunden');
     
     // Read encrypted content
     const encrypted = await fs.readFile(file.encryptedPath, 'utf8');
     
     // Decrypt content
-    const decrypted = CryptoJS.AES.decrypt(encrypted, secureStore.passwordHash);
+    const decrypted = CryptoJS.AES.decrypt(encrypted, password);
     const fileContent = Buffer.from(decrypted.toString(CryptoJS.enc.Utf8), 'base64');
     
     // Create temp file
@@ -970,7 +975,7 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
         const updatedContent = await fs.readFile(tempPath);
         const newEncrypted = CryptoJS.AES.encrypt(
           updatedContent.toString('base64'),
-          secureStore.passwordHash
+          password
         ).toString();
         
         await fs.writeFile(file.encryptedPath, newEncrypted);

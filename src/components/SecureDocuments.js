@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -12,60 +12,45 @@ import {
   Th,
   Td,
   useColorMode,
-  Input,
-  InputGroup,
-  InputRightElement,
 } from '@chakra-ui/react';
 
 const { ipcRenderer } = window.electron;
 
 function SecureDocuments() {
   const [files, setFiles] = useState([]);
-  const [password, setPassword] = useState('');
-  const [isPasswordSet, setIsPasswordSet] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const toast = useToast();
   const { colorMode } = useColorMode();
 
-  useEffect(() => {
-    loadFiles();
-    checkPassword();
-  }, []);
-
-  const checkPassword = async () => {
-    const result = await ipcRenderer.invoke('check-secure-store-password');
-    setIsPasswordSet(result.exists);
-  };
-
-  const loadFiles = async () => {
-    if (!isPasswordSet) return;
+  const loadFiles = useCallback(async () => {
+    if (!isReady) return;
     const result = await ipcRenderer.invoke('list-secure-files');
     if (result.success) {
       setFiles(result.files);
     }
-  };
+  }, [isReady]);
 
-  const handleSetPassword = async () => {
-    if (password.length < 8) {
+  const checkAccess = async () => {
+    const result = await ipcRenderer.invoke('check-secure-store-access');
+    if (result.success) {
+      setIsReady(true);
+    } else {
       toast({
         title: 'Fehler',
-        description: 'Das Passwort muss mindestens 8 Zeichen lang sein.',
+        description: 'Bitte setzen Sie zuerst ein Passwort in den Einstellungen.',
         status: 'error',
-        duration: 3000,
-      });
-      return;
-    }
-
-    const result = await ipcRenderer.invoke('set-secure-store-password', password);
-    if (result.success) {
-      setIsPasswordSet(true);
-      toast({
-        title: 'Erfolg',
-        description: 'Passwort wurde gesetzt.',
-        status: 'success',
-        duration: 3000,
+        duration: 5000,
       });
     }
   };
+
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -87,7 +72,7 @@ function SecureDocuments() {
     } else {
       toast({
         title: 'Fehler',
-        description: 'Fehler beim Speichern der Datei.',
+        description: result.error || 'Fehler beim Speichern der Datei.',
         status: 'error',
         duration: 3000,
       });
@@ -99,33 +84,17 @@ function SecureDocuments() {
     if (!result.success) {
       toast({
         title: 'Fehler',
-        description: 'Fehler beim Öffnen der Datei.',
+        description: result.error || 'Fehler beim Öffnen der Datei.',
         status: 'error',
         duration: 3000,
       });
     }
   };
 
-  if (!isPasswordSet) {
+  if (!isReady) {
     return (
       <Box p={4}>
-        <VStack spacing={4} align="stretch">
-          <Text>Bitte setzen Sie ein Passwort für den sicheren Dokumentenspeicher:</Text>
-          <InputGroup size="md">
-            <Input
-              pr="4.5rem"
-              type="password"
-              placeholder="Passwort eingeben"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <InputRightElement width="4.5rem">
-              <Button h="1.75rem" size="sm" onClick={handleSetPassword}>
-                Setzen
-              </Button>
-            </InputRightElement>
-          </InputGroup>
-        </VStack>
+        <Text>Bitte setzen Sie zuerst ein Passwort in den Einstellungen.</Text>
       </Box>
     );
   }
