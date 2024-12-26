@@ -14,39 +14,72 @@ import {
   useColorMode,
 } from '@chakra-ui/react';
 
-const { ipcRenderer } = window.electron;
-
 function SecureDocuments() {
   const [files, setFiles] = useState([]);
   const [isReady, setIsReady] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const toast = useToast();
   const { colorMode } = useColorMode();
 
   const loadFiles = useCallback(async () => {
     if (!isReady) return;
-    const result = await ipcRenderer.invoke('list-secure-files');
+    const result = await window.electron.listSecureFiles();
     if (result.success) {
       setFiles(result.files);
     }
   }, [isReady]);
 
-  const checkAccess = async () => {
-    const result = await ipcRenderer.invoke('check-secure-store-access');
-    if (result.success) {
-      setIsReady(true);
-    } else {
+  const sleep = useCallback((ms) => new Promise(resolve => setTimeout(resolve, ms)), []);
+
+  const checkAccess = useCallback(async () => {
+    console.log('Checking secure store access from frontend, attempt:', retryCount + 1);
+    try {
+      // Add a longer initial delay to ensure keytar is ready
+      await sleep(1000);
+      
+      // Use the same direct approach as WebViewContainer
+      const result = await window.electron.getCredentials({ 
+        service: 'bbzcloud', 
+        account: 'password' 
+      });
+      console.log('Got result:', result);
+      console.log('Password exists:', !!result.password);
+      console.log('Password length:', result.password ? result.password.length : 0);
+      
+      if (result.success && result.password) {
+        console.log('Valid password found, setting isReady to true');
+        setIsReady(true);
+        return;
+      }
+      
+      if (retryCount < 5) {  // Increased retries
+        console.log('No valid password yet, retrying in 2 seconds...');
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+        }, 2000);  // Increased delay between retries
+      } else {
+        console.log('Max retries reached, showing error');
+        toast({
+          title: 'Fehler',
+          description: 'Bitte setzen Sie zuerst ein Passwort in den Einstellungen.',
+          status: 'error',
+          duration: 5000,
+        });
+      }
+    } catch (error) {
+      console.error('Error checking access:', error);
       toast({
         title: 'Fehler',
-        description: 'Bitte setzen Sie zuerst ein Passwort in den Einstellungen.',
+        description: 'Fehler beim Zugriff auf die Zugangsdaten.',
         status: 'error',
         duration: 5000,
       });
     }
-  };
+  }, [retryCount, toast, sleep]);
 
   useEffect(() => {
     checkAccess();
-  }, []);
+  }, [checkAccess, retryCount]);
 
   useEffect(() => {
     loadFiles();
@@ -56,31 +89,56 @@ function SecureDocuments() {
     const file = event.target.files[0];
     if (!file) return;
 
-    const result = await ipcRenderer.invoke('encrypt-and-store-file', {
-      path: file.path,
-      name: file.name,
-    });
+    // Read the file data as an ArrayBuffer
+    const reader = new FileReader();
+    
+    reader.onload = async () => {
+      try {
+        const result = await window.electron.encryptAndStoreFile({
+          data: reader.result,
+          name: file.name,
+        });
 
-    if (result.success) {
-      loadFiles();
-      toast({
-        title: 'Erfolg',
-        description: 'Datei wurde verschlüsselt gespeichert.',
-        status: 'success',
-        duration: 3000,
-      });
-    } else {
+        if (result.success) {
+          loadFiles();
+          toast({
+            title: 'Erfolg',
+            description: 'Datei wurde verschlüsselt gespeichert.',
+            status: 'success',
+            duration: 3000,
+          });
+        } else {
+          toast({
+            title: 'Fehler',
+            description: result.error || 'Fehler beim Speichern der Datei.',
+            status: 'error',
+            duration: 3000,
+          });
+        }
+      } catch (error) {
+        toast({
+          title: 'Fehler',
+          description: 'Fehler beim Verarbeiten der Datei.',
+          status: 'error',
+          duration: 3000,
+        });
+      }
+    };
+
+    reader.onerror = () => {
       toast({
         title: 'Fehler',
-        description: result.error || 'Fehler beim Speichern der Datei.',
+        description: 'Fehler beim Lesen der Datei.',
         status: 'error',
         duration: 3000,
       });
-    }
+    };
+
+    reader.readAsArrayBuffer(file);
   };
 
   const handleFileClick = async (file) => {
-    const result = await ipcRenderer.invoke('open-secure-file', file.id);
+    const result = await window.electron.openSecureFile(file.id);
     if (!result.success) {
       toast({
         title: 'Fehler',

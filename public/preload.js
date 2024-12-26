@@ -8,7 +8,14 @@ contextBridge.exposeInMainWorld('electron', {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveCredentials: (data) => ipcRenderer.invoke('save-credentials', data),
-  getCredentials: (data) => ipcRenderer.invoke('get-credentials', data),
+  getCredentials: async (data) => {
+    try {
+      return await ipcRenderer.invoke('get-credentials', data);
+    } catch (error) {
+      console.error('Error getting credentials:', error);
+      return { success: false, error: error.message };
+    }
+  },
   onUpdateStatus: (callback) => {
     const subscription = (event, status) => callback(status);
     ipcRenderer.on('update-status', subscription);
@@ -89,10 +96,38 @@ contextBridge.exposeInMainWorld('electron', {
   debug: (msg) => console.log('Debug:', msg),
 
   // Secure Documents functionality
-  checkSecureStoreAccess: () => ipcRenderer.invoke('check-secure-store-access'),
-  listSecureFiles: () => ipcRenderer.invoke('list-secure-files'),
-  encryptAndStoreFile: (data) => ipcRenderer.invoke('encrypt-and-store-file', data),
-  openSecureFile: (fileId) => ipcRenderer.invoke('open-secure-file', fileId)
+  checkSecureStoreAccess: async () => {
+    try {
+      return await ipcRenderer.invoke('check-secure-store-access');
+    } catch (error) {
+      console.error('Error checking secure store access:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  listSecureFiles: async () => {
+    try {
+      return await ipcRenderer.invoke('list-secure-files');
+    } catch (error) {
+      console.error('Error listing secure files:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  encryptAndStoreFile: async (data) => {
+    try {
+      return await ipcRenderer.invoke('encrypt-and-store-file', data);
+    } catch (error) {
+      console.error('Error encrypting and storing file:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  openSecureFile: async (fileId) => {
+    try {
+      return await ipcRenderer.invoke('open-secure-file', fileId);
+    } catch (error) {
+      console.error('Error opening secure file:', error);
+      return { success: false, error: error.message };
+    }
+  }
 });
 
 // Remove this if you don't need it
