@@ -152,7 +152,7 @@ function SecureDocuments() {
   if (!isReady) {
     return (
       <Box p={4}>
-        <Text>Bitte setzen Sie zuerst ein Passwort in den Einstellungen.</Text>
+        <Text>Bitte setzen Sie ein Passwort in den Einstellungen unter "Zugangsdaten", um sichere Dokumente zu verwenden.</Text>
       </Box>
     );
   }
