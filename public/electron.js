@@ -882,7 +882,7 @@ async function getEncryptionPassword() {
       throw new Error('Kein Passwort in den Einstellungen gefunden');
     }
     
-    return result.password;
+    return password;
   } catch (error) {
     console.error('Error in getEncryptionPassword:', error);
     throw error;
@@ -948,6 +948,29 @@ ipcMain.handle('encrypt-and-store-file', async (event, { data, name }) => {
   }
 });
 
+ipcMain.handle('delete-secure-file', async (event, fileId) => {
+  try {
+    const secureStore = store.get('secureStore', { files: [] });
+    const file = secureStore.files.find(f => f.id === fileId);
+    if (!file) throw new Error('Datei nicht gefunden');
+    
+    // Delete the encrypted file
+    await fs.remove(file.encryptedPath);
+    
+    // Update store
+    const updatedFiles = secureStore.files.filter(f => f.id !== fileId);
+    store.set('secureStore', {
+      ...secureStore,
+      files: updatedFiles
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting secure file:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('open-secure-file', async (event, fileId) => {
   try {
     const password = await getEncryptionPassword();
@@ -980,6 +1003,16 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
         ).toString();
         
         await fs.writeFile(file.encryptedPath, newEncrypted);
+        
+        // Update file metadata with new date
+        const secureStore = store.get('secureStore', { files: [] });
+        const updatedFiles = secureStore.files.map(f => 
+          f.id === fileId ? { ...f, date: new Date().toISOString() } : f
+        );
+        store.set('secureStore', { ...secureStore, files: updatedFiles });
+        
+        // Notify frontend of file update
+        mainWindow?.webContents.send('secure-file-updated');
       } catch (error) {
         console.error('Error updating encrypted file:', error);
       }

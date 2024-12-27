@@ -127,6 +127,32 @@ contextBridge.exposeInMainWorld('electron', {
       console.error('Error opening secure file:', error);
       return { success: false, error: error.message };
     }
+  },
+  deleteSecureFile: async (fileId) => {
+    try {
+      return await ipcRenderer.invoke('delete-secure-file', fileId);
+    } catch (error) {
+      console.error('Error deleting secure file:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Event listeners for secure file updates
+  on: (channel, callback) => {
+    const validChannels = ['secure-file-updated'];
+    if (validChannels.includes(channel)) {
+      const subscription = (_event, ...args) => callback(...args);
+      ipcRenderer.on(channel, subscription);
+      return () => {
+        ipcRenderer.removeListener(channel, subscription);
+      };
+    }
+  },
+  off: (channel, callback) => {
+    const validChannels = ['secure-file-updated'];
+    if (validChannels.includes(channel)) {
+      ipcRenderer.removeListener(channel, callback);
+    }
   }
 });
 

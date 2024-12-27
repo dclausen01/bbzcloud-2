@@ -12,12 +12,24 @@ import {
   Th,
   Td,
   useColorMode,
+  IconButton,
+  useDisclosure,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
 } from '@chakra-ui/react';
+import { DeleteIcon } from '@chakra-ui/icons';
 
 function SecureDocuments() {
   const [files, setFiles] = useState([]);
   const [isReady, setIsReady] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [fileToDelete, setFileToDelete] = useState(null);
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const cancelRef = React.useRef();
   const toast = useToast();
   const { colorMode } = useColorMode();
 
@@ -28,6 +40,19 @@ function SecureDocuments() {
       setFiles(result.files);
     }
   }, [isReady]);
+
+  // Listen for file updates
+  useEffect(() => {
+    const handleFileUpdate = () => {
+      loadFiles();
+    };
+    
+    window.electron.on('secure-file-updated', handleFileUpdate);
+    
+    return () => {
+      window.electron.off('secure-file-updated', handleFileUpdate);
+    };
+  }, [loadFiles]);
 
   const sleep = useCallback((ms) => new Promise(resolve => setTimeout(resolve, ms)), []);
 
@@ -42,18 +67,13 @@ function SecureDocuments() {
         service: 'bbzcloud', 
         account: 'password' 
       });
-      console.log('Got result:', result);
-      console.log('Password exists:', !!result.password);
-      console.log('Password length:', result.password ? result.password.length : 0);
       
       if (result.success && result.password) {
-        console.log('Valid password found, setting isReady to true');
         setIsReady(true);
         return;
       }
       
       if (retryCount < 5) {  // Increased retries
-        console.log('No valid password yet, retrying in 2 seconds...');
         setTimeout(() => {
           setRetryCount(prev => prev + 1);
         }, 2000);  // Increased delay between retries
@@ -149,6 +169,47 @@ function SecureDocuments() {
     }
   };
 
+  const handleDeleteClick = (e, file) => {
+    e.stopPropagation(); // Prevent row click
+    setFileToDelete(file);
+    onOpen();
+  };
+
+  const handleDelete = async () => {
+    if (!fileToDelete) return;
+
+    try {
+      const result = await window.electron.deleteSecureFile(fileToDelete.id);
+      if (result.success) {
+        await loadFiles(); // Wait for files to reload
+        toast({
+          title: 'Erfolg',
+          description: 'Datei wurde gelöscht.',
+          status: 'success',
+          duration: 3000,
+        });
+      } else {
+        toast({
+          title: 'Fehler',
+          description: result.error || 'Fehler beim Löschen der Datei.',
+          status: 'error',
+          duration: 3000,
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      toast({
+        title: 'Fehler',
+        description: 'Fehler beim Löschen der Datei.',
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setFileToDelete(null);
+      onClose();
+    }
+  };
+
   if (!isReady) {
     return (
       <Box p={4}>
@@ -182,6 +243,7 @@ function SecureDocuments() {
               <Th>Name</Th>
               <Th>Größe</Th>
               <Th>Datum</Th>
+              <Th width="50px"></Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -195,11 +257,48 @@ function SecureDocuments() {
                 <Td>{file.name}</Td>
                 <Td>{file.size}</Td>
                 <Td>{new Date(file.date).toLocaleString()}</Td>
+                <Td>
+                  <IconButton
+                    aria-label="Datei löschen"
+                    icon={<DeleteIcon />}
+                    size="sm"
+                    colorScheme="red"
+                    variant="ghost"
+                    onClick={(e) => handleDeleteClick(e, file)}
+                  />
+                </Td>
               </Tr>
             ))}
           </Tbody>
         </Table>
       </VStack>
+
+      <AlertDialog
+        isOpen={isOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={onClose}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Datei löschen
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              Sind Sie sicher? Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={onClose}>
+                Abbrechen
+              </Button>
+              <Button colorScheme="red" onClick={handleDelete} ml={3}>
+                Löschen
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </Box>
   );
 }
