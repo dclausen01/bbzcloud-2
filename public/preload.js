@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
+  // Version info
+  getVersion: () => ipcRenderer.invoke('get-version'),
   // Existing methods
   getAssetPath: (asset) => ipcRenderer.invoke('get-asset-path', asset),
   openExternalWindow: (data) => ipcRenderer.invoke('open-external-window', data),

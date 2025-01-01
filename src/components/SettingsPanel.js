@@ -264,6 +264,9 @@ function SettingsPanel({ onClose }) {
 
   return (
     <VStack spacing={6} align="stretch">
+      <Box fontSize="sm" color="gray.500" textAlign="right" mb={-4}>
+        <Text>Version {window.electron.getVersion()} • <a href="https://github.com/koyuawsmbrtn/bbz-cloud" style={{textDecoration: 'underline'}}>GitHub</a></Text>
+      </Box>
       <Box>
         <Text fontSize="lg" fontWeight="bold" mb={4}>
           Allgemein

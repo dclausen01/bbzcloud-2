@@ -747,6 +747,10 @@ ipcMain.handle('migrate-from-store', async () => {
   }
 });
 
+ipcMain.handle('get-version', () => {
+  return require('../package.json').version;
+});
+
 ipcMain.handle('get-asset-path', async (event, asset) => {
   const assetPath = getAssetPath(asset);
   try {
