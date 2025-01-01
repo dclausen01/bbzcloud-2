@@ -12,6 +12,8 @@ const { Notification } = require('electron');
 const CryptoJS = require('crypto-js');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
+const chokidar = require('chokidar');
+const DatabaseService = require('./services/DatabaseService');
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -37,10 +39,19 @@ if (!gotTheLock) {
   });
 }
 
-// Initialize electron store with schema and version
+// Initialize electron store with minimal schema for window state and secure store
 const store = new Store({
-  version: '1.0.2',
   schema: {
+    windowState: {
+      type: 'object',
+      properties: {
+        x: { type: 'number' },
+        y: { type: 'number' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        isMaximized: { type: 'boolean' }
+      }
+    },
     secureStore: {
       type: 'object',
       properties: {
@@ -67,80 +78,8 @@ const store = new Store({
         files: []
       }
     },
-    todoState: {
-      type: 'object',
-      properties: {
-        todos: {
-          type: 'array',
-          default: []
-        },
-        folders: {
-          type: 'array',
-          default: ['Default']
-        },
-        sortType: {
-          type: 'string',
-          enum: ['manual', 'date', 'completed'],
-          default: 'manual'
-        },
-        selectedFolder: {
-          type: 'string',
-          default: 'Default'
-        }
-      },
-      default: {
-        todos: [],
-        folders: ['Default'],
-        sortType: 'manual',
-        selectedFolder: 'Default'
-      }
-    },
-    settings: {
-        type: 'object',
-        properties: {
-          navigationButtons: {
-            type: 'object',
-            additionalProperties: {
-              type: 'object',
-              properties: {
-                visible: { type: 'boolean' },
-                url: { type: 'string' },
-                title: { type: 'string' },
-                buttonVariant: { type: 'string' },
-                favicon: { type: 'string' },
-                zoom: { type: 'number' }
-              }
-            }
-          },
-          customApps: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                title: { type: 'string' },
-                url: { type: 'string' },
-                buttonVariant: { type: 'string' },
-                favicon: { type: 'string' },
-                zoom: { type: 'number' }
-              }
-            }
-          },
-          theme: { type: 'string' },
-          globalZoom: { type: 'number' },
-          autostart: { type: 'boolean', default: true },
-          minimizedStart: { type: 'boolean', default: false },
-          windowState: {
-            type: 'object',
-            properties: {
-              x: { type: 'number' },
-              y: { type: 'number' },
-              width: { type: 'number' },
-              height: { type: 'number' },
-              isMaximized: { type: 'boolean' }
-            }
-          }
-      }
+    databasePath: {
+      type: 'string'
     }
   },
   migrations: {
@@ -208,27 +147,37 @@ const store = new Store({
   clearInvalidConfig: true
 });
 
-// Run migrations and ensure all data is properly initialized in the correct order
-store.get('settings');
-store.get('todoFolders'); // Load folders first
-store.get('todos');       // Then todos
-store.get('todoSortType'); // Finally sort type
+// Initialize database service
+const db = new DatabaseService();
 
-// Ensure Default folder always exists
-const folders = store.get('todoFolders', ['Default']);
-if (!folders.includes('Default')) {
-  store.set('todoFolders', ['Default', ...folders]);
-}
+// File change detection
+let fileWatcher = null;
+let lastKnownTimestamp = 0;
 
-// Ensure todos have valid folders
-const todos = store.get('todos', []);
-const validFolders = store.get('todoFolders', ['Default']);
-const validTodos = todos.map(todo => ({
-  ...todo,
-  folder: validFolders.includes(todo.folder) ? todo.folder : 'Default'
-}));
-if (todos.length !== validTodos.length) {
-  store.set('todos', validTodos);
+function setupFileWatcher() {
+  if (fileWatcher) {
+    fileWatcher.close();
+  }
+
+  const dbPath = db.getDatabasePath();
+  lastKnownTimestamp = db.getLastUpdateTimestamp();
+
+  fileWatcher = chokidar.watch(dbPath, {
+    persistent: true,
+    ignoreInitial: true,
+    awaitWriteFinish: {
+      stabilityThreshold: 2000,
+      pollInterval: 100
+    }
+  });
+
+  fileWatcher.on('change', () => {
+    const currentTimestamp = db.getLastUpdateTimestamp();
+    if (currentTimestamp > lastKnownTimestamp) {
+      lastKnownTimestamp = currentTimestamp;
+      mainWindow?.webContents.send('database-changed');
+    }
+  });
 }
 
 let mainWindow;
@@ -567,15 +516,26 @@ function createContextMenu(webContents, selectedText) {
   ]);
 }
 
+// Database related IPC handlers
+ipcMain.handle('get-database-path', () => {
+  return db.getDatabasePath();
+});
+
+ipcMain.handle('change-database-location', async (event, newPath) => {
+  try {
+    await db.changeDatabaseLocation(newPath);
+    setupFileWatcher(); // Reset file watcher for new location
+    return { success: true };
+  } catch (error) {
+    console.error('Error changing database location:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Todo related IPC handlers
 ipcMain.handle('get-todo-state', async () => {
   try {
-    const todoState = store.get('todoState', {
-      todos: [],
-      folders: ['Default'],
-      sortType: 'manual',
-      selectedFolder: 'Default'
-    });
+    const todoState = db.getTodoState();
     return { success: true, todoState };
   } catch (error) {
     console.error('Error getting todo state:', error);
@@ -594,7 +554,7 @@ ipcMain.handle('get-todo-state', async () => {
 
 ipcMain.handle('save-todo-state', async (event, todoState) => {
   try {
-    store.set('todoState', todoState);
+    db.saveTodoState(todoState);
     return { success: true };
   } catch (error) {
     console.error('Error saving todo state:', error);
@@ -692,7 +652,7 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
 
 ipcMain.handle('save-settings', async (event, settings) => {
   try {
-    store.set('settings', settings);
+    db.saveSettings(settings);
     updateAutostart();
     const theme = settings.theme || 'light';
     
@@ -710,10 +670,21 @@ ipcMain.handle('save-settings', async (event, settings) => {
 
 ipcMain.handle('get-settings', async () => {
   try {
-    const settings = store.get('settings');
-    return { success: true, settings };
+    const settings = db.getSettings();
+    return { success: true, settings: settings || {} };
   } catch (error) {
     console.error('Error getting settings:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Migration handler
+ipcMain.handle('migrate-from-store', async () => {
+  try {
+    await db.migrateFromElectronStore();
+    return { success: true };
+  } catch (error) {
+    console.error('Error migrating data:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1042,6 +1013,7 @@ app.on('ready', async () => {
   createTray();
   createSplashWindow();
   createWindow();
+  setupFileWatcher();
   autoUpdater.checkForUpdatesAndNotify();
 
   // Handle system resume events
