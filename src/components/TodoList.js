@@ -246,7 +246,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
       duration: 2000,
       isClosable: true,
     });
-  }, [inputValue, todoState.selectedFolder]);
+  }, [inputValue, todoState.selectedFolder, toast]);
 
   // Handle initialText changes
   useEffect(() => {

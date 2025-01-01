@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "private": true,

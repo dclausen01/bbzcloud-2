@@ -89,8 +89,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     });
   }, [standardApps]);
 
-  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
   // Helper function to check if favicon indicates new messages
   const checkForNotifications = (base64Image) => {
     return new Promise((resolve, reject) => {
@@ -149,6 +147,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Function to inject credentials based on webview ID
   const injectCredentials = useCallback(async (webview, id) => {
     if (!webview || credsAreSet[id]) return;
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
       // Get credentials from keytar using the correct service/account names
@@ -257,7 +257,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     } catch (error) {
       console.error(`Error injecting credentials for ${id}:`, error);
     }
-  }, [credsAreSet, sleep]);
+  }, [credsAreSet]);
 
   // Set up SchulCloud notification checking with MutationObserver
   useEffect(() => {
