@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const SettingsContext = createContext();
 
@@ -158,44 +158,57 @@ export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const result = await window.electron.getSettings();
-        if (result.success && result.settings) {
-          // Merge navigation buttons while preserving hardcoded titles
-          const updatedNavigationButtons = Object.entries(defaultSettings.navigationButtons).reduce((acc, [key, defaultButton]) => {
-            const savedButton = result.settings.navigationButtons?.[key] || {};
-            return {
-              ...acc,
-              [key]: {
-                ...defaultButton,
-                ...savedButton,
-                // Preserve the hardcoded title
-                title: defaultButton.title
-              }
-            };
-          }, {});
+  // Function to load settings that can be called from outside
+  const loadSettings = useCallback(async () => {
+    try {
+      const result = await window.electron.getSettings();
+      if (result.success && result.settings) {
+        // Merge navigation buttons while preserving hardcoded titles
+        const updatedNavigationButtons = Object.entries(defaultSettings.navigationButtons).reduce((acc, [key, defaultButton]) => {
+          const savedButton = result.settings.navigationButtons?.[key] || {};
+          return {
+            ...acc,
+            [key]: {
+              ...defaultButton,
+              ...savedButton,
+              // Preserve the hardcoded title
+              title: defaultButton.title
+            }
+          };
+        }, {});
 
-          setSettings(prevSettings => ({
-            ...defaultSettings,
-            ...result.settings,
-            navigationButtons: updatedNavigationButtons,
-            standardApps: defaultSettings.standardApps,
-            customApps: Array.isArray(result.settings.customApps) 
-              ? result.settings.customApps 
-              : [],
-          }));
-        }
-      } catch (error) {
-        console.error('Failed to load settings:', error);
-      } finally {
-        setIsLoading(false);
+        setSettings(prevSettings => ({
+          ...defaultSettings,
+          ...result.settings,
+          navigationButtons: updatedNavigationButtons,
+          standardApps: defaultSettings.standardApps,
+          customApps: Array.isArray(result.settings.customApps) 
+            ? result.settings.customApps 
+            : [],
+        }));
       }
-    };
-
-    loadSettings();
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  // Initial load and database change handler
+  useEffect(() => {
+    loadSettings();
+
+    const handleDatabaseChange = () => {
+      loadSettings();
+      console.log('Settings reloaded after database change');
+    };
+    
+    window.electron.on('database-changed', handleDatabaseChange);
+    
+    return () => {
+      window.electron.off('database-changed', handleDatabaseChange);
+    };
+  }, [loadSettings]);
 
   useEffect(() => {
     const saveSettings = async () => {

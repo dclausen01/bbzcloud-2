@@ -7,8 +7,35 @@ const Store = require('electron-store');
 
 class DatabaseService {
     constructor() {
-        this.store = new Store();
+        // Initialize electron-store with schema
+        this.store = new Store({
+            name: 'bbzcloud-store',
+            clearInvalidConfig: true,
+            schema: {
+                encryptionKey: {
+                    type: 'string'
+                },
+                databasePath: {
+                    type: 'string'
+                }
+            },
+            beforeEachMigration: (store, context) => {
+                console.log('Migrating store:', context);
+            },
+            migrations: {
+                '1.0.0': store => {
+                    // Ensure encryption key is valid
+                    const key = store.get('encryptionKey');
+                    if (!key || typeof key !== 'string' || key.length < 32) {
+                        console.log('Migration: Regenerating encryption key');
+                        store.set('encryptionKey', CryptoJS.lib.WordArray.random(256/8).toString());
+                    }
+                }
+            }
+        });
+        
         this.setupEncryption();
+        
         // Initialize database asynchronously
         this.initPromise = this.initializeDatabase().catch(err => {
             console.error('Failed to initialize database:', err);
@@ -16,49 +43,83 @@ class DatabaseService {
     }
 
     async initializeDatabase() {
-        // Get database path from electron-store or use default
-        const defaultPath = path.normalize(path.join(app.getPath('userData'), 'bbzcloud.db'));
-        this.dbPath = path.normalize(this.store.get('databasePath', defaultPath));
-        
-        // Ensure directory exists
-        await fs.ensureDir(path.dirname(this.dbPath));
-        
-        // Initialize database connection
-        await new Promise((resolve, reject) => {
-            this.db = new sqlite3.Database(this.dbPath, (err) => {
-                if (err) {
-                    console.error('Database connection error:', err);
-                    reject(err);
-                    return;
-                }
-                resolve();
+        try {
+            // Get database path from electron-store or use default
+            const defaultPath = path.normalize(path.join(app.getPath('userData'), 'bbzcloud.db'));
+            this.dbPath = path.normalize(this.store.get('databasePath', defaultPath));
+            
+            // Ensure directory exists
+            await fs.ensureDir(path.dirname(this.dbPath));
+            
+            // Initialize database connection
+            await new Promise((resolve, reject) => {
+                this.db = new sqlite3.Database(this.dbPath, (err) => {
+                    if (err) {
+                        console.error('Database connection error:', err);
+                        reject(err);
+                        return;
+                    }
+                    resolve();
+                });
             });
-        });
 
-        // Enable foreign keys
-        await new Promise((resolve, reject) => {
-            this.db.run('PRAGMA foreign_keys = ON', (err) => {
-                if (err) {
-                    console.error('Error enabling foreign keys:', err);
-                    reject(err);
-                    return;
-                }
-                resolve();
+            // Enable foreign keys and verify database
+            await new Promise((resolve, reject) => {
+                this.db.serialize(() => {
+                    // Enable foreign keys
+                    this.db.run('PRAGMA foreign_keys = ON');
+                    
+                    // Check database integrity
+                    this.db.get('PRAGMA integrity_check', [], (err, result) => {
+                        if (err || result.integrity_check !== 'ok') {
+                            reject(err || new Error('Database integrity check failed'));
+                        } else {
+                            resolve();
+                        }
+                    });
+                });
             });
-        });
 
-        // Create tables
-        await this.createTables();
+            // Create tables
+            await this.createTables();
+            
+        } catch (error) {
+            console.error('Database initialization error:', error);
+            throw error;
+        }
     }
 
     setupEncryption() {
-        // Generate or retrieve encryption key
-        let encryptionKey = this.store.get('encryptionKey');
-        if (!encryptionKey) {
-            encryptionKey = CryptoJS.lib.WordArray.random(256/8).toString();
-            this.store.set('encryptionKey', encryptionKey);
+        try {
+            // Generate or retrieve encryption key
+            let encryptionKey = this.store.get('encryptionKey');
+            console.log('Retrieved encryption key exists:', Boolean(encryptionKey));
+            
+            if (!encryptionKey) {
+                console.log('Generating new encryption key');
+                encryptionKey = CryptoJS.lib.WordArray.random(256/8).toString();
+                this.store.set('encryptionKey', encryptionKey);
+                console.log('New encryption key saved to store');
+            }
+            
+            // Validate encryption key format
+            if (typeof encryptionKey !== 'string' || encryptionKey.length < 32) {
+                console.error('Invalid encryption key format, regenerating');
+                encryptionKey = CryptoJS.lib.WordArray.random(256/8).toString();
+                this.store.set('encryptionKey', encryptionKey);
+                console.log('Regenerated encryption key saved to store');
+            }
+            
+            this.encryptionKey = encryptionKey;
+            console.log('Encryption setup completed successfully');
+        } catch (error) {
+            console.error('Error in setupEncryption:', error);
+            // Fallback to new key generation
+            const newKey = CryptoJS.lib.WordArray.random(256/8).toString();
+            this.store.set('encryptionKey', newKey);
+            this.encryptionKey = newKey;
+            console.log('Fallback encryption key generated and saved');
         }
-        this.encryptionKey = encryptionKey;
     }
 
     async createTables() {
@@ -240,10 +301,38 @@ class DatabaseService {
 
     decrypt(encryptedData) {
         try {
+            if (!encryptedData) {
+                console.error('Decrypt: No data provided');
+                return null;
+            }
+            if (!this.encryptionKey) {
+                console.error('Decrypt: No encryption key available');
+                return null;
+            }
+            
             const bytes = CryptoJS.AES.decrypt(encryptedData, this.encryptionKey);
-            return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+            if (!bytes) {
+                console.error('Decrypt: Decryption failed - no bytes returned');
+                return null;
+            }
+            
+            const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
+            if (!decryptedStr) {
+                console.error('Decrypt: Decryption produced empty string');
+                return null;
+            }
+            
+            const parsed = JSON.parse(decryptedStr);
+            if (!parsed) {
+                console.error('Decrypt: JSON parsing failed');
+                return null;
+            }
+            
+            return parsed;
         } catch (error) {
             console.error('Decryption error:', error);
+            console.error('Encrypted data type:', typeof encryptedData);
+            console.error('Encryption key available:', Boolean(this.encryptionKey));
             return null;
         }
     }
@@ -251,13 +340,28 @@ class DatabaseService {
     // Settings operations
     async saveSettings(settings) {
         await this.ensureInitialized();
+        // Only save the modified values, not the entire default structure
+        const settingsToSave = {
+            navigationButtons: Object.entries(settings.navigationButtons || {}).reduce((acc, [key, button]) => ({
+                ...acc,
+                [key]: {
+                    visible: button.visible,
+                    zoom: button.zoom
+                }
+            }), {}),
+            customApps: Array.isArray(settings.customApps) ? settings.customApps : [],
+            theme: settings.theme,
+            globalZoom: settings.globalZoom,
+            autostart: settings.autostart,
+            minimizedStart: settings.minimizedStart
+        };
+
         return new Promise((resolve, reject) => {
             const timestamp = Date.now();
-            const encryptedValue = this.encrypt(settings);
             
             this.db.run(
                 'INSERT OR REPLACE INTO settings (id, value, updated_at) VALUES (?, ?, ?)',
-                ['app_settings', encryptedValue, timestamp],
+                ['app_settings', JSON.stringify(settingsToSave), timestamp],
                 (err) => {
                     if (err) reject(err);
                     else resolve(true);
@@ -273,8 +377,27 @@ class DatabaseService {
                 'SELECT value FROM settings WHERE id = ?',
                 ['app_settings'],
                 (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row ? this.decrypt(row.value) : null);
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    
+                    let settings = {};
+                    try {
+                        settings = row ? JSON.parse(row.value) : {};
+                    } catch (error) {
+                        console.error('Error parsing settings:', error);
+                    }
+                    
+                    // Only return the saved values, let the context handle defaults
+                    resolve({
+                        navigationButtons: settings?.navigationButtons || {},
+                        customApps: Array.isArray(settings?.customApps) ? settings.customApps : [],
+                        theme: settings?.theme,
+                        globalZoom: settings?.globalZoom,
+                        autostart: settings?.autostart,
+                        minimizedStart: settings?.minimizedStart
+                    });
                 }
             );
         });
@@ -320,8 +443,8 @@ class DatabaseService {
                     });
                     todoStmt.finalize();
                     
-                    // Save todo settings
-                    const todoSettings = this.encrypt({
+                    // Save todo settings without encryption
+                    const todoSettings = JSON.stringify({
                         sortType: todoState.sortType,
                         selectedFolder: todoState.selectedFolder
                     });
@@ -384,12 +507,16 @@ class DatabaseService {
                                 return;
                             }
                             if (row) {
-                                const settings = this.decrypt(row.value);
-                                if (settings && settings.sortType) {
-                                    result.sortType = settings.sortType;
-                                }
-                                if (settings && settings.selectedFolder) {
-                                    result.selectedFolder = settings.selectedFolder;
+                                try {
+                                    const settings = JSON.parse(row.value);
+                                    if (settings && settings.sortType) {
+                                        result.sortType = settings.sortType;
+                                    }
+                                    if (settings && settings.selectedFolder) {
+                                        result.selectedFolder = settings.selectedFolder;
+                                    }
+                                } catch (error) {
+                                    console.error('Error parsing todo settings:', error);
                                 }
                             }
                             resolve(result);
@@ -413,20 +540,29 @@ class DatabaseService {
                     // Clear existing apps
                     this.db.run('DELETE FROM custom_apps');
                     
-                    // Insert new apps
+                    // Insert new apps with minimal required data
                     const stmt = this.db.prepare(`
                         INSERT INTO custom_apps (id, title, url, button_variant, favicon, zoom, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     `);
                     
-                    apps.forEach(app => {
+                    const sanitizedApps = apps.map(app => ({
+                        id: app.id,
+                        title: app.title,
+                        url: app.url,
+                        buttonVariant: 'solid', // Always use default
+                        favicon: null,          // Don't save favicon
+                        zoom: app.zoom || 1.0,  // Use default zoom if not set
+                    }));
+                    
+                    sanitizedApps.forEach(app => {
                         stmt.run(
                             app.id,
                             app.title,
                             app.url,
                             app.buttonVariant,
-                            app.favicon || null,
-                            app.zoom || 1.0,
+                            app.favicon,
+                            app.zoom,
                             timestamp
                         );
                     });
@@ -505,22 +641,49 @@ class DatabaseService {
                 this.store.set('databasePath', newPath);
                 this.dbPath = newPath;
 
-                // Initialize new connection and recreate tables
+                // Initialize new connection
                 this.db = new sqlite3.Database(this.dbPath, async (err) => {
                     if (err) {
                         reject(err);
                         return;
                     }
                     try {
-                        // Ensure tables are created in new location
-                        await this.createTables();
-                        // Enable foreign keys
+                        // Enable foreign keys first
                         await new Promise((res, rej) => {
                             this.db.run('PRAGMA foreign_keys = ON', (err) => {
                                 if (err) rej(err);
                                 else res();
                             });
                         });
+
+                        // Verify database integrity
+                        await new Promise((res, rej) => {
+                            this.db.get('PRAGMA integrity_check', [], (err, result) => {
+                                if (err || result.integrity_check !== 'ok') {
+                                    rej(err || new Error('Database integrity check failed'));
+                                } else {
+                                    res();
+                                }
+                            });
+                        });
+
+                        // Ensure tables exist and are properly structured
+                        await this.createTables();
+
+                        // Notify that database has changed
+                        try {
+                            const { BrowserWindow } = require('electron');
+                            const windows = BrowserWindow.getAllWindows();
+                            for (const win of windows) {
+                                if (win?.webContents) {
+                                    win.webContents.send('database-changed');
+                                    console.log('Sent database-changed event to window');
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error sending database-changed event:', error);
+                        }
+
                         resolve(true);
                     } catch (error) {
                         reject(error);

@@ -25,7 +25,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings } = useSettings();
   const { setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -119,8 +119,16 @@ function SettingsPanel({ onClose }) {
       const result = await window.electron.changeDatabaseLocation();
       if (result.success) {
         setDbPath(result.path);
+        
+        // Reload settings from new database location
+        const settingsResult = await window.electron.getSettings();
+        if (settingsResult.success && settingsResult.settings) {
+          updateSettings(settingsResult.settings);
+        }
+        
         toast({
           title: 'Datenbank-Speicherort geändert',
+          description: 'Einstellungen wurden neu geladen',
           status: 'success',
           duration: 3000,
         });
@@ -133,7 +141,7 @@ function SettingsPanel({ onClose }) {
         duration: 5000,
       });
     }
-  }, [toast]);
+  }, [toast, updateSettings]);
 
   const handleMigrateFromStore = useCallback(async () => {
     try {
