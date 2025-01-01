@@ -34,7 +34,6 @@ function SettingsPanel({ onClose }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dbPath, setDbPath] = useState('');
-  const [isMigrating, setIsMigrating] = useState(false);
   const [credentials, setCredentials] = useState({
     email: '',
     password: '',
@@ -142,32 +141,6 @@ function SettingsPanel({ onClose }) {
       });
     }
   }, [toast, updateSettings]);
-
-  const handleMigrateFromStore = useCallback(async () => {
-    try {
-      setIsMigrating(true);
-      const result = await window.electron.migrateFromStore();
-      if (result.success) {
-        toast({
-          title: 'Migration erfolgreich',
-          description: 'Alle Daten wurden in die neue Datenbank übertragen',
-          status: 'success',
-          duration: 3000,
-        });
-      } else {
-        throw new Error(result.error);
-      }
-    } catch (error) {
-      toast({
-        title: 'Fehler bei der Migration',
-        description: error.message,
-        status: 'error',
-        duration: 5000,
-      });
-    } finally {
-      setIsMigrating(false);
-    }
-  }, [toast]);
 
   const handleSaveCredentials = async () => {
     setIsSaving(true);
@@ -510,13 +483,6 @@ function SettingsPanel({ onClose }) {
             Speicherort ändern
           </Button>
 
-          <Button
-            onClick={handleMigrateFromStore}
-            isLoading={isMigrating}
-            loadingText="Migriere..."
-          >
-            Daten aus alter Speicherung migrieren
-          </Button>
         </VStack>
       </Box>
 

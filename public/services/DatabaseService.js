@@ -7,6 +7,7 @@ const Store = require('electron-store');
 
 class DatabaseService {
     constructor() {
+        this.isConnected = false;
         // Initialize electron-store with schema
         this.store = new Store({
             name: 'bbzcloud-store',
@@ -17,6 +18,10 @@ class DatabaseService {
                 },
                 databasePath: {
                     type: 'string'
+                },
+                globalZoom: {
+                    type: 'number',
+                    default: 1.0
                 }
             },
             beforeEachMigration: (store, context) => {
@@ -278,9 +283,49 @@ class DatabaseService {
         });
     }
 
-    // Helper to ensure database is initialized before operations
+    async closeConnection() {
+        if (this.db && this.isConnected) {
+            return new Promise((resolve, reject) => {
+                this.db.close((err) => {
+                    if (err) {
+                        console.error('Error closing database:', err);
+                        reject(err);
+                        return;
+                    }
+                    this.isConnected = false;
+                    resolve();
+                });
+            });
+        }
+    }
+
+    // Helper to ensure database is initialized and manage connections
     async ensureInitialized() {
         await this.initPromise;
+        
+        // If connection is closed, reopen it
+        if (!this.isConnected) {
+            await new Promise((resolve, reject) => {
+                this.db = new sqlite3.Database(this.dbPath, (err) => {
+                    if (err) {
+                        console.error('Database connection error:', err);
+                        reject(err);
+                        return;
+                    }
+                    this.isConnected = true;
+                    resolve();
+                });
+            });
+            
+            // Enable foreign keys
+            await new Promise((resolve, reject) => {
+                this.db.run('PRAGMA foreign_keys = ON', (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+        }
+
         // Ensure database is ready by running a test query
         await new Promise((resolve, reject) => {
             this.db.get('SELECT 1', [], (err) => {
@@ -292,6 +337,13 @@ class DatabaseService {
                 resolve();
             });
         });
+
+        // Schedule connection close after operation
+        setTimeout(() => {
+            this.closeConnection().catch(err => {
+                console.error('Error closing connection:', err);
+            });
+        }, 100);
     }
 
     // Encryption/Decryption helpers
@@ -340,18 +392,22 @@ class DatabaseService {
     // Settings operations
     async saveSettings(settings) {
         await this.ensureInitialized();
-        // Only save the modified values, not the entire default structure
+        
+        // Save zoom to electron-store (device specific)
+        if (typeof settings.globalZoom === 'number') {
+            this.store.set('globalZoom', settings.globalZoom);
+        }
+
+        // Save other settings to database
         const settingsToSave = {
             navigationButtons: Object.entries(settings.navigationButtons || {}).reduce((acc, [key, button]) => ({
                 ...acc,
                 [key]: {
-                    visible: button.visible,
-                    zoom: button.zoom
+                    visible: button.visible
                 }
             }), {}),
             customApps: Array.isArray(settings.customApps) ? settings.customApps : [],
             theme: settings.theme,
-            globalZoom: settings.globalZoom,
             autostart: settings.autostart,
             minimizedStart: settings.minimizedStart
         };
@@ -389,12 +445,15 @@ class DatabaseService {
                         console.error('Error parsing settings:', error);
                     }
                     
+                    // Get zoom from electron-store (device specific)
+                    const globalZoom = this.store.get('globalZoom', 1.0);
+                    
                     // Only return the saved values, let the context handle defaults
                     resolve({
                         navigationButtons: settings?.navigationButtons || {},
                         customApps: Array.isArray(settings?.customApps) ? settings.customApps : [],
                         theme: settings?.theme,
-                        globalZoom: settings?.globalZoom,
+                        globalZoom: globalZoom,
                         autostart: settings?.autostart,
                         minimizedStart: settings?.minimizedStart
                     });
