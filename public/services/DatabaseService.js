@@ -95,6 +95,18 @@ class DatabaseService {
                         )
                     `);
 
+                    // Secure documents table
+                    this.db.run(`
+                        CREATE TABLE IF NOT EXISTS secure_documents (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            size TEXT NOT NULL,
+                            date TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                    `);
+
                     // Custom apps table
                     this.db.run(`
                         CREATE TABLE IF NOT EXISTS custom_apps (
@@ -113,6 +125,95 @@ class DatabaseService {
                     reject(error);
                 }
             });
+        });
+    }
+
+    // Secure documents operations
+    async saveSecureDocument(document, password) {
+        await this.ensureInitialized();
+        const timestamp = Date.now();
+        
+        return new Promise((resolve, reject) => {
+            const encrypted = CryptoJS.AES.encrypt(
+                document.content.toString('base64'),
+                password
+            ).toString();
+
+            this.db.run(
+                `INSERT OR REPLACE INTO secure_documents 
+                (id, name, size, date, content, updated_at) 
+                VALUES (?, ?, ?, ?, ?, ?)`,
+                [
+                    document.id,
+                    document.name,
+                    document.size,
+                    document.date,
+                    encrypted,
+                    timestamp
+                ],
+                (err) => {
+                    if (err) reject(err);
+                    else resolve(true);
+                }
+            );
+        });
+    }
+
+    async getSecureDocuments() {
+        await this.ensureInitialized();
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                'SELECT id, name, size, date FROM secure_documents ORDER BY date DESC',
+                [],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+    }
+
+    async getSecureDocument(id, password) {
+        await this.ensureInitialized();
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT * FROM secure_documents WHERE id = ?',
+                [id],
+                (err, row) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    if (!row) {
+                        reject(new Error('Document not found'));
+                        return;
+                    }
+                    try {
+                        const decrypted = CryptoJS.AES.decrypt(row.content, password);
+                        const content = Buffer.from(decrypted.toString(CryptoJS.enc.Utf8), 'base64');
+                        resolve({
+                            ...row,
+                            content
+                        });
+                    } catch (error) {
+                        reject(new Error('Failed to decrypt document'));
+                    }
+                }
+            );
+        });
+    }
+
+    async deleteSecureDocument(id) {
+        await this.ensureInitialized();
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                'DELETE FROM secure_documents WHERE id = ?',
+                [id],
+                (err) => {
+                    if (err) reject(err);
+                    else resolve(true);
+                }
+            );
         });
     }
 

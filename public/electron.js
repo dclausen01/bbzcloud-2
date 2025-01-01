@@ -899,10 +899,6 @@ app.on('before-quit', () => {
   }
 });
 
-// Secure documents directory setup
-const SECURE_DOCS_DIR = path.join(app.getPath('userData'), 'secure-documents');
-fs.ensureDirSync(SECURE_DOCS_DIR);
-
 // Get encryption password from keytar
 async function getEncryptionPassword() {
   try {
@@ -931,8 +927,8 @@ ipcMain.handle('check-secure-store-access', async () => {
 
 ipcMain.handle('list-secure-files', async () => {
   try {
-    const secureStore = store.get('secureStore', { files: [] });
-    return { success: true, files: secureStore.files };
+    const files = await db.getSecureDocuments();
+    return { success: true, files };
   } catch (error) {
     console.error('Error listing files:', error);
     return { success: false, error: error.message };
@@ -945,31 +941,15 @@ ipcMain.handle('encrypt-and-store-file', async (event, { data, name }) => {
     const fileContent = Buffer.from(data);
     const fileId = uuidv4();
     
-    // Encrypt file content
-    const encrypted = CryptoJS.AES.encrypt(
-      fileContent.toString('base64'),
-      password
-    ).toString();
-    
-    // Save encrypted file
-    const encryptedPath = path.join(SECURE_DOCS_DIR, `${fileId}.enc`);
-    await fs.writeFile(encryptedPath, encrypted);
-    
-    // Update store with file metadata
-    const fileInfo = {
+    const document = {
       id: fileId,
       name,
       size: `${(fileContent.length / 1024).toFixed(2)} KB`,
       date: new Date().toISOString(),
-      encryptedPath
+      content: fileContent
     };
     
-    const secureStore = store.get('secureStore', { files: [] });
-    store.set('secureStore', {
-      ...secureStore,
-      files: [...secureStore.files, fileInfo]
-    });
-    
+    await db.saveSecureDocument(document, password);
     return { success: true };
   } catch (error) {
     console.error('Error encrypting file:', error);
@@ -979,20 +959,7 @@ ipcMain.handle('encrypt-and-store-file', async (event, { data, name }) => {
 
 ipcMain.handle('delete-secure-file', async (event, fileId) => {
   try {
-    const secureStore = store.get('secureStore', { files: [] });
-    const file = secureStore.files.find(f => f.id === fileId);
-    if (!file) throw new Error('Datei nicht gefunden');
-    
-    // Delete the encrypted file
-    await fs.remove(file.encryptedPath);
-    
-    // Update store
-    const updatedFiles = secureStore.files.filter(f => f.id !== fileId);
-    store.set('secureStore', {
-      ...secureStore,
-      files: updatedFiles
-    });
-    
+    await db.deleteSecureDocument(fileId);
     return { success: true };
   } catch (error) {
     console.error('Error deleting secure file:', error);
@@ -1003,20 +970,11 @@ ipcMain.handle('delete-secure-file', async (event, fileId) => {
 ipcMain.handle('open-secure-file', async (event, fileId) => {
   try {
     const password = await getEncryptionPassword();
-    const secureStore = store.get('secureStore', { files: [] });
-    const file = secureStore.files.find(f => f.id === fileId);
-    if (!file) throw new Error('Datei nicht gefunden');
-    
-    // Read encrypted content
-    const encrypted = await fs.readFile(file.encryptedPath, 'utf8');
-    
-    // Decrypt content
-    const decrypted = CryptoJS.AES.decrypt(encrypted, password);
-    const fileContent = Buffer.from(decrypted.toString(CryptoJS.enc.Utf8), 'base64');
+    const document = await db.getSecureDocument(fileId, password);
     
     // Create temp file
-    const tempPath = path.join(os.tmpdir(), file.name);
-    await fs.writeFile(tempPath, fileContent);
+    const tempPath = path.join(os.tmpdir(), document.name);
+    await fs.writeFile(tempPath, document.content);
     
     // Open file with default application
     shell.openPath(tempPath);
@@ -1026,19 +984,13 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
       try {
         // Re-encrypt and update when file changes
         const updatedContent = await fs.readFile(tempPath);
-        const newEncrypted = CryptoJS.AES.encrypt(
-          updatedContent.toString('base64'),
-          password
-        ).toString();
+        const updatedDocument = {
+          ...document,
+          content: updatedContent,
+          date: new Date().toISOString()
+        };
         
-        await fs.writeFile(file.encryptedPath, newEncrypted);
-        
-        // Update file metadata with new date
-        const secureStore = store.get('secureStore', { files: [] });
-        const updatedFiles = secureStore.files.map(f => 
-          f.id === fileId ? { ...f, date: new Date().toISOString() } : f
-        );
-        store.set('secureStore', { ...secureStore, files: updatedFiles });
+        await db.saveSecureDocument(updatedDocument, password);
         
         // Notify frontend of file update
         mainWindow?.webContents.send('secure-file-updated');
