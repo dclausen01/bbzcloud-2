@@ -30,6 +30,7 @@ import {
   InputGroup,
   InputRightElement,
   VStack,
+  Text,
 } from '@chakra-ui/react';
 import { useSettings } from './context/SettingsContext';
 import NavigationBar from './components/NavigationBar';
@@ -43,21 +44,25 @@ import SecureDocuments from './components/SecureDocuments';
 function App() {
   const { setColorMode } = useColorMode();
   const { settings } = useSettings();
-  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [welcomeStep, setWelcomeStep] = useState(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [bbbPassword, setBbbPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showBBBPassword, setShowBBBPassword] = useState(false);
   const [isLoadingEmail, setIsLoadingEmail] = useState(true);
+  const [dbPath, setDbPath] = useState('');
+  const [isMigrating, setIsMigrating] = useState(false);
 
   useEffect(() => {
     setColorMode(settings.theme);
   }, [settings.theme, setColorMode]);
 
   useEffect(() => {
-    const loadCredentials = async () => {
+    const loadInitialData = async () => {
       try {
+        // Load credentials
         const [emailResult, passwordResult, bbbPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',
@@ -73,10 +78,14 @@ function App() {
           })
         ]);
 
+        // Load database path
+        const path = await window.electron.getDatabasePath();
+        setDbPath(path);
+
         if (emailResult.success && emailResult.password) {
           setEmail(emailResult.password);
         } else {
-          setShowEmailModal(true);
+          setShowWelcomeModal(true);
         }
 
         if (passwordResult.success && passwordResult.password) {
@@ -87,17 +96,22 @@ function App() {
           setBbbPassword(bbbPasswordResult.password);
         }
       } catch (error) {
-        console.error('Error loading credentials:', error);
+        console.error('Error loading initial data:', error);
+        setShowWelcomeModal(true);
       } finally {
         setIsLoadingEmail(false);
       }
     };
-    loadCredentials();
+    loadInitialData();
   }, []);
 
   const handleCredentialsSubmit = async () => {
     if (!email) return;
-    
+
+    if (welcomeStep === 1) {
+      setWelcomeStep(2);
+      return;
+    }
     try {
       await Promise.all([
         window.electron.saveCredentials({
@@ -117,7 +131,7 @@ function App() {
         }) : Promise.resolve()
       ]);
       
-      setShowEmailModal(false);
+      setShowWelcomeModal(false);
     } catch (error) {
       console.error('Error saving credentials:', error);
       toast({
@@ -454,61 +468,154 @@ function App() {
         </Flex>
       </Box>
 
-      <Modal isOpen={showEmailModal} onClose={() => {}} closeOnOverlayClick={false}>
+      <Modal isOpen={showWelcomeModal} onClose={() => {}} closeOnOverlayClick={false}>
         <ModalOverlay />
         <ModalContent>
           <ModalHeader>Willkommen bei BBZCloud</ModalHeader>
           <ModalBody>
             <VStack spacing={4}>
-              <FormControl isRequired>
-                <FormLabel>E-Mail-Adresse</FormLabel>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="vorname.nachname@bbz-rd-eck.de oder @sus.bbz-rd-eck.de"
-                />
-              </FormControl>
+              {welcomeStep === 1 && (
+                <>
+                  <FormControl isRequired>
+                    <FormLabel>E-Mail-Adresse</FormLabel>
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="vorname.nachname@bbz-rd-eck.de oder @sus.bbz-rd-eck.de"
+                    />
+                  </FormControl>
 
-              <FormControl>
-                <FormLabel>Passwort</FormLabel>
-                <InputGroup>
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Passwort (optional)"
-                  />
-                  <InputRightElement width="4.5rem">
-                    <Button h="1.75rem" size="sm" onClick={() => setShowPassword(!showPassword)}>
-                      {showPassword ? 'Verbergen' : 'Zeigen'}
-                    </Button>
-                  </InputRightElement>
-                </InputGroup>
-              </FormControl>
+                  <FormControl>
+                    <FormLabel>Passwort</FormLabel>
+                    <InputGroup>
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Passwort (optional)"
+                      />
+                      <InputRightElement width="4.5rem">
+                        <Button h="1.75rem" size="sm" onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? 'Verbergen' : 'Zeigen'}
+                        </Button>
+                      </InputRightElement>
+                    </InputGroup>
+                  </FormControl>
 
-              <FormControl>
-                <FormLabel>Passwort für BigBlueButton</FormLabel>
-                <InputGroup>
-                  <Input
-                    type={showBBBPassword ? 'text' : 'password'}
-                    value={bbbPassword}
-                    onChange={(e) => setBbbPassword(e.target.value)}
-                    placeholder="BBB Passwort (optional)"
-                  />
-                  <InputRightElement width="4.5rem">
-                    <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
-                      {showBBBPassword ? 'Verbergen' : 'Zeigen'}
-                    </Button>
-                  </InputRightElement>
-                </InputGroup>
-              </FormControl>
+                  <FormControl>
+                    <FormLabel>Passwort für BigBlueButton</FormLabel>
+                    <InputGroup>
+                      <Input
+                        type={showBBBPassword ? 'text' : 'password'}
+                        value={bbbPassword}
+                        onChange={(e) => setBbbPassword(e.target.value)}
+                        placeholder="BBB Passwort (optional)"
+                      />
+                      <InputRightElement width="4.5rem">
+                        <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
+                          {showBBBPassword ? 'Verbergen' : 'Zeigen'}
+                        </Button>
+                      </InputRightElement>
+                    </InputGroup>
+                  </FormControl>
+                </>
+              )}
+
+              {welcomeStep === 2 && (
+                <>
+                  <Text>
+                    Wählen Sie einen Speicherort für die Datenbank aus. Hier werden Ihre Einstellungen, 
+                    ToDos und benutzerdefinierten Apps gespeichert.
+                  </Text>
+                  <FormControl>
+                    <FormLabel>Datenbank-Speicherort</FormLabel>
+                    <Input value={dbPath} isReadOnly placeholder="Standardspeicherort" />
+                  </FormControl>
+                  <Button onClick={async () => {
+                    try {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = '.db';
+                      input.style.display = 'none';
+                      document.body.appendChild(input);
+
+                      input.onchange = async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const result = await window.electron.changeDatabaseLocation(file.path);
+                          if (result.success) {
+                            setDbPath(file.path);
+                            toast({
+                              title: 'Datenbank-Speicherort festgelegt',
+                              status: 'success',
+                              duration: 3000,
+                            });
+                          } else {
+                            throw new Error(result.error);
+                          }
+                        }
+                        document.body.removeChild(input);
+                      };
+
+                      input.click();
+                    } catch (error) {
+                      toast({
+                        title: 'Fehler beim Festlegen des Speicherorts',
+                        description: error.message,
+                        status: 'error',
+                        duration: 5000,
+                      });
+                    }
+                  }}>
+                    Speicherort auswählen
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        setIsMigrating(true);
+                        const result = await window.electron.migrateFromStore();
+                        if (result.success) {
+                          toast({
+                            title: 'Migration erfolgreich',
+                            description: 'Alle Daten wurden in die neue Datenbank übertragen',
+                            status: 'success',
+                            duration: 3000,
+                          });
+                          handleCredentialsSubmit();
+                        } else {
+                          throw new Error(result.error);
+                        }
+                      } catch (error) {
+                        toast({
+                          title: 'Fehler bei der Migration',
+                          description: error.message,
+                          status: 'error',
+                          duration: 5000,
+                        });
+                      } finally {
+                        setIsMigrating(false);
+                      }
+                    }}
+                    isLoading={isMigrating}
+                    loadingText="Migriere..."
+                  >
+                    Daten aus alter Speicherung migrieren
+                  </Button>
+                </>
+              )}
             </VStack>
           </ModalBody>
           <ModalFooter>
-            <Button colorScheme="blue" onClick={handleCredentialsSubmit} isDisabled={!email}>
-              Bestätigen
-            </Button>
+            {welcomeStep === 1 ? (
+              <Button colorScheme="blue" onClick={handleCredentialsSubmit} isDisabled={!email}>
+                Weiter
+              </Button>
+            ) : (
+              <Button colorScheme="blue" onClick={handleCredentialsSubmit}>
+                Fertig
+              </Button>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>

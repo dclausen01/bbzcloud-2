@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   VStack,
   FormControl,
@@ -33,6 +33,8 @@ function SettingsPanel({ onClose }) {
   const [showBBBPassword, setShowBBBPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [dbPath, setDbPath] = useState('');
+  const [isMigrating, setIsMigrating] = useState(false);
   const [credentials, setCredentials] = useState({
     email: '',
     password: '',
@@ -76,6 +78,90 @@ function SettingsPanel({ onClose }) {
     };
 
     loadCredentials();
+    
+    // Load database path
+    const loadDbPath = async () => {
+      try {
+        const path = await window.electron.getDatabasePath();
+        setDbPath(path);
+      } catch (error) {
+        console.error('Error loading database path:', error);
+      }
+    };
+    loadDbPath();
+
+    // Setup database change listener
+    const unsubscribe = window.electron.on('database-changed', () => {
+      // Reload settings and todos when database changes
+      window.location.reload();
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [toast]);
+
+  const handleChangeDatabaseLocation = useCallback(async () => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.db';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const result = await window.electron.changeDatabaseLocation(file.path);
+          if (result.success) {
+            setDbPath(file.path);
+            toast({
+              title: 'Datenbank-Speicherort geändert',
+              status: 'success',
+              duration: 3000,
+            });
+          } else {
+            throw new Error(result.error);
+          }
+        }
+        document.body.removeChild(input);
+      };
+
+      input.click();
+    } catch (error) {
+      toast({
+        title: 'Fehler beim Ändern des Speicherorts',
+        description: error.message,
+        status: 'error',
+        duration: 5000,
+      });
+    }
+  }, [toast]);
+
+  const handleMigrateFromStore = useCallback(async () => {
+    try {
+      setIsMigrating(true);
+      const result = await window.electron.migrateFromStore();
+      if (result.success) {
+        toast({
+          title: 'Migration erfolgreich',
+          description: 'Alle Daten wurden in die neue Datenbank übertragen',
+          status: 'success',
+          duration: 3000,
+        });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      toast({
+        title: 'Fehler bei der Migration',
+        description: error.message,
+        status: 'error',
+        duration: 5000,
+      });
+    } finally {
+      setIsMigrating(false);
+    }
   }, [toast]);
 
   const handleSaveCredentials = async () => {
@@ -384,6 +470,32 @@ function SettingsPanel({ onClose }) {
 
           <Button onClick={handleAddCustomApp} colorScheme="blue">
             Benutzerdefinierte App hinzufügen
+          </Button>
+        </VStack>
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <Text fontSize="lg" fontWeight="bold" mb={4}>
+          Datenbank-Einstellungen
+        </Text>
+        <VStack spacing={4} align="stretch">
+          <FormControl>
+            <FormLabel>Aktueller Speicherort</FormLabel>
+            <Input value={dbPath} isReadOnly />
+          </FormControl>
+
+          <Button onClick={handleChangeDatabaseLocation}>
+            Speicherort ändern
+          </Button>
+
+          <Button
+            onClick={handleMigrateFromStore}
+            isLoading={isMigrating}
+            loadingText="Migriere..."
+          >
+            Daten aus alter Speicherung migrieren
           </Button>
         </VStack>
       </Box>
