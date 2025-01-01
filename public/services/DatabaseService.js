@@ -8,30 +8,47 @@ const Store = require('electron-store');
 class DatabaseService {
     constructor() {
         this.store = new Store();
-        this.initializeDatabase();
         this.setupEncryption();
+        // Initialize database asynchronously
+        this.initPromise = this.initializeDatabase().catch(err => {
+            console.error('Failed to initialize database:', err);
+        });
     }
 
-    initializeDatabase() {
+    async initializeDatabase() {
         // Get database path from electron-store or use default
         const defaultPath = path.join(app.getPath('userData'), 'bbzcloud.db');
         this.dbPath = this.store.get('databasePath', defaultPath);
         
         // Ensure directory exists
-        fs.ensureDirSync(path.dirname(this.dbPath));
+        await fs.ensureDir(path.dirname(this.dbPath));
         
         // Initialize database connection
-        this.db = new sqlite3.Database(this.dbPath, (err) => {
-            if (err) {
-                console.error('Database connection error:', err);
-                return;
-            }
-            // Enable foreign keys and create tables
-            this.db.run('PRAGMA foreign_keys = ON', (err) => {
-                if (err) console.error('Error enabling foreign keys:', err);
-                this.createTables();
+        await new Promise((resolve, reject) => {
+            this.db = new sqlite3.Database(this.dbPath, (err) => {
+                if (err) {
+                    console.error('Database connection error:', err);
+                    reject(err);
+                    return;
+                }
+                resolve();
             });
         });
+
+        // Enable foreign keys
+        await new Promise((resolve, reject) => {
+            this.db.run('PRAGMA foreign_keys = ON', (err) => {
+                if (err) {
+                    console.error('Error enabling foreign keys:', err);
+                    reject(err);
+                    return;
+                }
+                resolve();
+            });
+        });
+
+        // Create tables
+        await this.createTables();
     }
 
     setupEncryption() {
@@ -44,51 +61,64 @@ class DatabaseService {
         this.encryptionKey = encryptionKey;
     }
 
-    createTables() {
-        this.db.serialize(() => {
-            // Settings table
-            this.db.run(`
-                CREATE TABLE IF NOT EXISTS settings (
-                    id TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at INTEGER NOT NULL
-                )
-            `);
+    async createTables() {
+        return new Promise((resolve, reject) => {
+            this.db.serialize(() => {
+                try {
+                    // Settings table
+                    this.db.run(`
+                        CREATE TABLE IF NOT EXISTS settings (
+                            id TEXT PRIMARY KEY,
+                            value TEXT NOT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                    `);
 
-            // Todos table
-            this.db.run(`
-                CREATE TABLE IF NOT EXISTS todos (
-                    id INTEGER PRIMARY KEY,
-                    text TEXT NOT NULL,
-                    completed BOOLEAN NOT NULL DEFAULT 0,
-                    folder TEXT NOT NULL DEFAULT 'Default',
-                    created_at TEXT NOT NULL,
-                    reminder TEXT,
-                    updated_at INTEGER NOT NULL
-                )
-            `);
+                    // Todos table
+                    this.db.run(`
+                        CREATE TABLE IF NOT EXISTS todos (
+                            id INTEGER PRIMARY KEY,
+                            text TEXT NOT NULL,
+                            completed BOOLEAN NOT NULL DEFAULT 0,
+                            folder TEXT NOT NULL DEFAULT 'Default',
+                            created_at TEXT NOT NULL,
+                            reminder TEXT,
+                            updated_at INTEGER NOT NULL
+                        )
+                    `);
 
-            // Todo folders table
-            this.db.run(`
-                CREATE TABLE IF NOT EXISTS todo_folders (
-                    name TEXT PRIMARY KEY,
-                    updated_at INTEGER NOT NULL
-                )
-            `);
+                    // Todo folders table
+                    this.db.run(`
+                        CREATE TABLE IF NOT EXISTS todo_folders (
+                            name TEXT PRIMARY KEY,
+                            updated_at INTEGER NOT NULL
+                        )
+                    `);
 
-            // Custom apps table
-            this.db.run(`
-                CREATE TABLE IF NOT EXISTS custom_apps (
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    url TEXT NOT NULL,
-                    button_variant TEXT NOT NULL DEFAULT 'solid',
-                    favicon TEXT,
-                    zoom REAL NOT NULL DEFAULT 1.0,
-                    updated_at INTEGER NOT NULL
-                )
-            `);
+                    // Custom apps table
+                    this.db.run(`
+                        CREATE TABLE IF NOT EXISTS custom_apps (
+                            id TEXT PRIMARY KEY,
+                            title TEXT NOT NULL,
+                            url TEXT NOT NULL,
+                            button_variant TEXT NOT NULL DEFAULT 'solid',
+                            favicon TEXT,
+                            zoom REAL NOT NULL DEFAULT 1.0,
+                            updated_at INTEGER NOT NULL
+                        )
+                    `);
+
+                    resolve();
+                } catch (error) {
+                    reject(error);
+                }
+            });
         });
+    }
+
+    // Helper to ensure database is initialized before operations
+    async ensureInitialized() {
+        await this.initPromise;
     }
 
     // Encryption/Decryption helpers
@@ -108,6 +138,7 @@ class DatabaseService {
 
     // Settings operations
     async saveSettings(settings) {
+        await this.ensureInitialized();
         return new Promise((resolve, reject) => {
             const timestamp = Date.now();
             const encryptedValue = this.encrypt(settings);
@@ -124,6 +155,7 @@ class DatabaseService {
     }
 
     async getSettings() {
+        await this.ensureInitialized();
         return new Promise((resolve, reject) => {
             this.db.get(
                 'SELECT value FROM settings WHERE id = ?',
@@ -138,6 +170,7 @@ class DatabaseService {
 
     // Todo operations
     async saveTodoState(todoState) {
+        await this.ensureInitialized();
         return new Promise((resolve, reject) => {
             const timestamp = Date.now();
             
@@ -199,6 +232,7 @@ class DatabaseService {
     }
 
     async getTodoState() {
+        await this.ensureInitialized();
         return new Promise((resolve, reject) => {
             const result = {
                 todos: [],
@@ -252,6 +286,7 @@ class DatabaseService {
 
     // Custom apps operations
     async saveCustomApps(apps) {
+        await this.ensureInitialized();
         return new Promise((resolve, reject) => {
             const timestamp = Date.now();
             
@@ -295,6 +330,7 @@ class DatabaseService {
     }
 
     async getCustomApps() {
+        await this.ensureInitialized();
         return new Promise((resolve, reject) => {
             this.db.all('SELECT * FROM custom_apps ORDER BY title', [], (err, rows) => {
                 if (err) {
@@ -319,6 +355,7 @@ class DatabaseService {
     }
 
     async changeDatabaseLocation(newPath) {
+        await this.ensureInitialized();
         if (!newPath) {
             throw new Error('Invalid path');
         }
@@ -357,6 +394,7 @@ class DatabaseService {
 
     // Get last update timestamp for change detection
     async getLastUpdateTimestamp() {
+        await this.ensureInitialized();
         return new Promise((resolve, reject) => {
             this.db.get(`
                 SELECT MAX(updated_at) as last_update
@@ -378,6 +416,7 @@ class DatabaseService {
 
     // Migration helpers
     async migrateFromElectronStore() {
+        await this.ensureInitialized();
         const oldSettings = this.store.get('settings');
         const oldTodoState = this.store.get('todoState');
 

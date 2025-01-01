@@ -22,6 +22,9 @@ import {
   Select,
   FormControl,
   FormLabel,
+  Spinner,
+  Text,
+  Center,
 } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon, EditIcon, TimeIcon, ChevronDownIcon, DragHandleIcon } from '@chakra-ui/icons';
 import { DragDropContext, Droppable as DroppableBase, Draggable } from 'react-beautiful-dnd';
@@ -183,18 +186,26 @@ const TodoList = ({ initialText, onTextAdded }) => {
   const [inputValue, setInputValue] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
   const [editingTodo, setEditingTodo] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const toast = useToast();
   const bg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
-  // Load todo state on mount and save on changes
+  // Load todo state on mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        const { todoState: savedState } = await window.electron.getTodoState();
-        setTodoState(savedState);
+        setIsLoading(true);
+        setError(null);
+        const result = await window.electron.getTodoState();
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        setTodoState(result.todoState);
       } catch (error) {
         console.error('Error loading todo state:', error);
+        setError(error.message);
         toast({
           title: 'Fehler beim Laden',
           description: `Fehler beim Laden der Todos: ${error.message}`,
@@ -202,14 +213,36 @@ const TodoList = ({ initialText, onTextAdded }) => {
           duration: 5000,
           isClosable: true,
         });
+      } finally {
+        setIsLoading(false);
       }
     };
     loadData();
-  }, []);
+  }, [toast]);
 
+  // Save todo state on changes
   useEffect(() => {
-    window.electron.saveTodoState(todoState);
-  }, [todoState]);
+    const saveTodos = async () => {
+      try {
+        const result = await window.electron.saveTodoState(todoState);
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+      } catch (error) {
+        console.error('Error saving todo state:', error);
+        toast({
+          title: 'Fehler beim Speichern',
+          description: `Fehler beim Speichern der Todos: ${error.message}`,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    };
+    if (!isLoading) {
+      saveTodos();
+    }
+  }, [todoState, isLoading, toast]);
 
   const handleAddTodo = useCallback((text = inputValue) => {
     const trimmedText = text.trim();
@@ -530,6 +563,34 @@ const TodoList = ({ initialText, onTextAdded }) => {
       isClosable: true,
     });
   };
+
+  if (isLoading) {
+    return (
+      <Center p={8}>
+        <VStack spacing={4}>
+          <Spinner size="xl" />
+          <Text>Lade Todos...</Text>
+        </VStack>
+      </Center>
+    );
+  }
+
+  if (error) {
+    return (
+      <Center p={8}>
+        <VStack spacing={4}>
+          <Text color="red.500">Fehler beim Laden der Todos:</Text>
+          <Text>{error}</Text>
+          <Button
+            onClick={() => window.location.reload()}
+            colorScheme="blue"
+          >
+            Neu laden
+          </Button>
+        </VStack>
+      </Center>
+    );
+  }
 
   return (
     <Box>

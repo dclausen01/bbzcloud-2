@@ -90,44 +90,21 @@ function SettingsPanel({ onClose }) {
     };
     loadDbPath();
 
-    // Setup database change listener
-    const unsubscribe = window.electron.on('database-changed', () => {
-      // Reload settings and todos when database changes
-      window.location.reload();
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
+    // No need for database change listener since settings are managed by context
+    return () => {};
   }, [toast]);
 
   const handleChangeDatabaseLocation = useCallback(async () => {
     try {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.db';
-      input.style.display = 'none';
-      document.body.appendChild(input);
-
-      input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const result = await window.electron.changeDatabaseLocation(file.path);
-          if (result.success) {
-            setDbPath(file.path);
-            toast({
-              title: 'Datenbank-Speicherort geändert',
-              status: 'success',
-              duration: 3000,
-            });
-          } else {
-            throw new Error(result.error);
-          }
-        }
-        document.body.removeChild(input);
-      };
-
-      input.click();
+      const result = await window.electron.changeDatabaseLocation();
+      if (result.success) {
+        setDbPath(result.path);
+        toast({
+          title: 'Datenbank-Speicherort geändert',
+          status: 'success',
+          duration: 3000,
+        });
+      }
     } catch (error) {
       toast({
         title: 'Fehler beim Ändern des Speicherorts',

@@ -80,9 +80,30 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // Todo functionality
-  getTodoState: () => ipcRenderer.invoke('get-todo-state'),
-  saveTodoState: (state) => ipcRenderer.invoke('save-todo-state', state),
-  scheduleNotification: (data) => ipcRenderer.invoke('schedule-notification', data),
+  getTodoState: async () => {
+    try {
+      return await ipcRenderer.invoke('get-todo-state');
+    } catch (error) {
+      console.error('Error getting todo state:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  saveTodoState: async (state) => {
+    try {
+      return await ipcRenderer.invoke('save-todo-state', state);
+    } catch (error) {
+      console.error('Error saving todo state:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  scheduleNotification: async (data) => {
+    try {
+      return await ipcRenderer.invoke('schedule-notification', data);
+    } catch (error) {
+      console.error('Error scheduling notification:', error);
+      return { success: false, error: error.message };
+    }
+  },
   
   // Context menu todo addition listener
   onAddTodo: (callback) => {

@@ -154,13 +154,13 @@ const db = new DatabaseService();
 let fileWatcher = null;
 let lastKnownTimestamp = 0;
 
-function setupFileWatcher() {
+async function setupFileWatcher() {
   if (fileWatcher) {
     fileWatcher.close();
   }
 
   const dbPath = db.getDatabasePath();
-  lastKnownTimestamp = db.getLastUpdateTimestamp();
+  lastKnownTimestamp = await db.getLastUpdateTimestamp();
 
   fileWatcher = chokidar.watch(dbPath, {
     persistent: true,
@@ -171,8 +171,8 @@ function setupFileWatcher() {
     }
   });
 
-  fileWatcher.on('change', () => {
-    const currentTimestamp = db.getLastUpdateTimestamp();
+  fileWatcher.on('change', async () => {
+    const currentTimestamp = await db.getLastUpdateTimestamp();
     if (currentTimestamp > lastKnownTimestamp) {
       lastKnownTimestamp = currentTimestamp;
       mainWindow?.webContents.send('database-changed');
@@ -521,11 +521,69 @@ ipcMain.handle('get-database-path', () => {
   return db.getDatabasePath();
 });
 
-ipcMain.handle('change-database-location', async (event, newPath) => {
+ipcMain.handle('change-database-location', async (event) => {
   try {
-    await db.changeDatabaseLocation(newPath);
-    setupFileWatcher(); // Reset file watcher for new location
-    return { success: true };
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Wählen Sie einen Ordner für die Datenbank'
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      const selectedDir = result.filePaths[0];
+      const newDbPath = path.join(selectedDir, 'bbzcloud.db');
+
+      // Check if database file already exists
+      if (fs.existsSync(newDbPath)) {
+        const { response } = await dialog.showMessageBox(mainWindow, {
+          type: 'question',
+          buttons: ['Bestehende Datenbank verwenden', 'Neue Datenbank erstellen', 'Abbrechen'],
+          defaultId: 0,
+          title: 'Datenbank existiert bereits',
+          message: 'Eine Datenbank existiert bereits in diesem Ordner.',
+          detail: 'Möchten Sie die bestehende Datenbank verwenden oder eine neue erstellen?'
+        });
+
+        if (response === 2) { // Cancel
+          return { success: false };
+        }
+
+        if (response === 1) { // Create new
+          await fs.remove(newDbPath); // Delete existing file
+          // Show new database creation dialog
+          const { response: newDbResponse } = await dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            buttons: ['OK', 'Abbrechen'],
+            defaultId: 0,
+            title: 'Neue Datenbank',
+            message: 'Es wird eine neue Datenbank erstellt',
+            detail: `Eine neue Datenbank wird im ausgewählten Ordner erstellt:\n${newDbPath}`
+          });
+
+          if (newDbResponse === 1) { // Cancel
+            return { success: false };
+          }
+        }
+      } else {
+        // If no database exists, inform user and create new
+        const { response } = await dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          buttons: ['OK', 'Abbrechen'],
+          defaultId: 0,
+          title: 'Neue Datenbank',
+          message: 'Es wird eine neue Datenbank erstellt',
+          detail: `Eine neue Datenbank wird im ausgewählten Ordner erstellt:\n${newDbPath}`
+        });
+
+        if (response === 1) { // Cancel
+          return { success: false };
+        }
+      }
+
+      await db.changeDatabaseLocation(newDbPath);
+      await setupFileWatcher(); // Reset file watcher for new location
+      return { success: true, path: newDbPath };
+    }
+    return { success: false };
   } catch (error) {
     console.error('Error changing database location:', error);
     return { success: false, error: error.message };
@@ -535,7 +593,7 @@ ipcMain.handle('change-database-location', async (event, newPath) => {
 // Todo related IPC handlers
 ipcMain.handle('get-todo-state', async () => {
   try {
-    const todoState = db.getTodoState();
+    const todoState = await db.getTodoState();
     return { success: true, todoState };
   } catch (error) {
     console.error('Error getting todo state:', error);
@@ -554,7 +612,7 @@ ipcMain.handle('get-todo-state', async () => {
 
 ipcMain.handle('save-todo-state', async (event, todoState) => {
   try {
-    db.saveTodoState(todoState);
+    await db.saveTodoState(todoState);
     return { success: true };
   } catch (error) {
     console.error('Error saving todo state:', error);
@@ -652,7 +710,7 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
 
 ipcMain.handle('save-settings', async (event, settings) => {
   try {
-    db.saveSettings(settings);
+    await db.saveSettings(settings);
     updateAutostart();
     const theme = settings.theme || 'light';
     
@@ -670,7 +728,7 @@ ipcMain.handle('save-settings', async (event, settings) => {
 
 ipcMain.handle('get-settings', async () => {
   try {
-    const settings = db.getSettings();
+    const settings = await db.getSettings();
     return { success: true, settings: settings || {} };
   } catch (error) {
     console.error('Error getting settings:', error);
@@ -1013,7 +1071,7 @@ app.on('ready', async () => {
   createTray();
   createSplashWindow();
   createWindow();
-  setupFileWatcher();
+  await setupFileWatcher();
   autoUpdater.checkForUpdatesAndNotify();
 
   // Handle system resume events
