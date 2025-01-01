@@ -748,7 +748,7 @@ ipcMain.handle('migrate-from-store', async () => {
 });
 
 ipcMain.handle('get-version', () => {
-  return require('../package.json').version;
+  return app.getVersion();
 });
 
 ipcMain.handle('get-asset-path', async (event, asset) => {

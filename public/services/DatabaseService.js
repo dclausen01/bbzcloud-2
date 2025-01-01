@@ -17,8 +17,8 @@ class DatabaseService {
 
     async initializeDatabase() {
         // Get database path from electron-store or use default
-        const defaultPath = path.join(app.getPath('userData'), 'bbzcloud.db');
-        this.dbPath = this.store.get('databasePath', defaultPath);
+        const defaultPath = path.normalize(path.join(app.getPath('userData'), 'bbzcloud.db'));
+        this.dbPath = path.normalize(this.store.get('databasePath', defaultPath));
         
         // Ensure directory exists
         await fs.ensureDir(path.dirname(this.dbPath));
@@ -220,6 +220,17 @@ class DatabaseService {
     // Helper to ensure database is initialized before operations
     async ensureInitialized() {
         await this.initPromise;
+        // Ensure database is ready by running a test query
+        await new Promise((resolve, reject) => {
+            this.db.get('SELECT 1', [], (err) => {
+                if (err) {
+                    console.error('Database not ready:', err);
+                    reject(err);
+                    return;
+                }
+                resolve();
+            });
+        });
     }
 
     // Encryption/Decryption helpers
@@ -374,8 +385,12 @@ class DatabaseService {
                             }
                             if (row) {
                                 const settings = this.decrypt(row.value);
-                                result.sortType = settings.sortType;
-                                result.selectedFolder = settings.selectedFolder;
+                                if (settings && settings.sortType) {
+                                    result.sortType = settings.sortType;
+                                }
+                                if (settings && settings.selectedFolder) {
+                                    result.selectedFolder = settings.selectedFolder;
+                                }
                             }
                             resolve(result);
                         });
@@ -474,20 +489,42 @@ class DatabaseService {
 
                 // Copy current database to new location if it doesn't exist
                 if (fs.existsSync(this.dbPath) && !fs.existsSync(newPath)) {
-                    fs.copySync(this.dbPath, newPath);
+                    try {
+                        // Normalize paths for cross-platform compatibility
+                        const normalizedSource = path.normalize(this.dbPath);
+                        const normalizedDest = path.normalize(newPath);
+                        fs.copySync(normalizedSource, normalizedDest);
+                    } catch (error) {
+                        console.error('Error copying database:', error);
+                        reject(error);
+                        return;
+                    }
                 }
 
                 // Update path in electron-store
                 this.store.set('databasePath', newPath);
                 this.dbPath = newPath;
 
-                // Initialize new connection
-                this.db = new sqlite3.Database(this.dbPath, (err) => {
+                // Initialize new connection and recreate tables
+                this.db = new sqlite3.Database(this.dbPath, async (err) => {
                     if (err) {
                         reject(err);
                         return;
                     }
-                    resolve(true);
+                    try {
+                        // Ensure tables are created in new location
+                        await this.createTables();
+                        // Enable foreign keys
+                        await new Promise((res, rej) => {
+                            this.db.run('PRAGMA foreign_keys = ON', (err) => {
+                                if (err) rej(err);
+                                else res();
+                            });
+                        });
+                        resolve(true);
+                    } catch (error) {
+                        reject(error);
+                    }
                 });
             });
         });
@@ -530,8 +567,8 @@ class DatabaseService {
                 await this.saveTodoState(oldTodoState);
             }
 
-            // Backup old data
-            const backupPath = path.join(app.getPath('userData'), 'store-backup.json');
+            // Backup old data with normalized path
+            const backupPath = path.normalize(path.join(app.getPath('userData'), 'store-backup.json'));
             await fs.writeJson(backupPath, {
                 settings: oldSettings,
                 todoState: oldTodoState

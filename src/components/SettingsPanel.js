@@ -40,9 +40,29 @@ function SettingsPanel({ onClose }) {
     password: '',
     bbbPassword: ''
   });
+  const [version, setVersion] = useState('');
   const toast = useToast();
 
   useEffect(() => {
+    // Load version
+    const loadVersion = async () => {
+      try {
+        const ver = await window.electron.getVersion();
+        setVersion(ver);
+      } catch (error) {
+        console.error('Error loading version:', error);
+        toast({
+          title: 'Fehler beim Laden der Version',
+          description: error.message,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    };
+    loadVersion();
+
+    // Load credentials
     const loadCredentials = async () => {
       setIsLoading(true);
       try {
@@ -262,11 +282,23 @@ function SettingsPanel({ onClose }) {
     );
   }
 
+  // Ensure settings object exists to prevent errors
+  if (!settings) {
+    return (
+      <VStack spacing={4} align="center" justify="center" h="100%">
+        <Text>Fehler beim Laden der Einstellungen</Text>
+        <Button onClick={onClose}>Schließen</Button>
+      </VStack>
+    );
+  }
+
   return (
     <VStack spacing={6} align="stretch">
-      <Box fontSize="sm" color="gray.500" textAlign="right" mb={-4}>
-        <Text>Version {window.electron.getVersion()} • <a href="https://github.com/koyuawsmbrtn/bbz-cloud" style={{textDecoration: 'underline'}}>GitHub</a></Text>
-      </Box>
+      {version && (
+        <Box fontSize="sm" color="gray.500" textAlign="right" mb={-4}>
+          <Text>Version {version} • <a href="https://github.com/koyuawsmbrtn/bbz-cloud" style={{textDecoration: 'underline'}}>GitHub</a></Text>
+        </Box>
+      )}
       <Box>
         <Text fontSize="lg" fontWeight="bold" mb={4}>
           Allgemein
