@@ -17,6 +17,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [overviewImagePath, setOverviewImagePath] = useState('');
   const [imageError, setImageError] = useState(false);
   const [credsAreSet, setCredsAreSet] = useState({});
+  const [isStartupPeriod, setIsStartupPeriod] = useState(true);
+
+  // Disable error toasts for first 30 seconds after startup
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsStartupPeriod(false);
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, []);
   const toast = useToast();
   const { colorMode, setColorMode } = useColorMode();
   const { settings } = useSettings();
@@ -390,13 +399,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
       webview.addEventListener('did-fail-load', (error) => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
-        toast({
-          title: 'Fehler beim Laden der Seite',
-          description: error.errorDescription || 'Die Seite konnte nicht geladen werden',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
+        // Only show error toast for actual failures (errorCode < -3) after startup period
+        if (!isStartupPeriod && error.errorCode < -3) {
+          toast({
+            title: 'Fehler beim Laden der Seite',
+            description: error.errorDescription || 'Die Seite konnte nicht geladen werden',
+            status: 'error',
+            duration: 5000,
+            isClosable: true,
+          });
+        }
       });
     });
   }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast]);
