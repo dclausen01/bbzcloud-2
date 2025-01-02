@@ -486,6 +486,79 @@ function SettingsPanel({ onClose }) {
         </VStack>
       </Box>
 
+      <Divider />
+
+      <Box>
+        <Text fontSize="lg" fontWeight="bold" mb={4}>
+          Feedback / Problem melden
+        </Text>
+        <VStack spacing={4} align="stretch">
+          <FormControl>
+            <FormLabel>Titel</FormLabel>
+            <Input
+              placeholder="Kurze Beschreibung des Problems oder Feedback"
+              id="feedback-title"
+            />
+          </FormControl>
+
+          <FormControl>
+            <FormLabel>Beschreibung</FormLabel>
+            <Input
+              as="textarea"
+              placeholder="Detaillierte Beschreibung..."
+              minHeight="100px"
+              id="feedback-body"
+            />
+          </FormControl>
+
+          <Button
+            colorScheme="blue"
+            onClick={async () => {
+              const title = document.getElementById('feedback-title').value;
+              const body = document.getElementById('feedback-body').value;
+              
+              if (!title || !body) {
+                toast({
+                  title: 'Fehler',
+                  description: 'Bitte füllen Sie alle Felder aus',
+                  status: 'error',
+                  duration: 3000,
+                });
+                return;
+              }
+
+              try {
+                const result = await window.electron.createGithubIssue({ title, body });
+                if (result.success) {
+                  toast({
+                    title: 'Feedback gesendet',
+                    description: 'Vielen Dank für Ihr Feedback!',
+                    status: 'success',
+                    duration: 3000,
+                  });
+                  // Clear form
+                  document.getElementById('feedback-title').value = '';
+                  document.getElementById('feedback-body').value = '';
+                  // Open the created issue in browser
+                  window.electron.openExternalWindow({ url: result.url });
+                } else {
+                  throw new Error(result.error);
+                }
+              } catch (error) {
+                toast({
+                  title: 'Fehler beim Senden',
+                  description: error.message,
+                  status: 'error',
+                  duration: 5000,
+                });
+              }
+            }}
+          >
+            Feedback senden
+          </Button>
+        </VStack>
+      </Box>
+
       <Button onClick={onClose} mt={4}>
         Schließen
       </Button>

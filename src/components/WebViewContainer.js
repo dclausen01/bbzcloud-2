@@ -19,11 +19,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [credsAreSet, setCredsAreSet] = useState({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
 
-  // Disable error toasts for first 30 seconds after startup
+  // Disable error toasts for first 15 seconds after startup
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsStartupPeriod(false);
-    }, 30000);
+    }, 15000);
     return () => clearTimeout(timer);
   }, []);
   const toast = useToast();
@@ -81,7 +81,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         setOverviewImagePath(imagePath);
         setImageError(false);
       } catch (error) {
-        console.error('Fehler beim Laden des Übersichtsbildes:', error);
         setImageError(true);
       }
     };
@@ -300,8 +299,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         // Initial check
         checkNotifications();
         
-        // Set up interval
-        notificationCheckIntervalRef.current = setInterval(checkNotifications, 5000);
+        // Set up interval with a more reasonable frequency
+        notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
       });
     };
 
@@ -375,7 +374,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             try {
               // Get selected text directly from the webview
               const selectedText = await webview.executeJavaScript(`window.getSelection().toString()`);
-              console.log('WebView - Selected text:', selectedText);
               if (selectedText) {
                 window.electron.send('showContextMenu', {
                   x: e.x,
@@ -440,8 +438,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               objectFit="contain"
               borderRadius="md"
               boxShadow="lg"
-              onError={(e) => {
-                console.error('Fehler beim Laden des Bildes:', e);
+              onError={() => {
                 setImageError(true);
                 toast({
                   title: 'Fehler beim Laden des Übersichtsbildes',

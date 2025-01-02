@@ -181,6 +181,16 @@ contextBridge.exposeInMainWorld('electron', {
     if (validChannels.includes(channel)) {
       ipcRenderer.removeListener(channel, callback);
     }
+  },
+
+  // GitHub issue creation
+  createGithubIssue: async (data) => {
+    try {
+      return await ipcRenderer.invoke('create-github-issue', data);
+    } catch (error) {
+      console.error('Error creating GitHub issue:', error);
+      return { success: false, error: error.message };
+    }
   }
 });
 

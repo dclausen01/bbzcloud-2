@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor } = require('electron');
 const path = require('path');
+const axios = require('axios');
 
 // List of webviews that need to be reloaded on system resume
 const webviewsToReload = ['outlook', 'wiki', 'handbook', 'moodle', 'webuntis'];
@@ -38,6 +39,25 @@ if (!gotTheLock) {
     }
   });
 }
+
+// GitHub issue creation handler
+ipcMain.handle('create-github-issue', async (event, { title, body }) => {
+  try {
+    const response = await axios.post('https://api.github.com/repos/koyuawsmbrtn/bbz-cloud/issues', {
+      title,
+      body
+    }, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    
+    return { success: true, url: response.data.html_url };
+  } catch (error) {
+    console.error('Error creating GitHub issue:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 // Initialize electron store with minimal schema for window state and secure store
 const store = new Store({
@@ -192,8 +212,6 @@ const downloadTypes = [
   '.AppImage', '.snap', '.bin', '.sh', '.doc', '.docx', '.fls', '.pdf'
 ];
 
-const keywordsMicrosoft = ['onedrive', 'onenote', 'download.aspx'];
-
 // Update autostart based on settings
 function updateAutostart() {
   const settings = store.get('settings');
@@ -209,11 +227,12 @@ function updateAutostart() {
 }
 
 function isDownloadType(url) {
-  return downloadTypes.some(type => url.includes(type));
+  return downloadTypes.some(type => url.toLowerCase().includes(type));
 }
 
 function isMicrosoft(url) {
-  return keywordsMicrosoft.some(keyword => url.includes(keyword));
+  return url.toLowerCase().includes('onedrive') || 
+         url.toLowerCase().includes('sharepoint');
 }
 
 const getAssetPath = (asset) => {

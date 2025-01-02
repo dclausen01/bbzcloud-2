@@ -64,6 +64,7 @@ class DatabaseService {
                         reject(err);
                         return;
                     }
+                    this.isConnected = true;
                     resolve();
                 });
             });
@@ -284,18 +285,19 @@ class DatabaseService {
     }
 
     async closeConnection() {
-        if (this.db && this.isConnected) {
-            return new Promise((resolve, reject) => {
-                this.db.close((err) => {
-                    if (err) {
-                        console.error('Error closing database:', err);
-                        reject(err);
-                        return;
-                    }
-                    this.isConnected = false;
-                    resolve();
+        if (!this.db || !this.isConnected) return;
+        
+        try {
+            await new Promise((resolve, reject) => {
+                this.db.close(err => {
+                    if (err) reject(err);
+                    else resolve();
                 });
             });
+            this.isConnected = false;
+        } catch (error) {
+            console.error('Error closing database:', error);
+            throw error;
         }
     }
 
@@ -337,13 +339,6 @@ class DatabaseService {
                 resolve();
             });
         });
-
-        // Schedule connection close after operation
-        setTimeout(() => {
-            this.closeConnection().catch(err => {
-                console.error('Error closing connection:', err);
-            });
-        }, 100);
     }
 
     // Encryption/Decryption helpers
@@ -352,39 +347,16 @@ class DatabaseService {
     }
 
     decrypt(encryptedData) {
+        if (!encryptedData || !this.encryptionKey) {
+            return null;
+        }
+        
         try {
-            if (!encryptedData) {
-                console.error('Decrypt: No data provided');
-                return null;
-            }
-            if (!this.encryptionKey) {
-                console.error('Decrypt: No encryption key available');
-                return null;
-            }
-            
             const bytes = CryptoJS.AES.decrypt(encryptedData, this.encryptionKey);
-            if (!bytes) {
-                console.error('Decrypt: Decryption failed - no bytes returned');
-                return null;
-            }
-            
             const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
-            if (!decryptedStr) {
-                console.error('Decrypt: Decryption produced empty string');
-                return null;
-            }
-            
-            const parsed = JSON.parse(decryptedStr);
-            if (!parsed) {
-                console.error('Decrypt: JSON parsing failed');
-                return null;
-            }
-            
-            return parsed;
+            return decryptedStr ? JSON.parse(decryptedStr) : null;
         } catch (error) {
             console.error('Decryption error:', error);
-            console.error('Encrypted data type:', typeof encryptedData);
-            console.error('Encryption key available:', Boolean(this.encryptionKey));
             return null;
         }
     }
