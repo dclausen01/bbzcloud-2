@@ -593,7 +593,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
   }
 
   return (
-    <Box>
+    <Box maxW="800px" mx="auto">
       <VStack spacing={4} align="stretch">
         {/* Folder Management */}
         <HStack spacing={4}>
@@ -773,9 +773,9 @@ const TodoList = ({ initialText, onTextAdded }) => {
                               <Menu>
                                 <MenuButton
                                   as={IconButton}
-                                  icon={<ChevronDownIcon />}
-                                  size="sm"
-                                  aria-label="Ordner wechseln"
+                                icon={<ChevronDownIcon />}
+                                size="xs"
+                                aria-label="Ordner wechseln"
                                 />
                                 <MenuList>
                                   {todoState.folders.map(targetFolder => (
@@ -809,7 +809,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
                                 <PopoverTrigger>
                                   <IconButton
                                     icon={<TimeIcon />}
-                                    size="sm"
+                                    size="xs"
                                     aria-label="Erinnerung setzen"
                                   />
                                 </PopoverTrigger>
@@ -859,13 +859,13 @@ const TodoList = ({ initialText, onTextAdded }) => {
                               <IconButton
                                 icon={<EditIcon />}
                                 onClick={() => handleEditTodo(todo)}
-                                size="sm"
+                                size="xs"
                                 aria-label="Bearbeiten"
                               />
                               <IconButton
                                 icon={<DeleteIcon />}
                                 onClick={() => handleDeleteTodo(todo.id)}
-                                size="sm"
+                                size="xs"
                                 aria-label="Löschen"
                               />
                             </HStack>
