@@ -82,10 +82,9 @@ function App() {
         const path = await window.electron.getDatabasePath();
         setDbPath(path);
 
+        // Only set email if found, but don't show welcome modal on error
         if (emailResult.success && emailResult.password) {
           setEmail(emailResult.password);
-        } else {
-          setShowWelcomeModal(true);
         }
 
         if (passwordResult.success && passwordResult.password) {
@@ -95,9 +94,13 @@ function App() {
         if (bbbPasswordResult.success && bbbPasswordResult.password) {
           setBbbPassword(bbbPasswordResult.password);
         }
+
+        // Only show welcome modal if no email is saved
+        if (!emailResult.success || !emailResult.password) {
+          setShowWelcomeModal(true);
+        }
       } catch (error) {
         console.error('Error loading initial data:', error);
-        setShowWelcomeModal(true);
       } finally {
         setIsLoadingEmail(false);
       }
@@ -569,38 +572,6 @@ function App() {
                     }
                   }}>
                     Speicherort auswählen
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      try {
-                        setIsMigrating(true);
-                        const result = await window.electron.migrateFromStore();
-                        if (result.success) {
-                          toast({
-                            title: 'Migration erfolgreich',
-                            description: 'Alle Daten wurden in die neue Datenbank übertragen',
-                            status: 'success',
-                            duration: 3000,
-                          });
-                          handleCredentialsSubmit();
-                        } else {
-                          throw new Error(result.error);
-                        }
-                      } catch (error) {
-                        toast({
-                          title: 'Fehler bei der Migration',
-                          description: error.message,
-                          status: 'error',
-                          duration: 5000,
-                        });
-                      } finally {
-                        setIsMigrating(false);
-                      }
-                    }}
-                    isLoading={isMigrating}
-                    loadingText="Migriere..."
-                  >
-                    Daten aus alter Speicherung migrieren
                   </Button>
                 </>
               )}

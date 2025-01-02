@@ -770,6 +770,41 @@ const TodoList = ({ initialText, onTextAdded }) => {
                               </Box>
                             </HStack>
                             <HStack spacing={2}>
+                              <Menu>
+                                <MenuButton
+                                  as={IconButton}
+                                  icon={<ChevronDownIcon />}
+                                  size="sm"
+                                  aria-label="Ordner wechseln"
+                                />
+                                <MenuList>
+                                  {todoState.folders.map(targetFolder => (
+                                    <MenuItem
+                                      key={targetFolder}
+                                      onClick={() => {
+                                        if (targetFolder !== todo.folder) {
+                                          setTodoState(prev => ({
+                                            ...prev,
+                                            todos: prev.todos.map(t =>
+                                              t.id === todo.id ? { ...t, folder: targetFolder } : t
+                                            )
+                                          }));
+                                          toast({
+                                            title: 'Aufgabe verschoben',
+                                            description: `Aufgabe wurde in den Ordner "${targetFolder === 'Default' ? 'Standard' : targetFolder}" verschoben.`,
+                                            status: 'success',
+                                            duration: 3000,
+                                            isClosable: true,
+                                          });
+                                        }
+                                      }}
+                                      isDisabled={targetFolder === todo.folder}
+                                    >
+                                      {targetFolder === 'Default' ? 'Standard' : targetFolder}
+                                    </MenuItem>
+                                  ))}
+                                </MenuList>
+                              </Menu>
                               <Popover>
                                 <PopoverTrigger>
                                   <IconButton

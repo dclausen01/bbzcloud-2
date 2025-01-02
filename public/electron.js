@@ -40,19 +40,16 @@ if (!gotTheLock) {
   });
 }
 
-// GitHub issue creation handler
+// Feedback handler
 ipcMain.handle('create-github-issue', async (event, { title, body }) => {
   try {
-    const response = await axios.post('https://api.github.com/repos/koyuawsmbrtn/bbz-cloud/issues', {
-      title,
-      body
-    }, {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    });
+    // Create a formatted email body
+    const emailBody = `Feedback: ${title}\n\nBeschreibung:\n${body}`;
+    const mailtoUrl = `mailto:dennis.clausen@bbz-rd-eck.de?subject=${encodeURIComponent('BBZCloud Feedback: ' + title)}&body=${encodeURIComponent(emailBody)}`;
     
-    return { success: true, url: response.data.html_url };
+    // Open default email client
+    shell.openExternal(mailtoUrl);
+    return { success: true };
   } catch (error) {
     console.error('Error creating GitHub issue:', error);
     return { success: false, error: error.message };
@@ -187,8 +184,9 @@ async function setupFileWatcher() {
     ignoreInitial: true,
     awaitWriteFinish: {
       stabilityThreshold: 2000,
-      pollInterval: 100
-    }
+      pollInterval: 5000  // Reduced polling frequency to once per 5 seconds
+    },
+    usePolling: false  // Prefer native filesystem events over polling
   });
 
   fileWatcher.on('change', async () => {
@@ -404,13 +402,24 @@ function createWindow() {
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
-      mainWindow.minimize();
+      const settings = store.get('settings');
+      if (settings?.minimizedStart || process.argv.includes('--hidden')) {
+        mainWindow.minimize();
+        mainWindow.setSkipTaskbar(true);
+      } else {
+        mainWindow.minimize();
+      }
     }
     return false;
   });
 
   mainWindow.on('minimize', (event) => {
-    mainWindow.setSkipTaskbar(false);
+    const settings = store.get('settings');
+    if (settings?.minimizedStart || process.argv.includes('--hidden')) {
+      mainWindow.setSkipTaskbar(true);
+    } else {
+      mainWindow.setSkipTaskbar(false);
+    }
   });
 
   mainWindow.on('restore', () => {
@@ -435,6 +444,7 @@ function createWindow() {
       }
       if (shouldStartMinimized) {
         mainWindow.minimize();
+        mainWindow.setSkipTaskbar(true);
       } else {
         if (windowState.isMaximized) {
           mainWindow.maximize();
@@ -672,28 +682,33 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
 });
 
 ipcMain.on('update-badge', (event, isBadge) => {
-  if (isBadge) {
-    mainWindow?.setOverlayIcon(
-      nativeImage.createFromPath(getAssetPath('icon_badge.png')),
-      'NeueNachrichten'
-    );
-    mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
-    if (process.platform === 'darwin') {
-      const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
-      tray?.setImage(badgeIcon);
-    } else if (process.platform === 'win32') {
+  if (process.platform === 'win32') {
+    // For Windows:
+    // - Use icon_badge.png for overlay (just the notification dot)
+    // - Use high quality tray icons
+    if (isBadge) {
+      mainWindow?.setOverlayIcon(
+        nativeImage.createFromPath(getAssetPath('icon_badge.png')),
+        'NeueNachrichten'
+      );
       tray?.setImage(getAssetPath('tray-lowres_badge.png'));
     } else {
-      tray?.setImage(getAssetPath('tray_badge.png'));
+      mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
+      tray?.setImage(getAssetPath('tray-lowres.png'));
     }
-  } else {
-    mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
-    mainWindow?.setIcon(getAssetPath('icon.png'));
-    if (process.platform === 'darwin') {
+  } else if (process.platform === 'darwin') {
+    // For macOS
+    if (isBadge) {
+      const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
+      tray?.setImage(badgeIcon);
+    } else {
       const normalIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
       tray?.setImage(normalIcon);
-    } else if (process.platform === 'win32') {
-      tray?.setImage(getAssetPath('tray-lowres.png'));
+    }
+  } else {
+    // For Linux and others
+    if (isBadge) {
+      tray?.setImage(getAssetPath('tray_badge.png'));
     } else {
       tray?.setImage(getAssetPath('tray.png'));
     }
@@ -1072,19 +1087,20 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
+  } else {
     const settings = store.get('settings');
     if (settings?.minimizedStart || process.argv.includes('--hidden')) {
-      mainWindow?.minimize();
+      mainWindow.minimize();
+      mainWindow.setSkipTaskbar(true);
+    } else {
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+      const windowState = store.get('settings.windowState');
+      if (windowState?.isMaximized) {
+        mainWindow.maximize();
+      }
+      mainWindow.focus();
     }
-  } else {
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
-    const windowState = store.get('settings.windowState');
-    if (windowState?.isMaximized) {
-      mainWindow.maximize();
-    }
-    mainWindow.show();
-    mainWindow.focus();
   }
 });

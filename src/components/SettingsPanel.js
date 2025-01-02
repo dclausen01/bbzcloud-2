@@ -531,16 +531,14 @@ function SettingsPanel({ onClose }) {
                 const result = await window.electron.createGithubIssue({ title, body });
                 if (result.success) {
                   toast({
-                    title: 'Feedback gesendet',
-                    description: 'Vielen Dank für Ihr Feedback!',
+                    title: 'Email-Client geöffnet',
+                    description: 'Bitte senden Sie die vorbereitete Email ab, um Ihr Feedback zu übermitteln.',
                     status: 'success',
-                    duration: 3000,
+                    duration: 5000,
                   });
                   // Clear form
                   document.getElementById('feedback-title').value = '';
                   document.getElementById('feedback-body').value = '';
-                  // Open the created issue in browser
-                  window.electron.openExternalWindow({ url: result.url });
                 } else {
                   throw new Error(result.error);
                 }
