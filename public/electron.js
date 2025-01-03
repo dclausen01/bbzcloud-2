@@ -280,6 +280,7 @@ function createTray() {
     { 
       label: 'Öffnen',
       click: () => {
+        if (!mainWindow) return;
         if (mainWindow.isMinimized()) {
           mainWindow.restore();
         }
@@ -294,6 +295,7 @@ function createTray() {
     {
       label: 'Fenster maximieren',
       click: () => {
+        if (!mainWindow) return;
         mainWindow.show();
         mainWindow.focus();
         mainWindow.maximize();
