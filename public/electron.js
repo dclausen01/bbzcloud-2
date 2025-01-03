@@ -311,6 +311,8 @@ function createTray() {
   tray.setContextMenu(contextMenu);
 
   tray.on('click', () => {
+    if (!mainWindow) return;
+    
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
     }
