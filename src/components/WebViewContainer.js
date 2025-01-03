@@ -28,29 +28,29 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   }, []);
   const toast = useToast();
   const { colorMode, setColorMode } = useColorMode();
-  const { settings } = useSettings();
+  const { settings, isLoading: isSettingsLoading } = useSettings();
   const notificationCheckIntervalRef = useRef(null);
 
   // Apply zoom level to a webview
   const applyZoom = useCallback(async (webview, id) => {
-    if (!webview) return;
-    
     try {
-      const zoomFactor = standardApps[id]?.zoom || settings.globalZoom;
+      const zoomFactor = settings.globalZoom;
       await webview.setZoomFactor(zoomFactor);
     } catch (error) {
       console.error(`Error setting zoom for ${id}:`, error);
     }
-  }, [standardApps, settings.globalZoom]);
+  }, [settings.globalZoom]);
 
-  // Update zoom levels when settings change
+  // Update zoom levels when settings change or finish loading
   useEffect(() => {
-    Object.entries(webviewRefs.current).forEach(([id, ref]) => {
-      if (ref.current) {
-        applyZoom(ref.current, id);
-      }
-    });
-  }, [settings.globalZoom, standardApps, applyZoom]);
+    if (!isSettingsLoading) {  // Only apply zoom when settings are loaded
+      Object.entries(webviewRefs.current).forEach(([id, ref]) => {
+        if (ref.current) {
+          applyZoom(ref.current, id);
+        }
+      });
+    }
+  }, [settings.globalZoom, standardApps, applyZoom, isSettingsLoading]);
 
   // Listen for theme changes from main process
   useEffect(() => {

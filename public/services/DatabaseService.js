@@ -89,9 +89,6 @@ class DatabaseService {
             // Create tables
             await this.createTables();
             
-            // Close initial connection
-            await this.closeConnection();
-            
         } catch (error) {
             console.error('Database initialization error:', error);
             throw error;
@@ -201,28 +198,45 @@ class DatabaseService {
     async closeConnection() {
         if (!this.db || !this.isConnected) return;
         
-        // Add a delay before closing to handle rapid sequential operations
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Don't actually close the connection, just mark it for potential cleanup
+        this.pendingClose = true;
         
-        try {
-            await new Promise((resolve, reject) => {
-                this.db.close(err => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
-            this.isConnected = false;
-        } catch (error) {
-            console.error('Error closing database:', error);
-            throw error;
+        // Schedule connection cleanup after a delay
+        if (this.closeTimeout) {
+            clearTimeout(this.closeTimeout);
         }
+        
+        this.closeTimeout = setTimeout(async () => {
+            if (!this.pendingClose) return;
+            
+            try {
+                await new Promise((resolve, reject) => {
+                    this.db.close(err => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+                });
+                this.isConnected = false;
+                this.pendingClose = false;
+            } catch (error) {
+                console.error('Error closing database:', error);
+            }
+        }, 5000); // Keep connection alive for 5 seconds
     }
 
     // Helper to ensure database is initialized and manage connections
     async ensureInitialized() {
         await this.initPromise;
         
-        // Only create a new connection if we don't have one
+        // Cancel any pending connection close
+        if (this.pendingClose) {
+            this.pendingClose = false;
+            if (this.closeTimeout) {
+                clearTimeout(this.closeTimeout);
+            }
+        }
+        
+        // Create a new connection if needed
         if (!this.isConnected) {
             await new Promise((resolve, reject) => {
                 this.db = new sqlite3.Database(this.dbPath, (err) => {

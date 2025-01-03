@@ -348,12 +348,15 @@ function createSplashWindow() {
 
 async function createWindow() {
   const windowState = restoreWindowState();
+  const { settings } = await db.getSettings();
+  const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
+
   mainWindow = new BrowserWindow({
     ...windowState,
     minWidth: 1000,
     minHeight: 700,
-    show: false,
     skipTaskbar: false,
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -394,7 +397,6 @@ async function createWindow() {
       const { settings } = await db.getSettings();
       if (settings?.minimizedStart || process.argv.includes('--hidden')) {
         mainWindow.minimize();
-        mainWindow.setSkipTaskbar(true);
       } else {
         mainWindow.minimize();
       }
@@ -402,48 +404,19 @@ async function createWindow() {
     return false;
   });
 
-  mainWindow.on('minimize', async (event) => {
-    const { settings } = await db.getSettings();
-    if (settings?.minimizedStart || process.argv.includes('--hidden')) {
-      mainWindow.setSkipTaskbar(true);
-    } else {
-      mainWindow.setSkipTaskbar(false);
-    }
-  });
-
-  mainWindow.on('restore', () => {
-    mainWindow.setSkipTaskbar(false);
-  });
-
-  mainWindow.on('hide', () => {
-    mainWindow.setSkipTaskbar(true);
-  });
-
-  mainWindow.on('show', () => {
-    mainWindow.setSkipTaskbar(false);
-    if (windowState.isMaximized) {
-      mainWindow.maximize();
-    }
-  });
-
   mainWindow.once('ready-to-show', async () => {
-    setTimeout(async () => {
+    if (!shouldStartMinimized) {
+      if (windowState.isMaximized) {
+        mainWindow.maximize();
+      }
+      mainWindow.show();
+    }
+
+    // Close splash window after a delay to ensure smooth transition
+    setTimeout(() => {
       if (splashWindow) {
         splashWindow.close();
       }
-      const { settings } = await db.getSettings();
-      const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
-      
-      if (shouldStartMinimized) {
-        mainWindow.minimize();
-        mainWindow.setSkipTaskbar(true);
-      } else {
-        if (windowState.isMaximized) {
-          mainWindow.maximize();
-        }
-        mainWindow.show();
-      }
-      
     }, 3000);
   });
 }
@@ -487,16 +460,6 @@ async function createWebviewWindow(url, title) {
   });
 
   return win;
-}
-
-async function saveCredentials(service, account, password) {
-  try {
-    await keytar.setPassword(service, account, password);
-    return true;
-  } catch (error) {
-    console.error('Error saving credentials:', error);
-    return false;
-  }
 }
 
 async function getCredentials(service, account) {
@@ -678,15 +641,16 @@ ipcMain.on('update-badge', (event, isBadge) => {
   if (process.platform === 'win32') {
     // For Windows:
     // - Use icon_badge.png for overlay (just the notification dot)
-    // - Use high quality tray icons
     if (isBadge) {
       mainWindow?.setOverlayIcon(
         nativeImage.createFromPath(getAssetPath('icon_badge.png')),
         'NeueNachrichten'
       );
+      mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
       tray?.setImage(getAssetPath('tray-lowres_badge.png'));
     } else {
       mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
+      mainWindow?.setIcon(getAssetPath('icon.png'));
       tray?.setImage(getAssetPath('tray-lowres.png'));
     }
   } else if (process.platform === 'darwin') {
@@ -1089,19 +1053,18 @@ app.on('activate', async () => {
   if (mainWindow === null) {
     await createWindow();
   } else {
-    const { settings } = await db.getSettings();
-    if (settings?.minimizedStart || process.argv.includes('--hidden')) {
-      mainWindow.minimize();
-      mainWindow.setSkipTaskbar(false);
-    } else {
-      if (!mainWindow.isVisible()) {
+    if (!mainWindow.isVisible()) {
+      const { settings } = await db.getSettings();
+      if (settings?.minimizedStart || process.argv.includes('--hidden')) {
+        mainWindow.minimize();
+      } else {
+        const windowState = store.get('settings.windowState');
+        if (windowState?.isMaximized) {
+          mainWindow.maximize();
+        }
         mainWindow.show();
+        mainWindow.focus();
       }
-      const windowState = store.get('settings.windowState');
-      if (windowState?.isMaximized) {
-        mainWindow.maximize();
-      }
-      mainWindow.focus();
     }
   }
 });
