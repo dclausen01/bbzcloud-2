@@ -36,8 +36,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     if (!webview) return;
     
     try {
-      const zoomLevel = standardApps[id]?.zoom || settings.globalZoom;
-      await webview.setZoomLevel(Math.log2(zoomLevel)); // Convert zoom factor to zoom level
+      const zoomFactor = standardApps[id]?.zoom || settings.globalZoom;
+      await webview.setZoomFactor(zoomFactor);
     } catch (error) {
       console.error(`Error setting zoom for ${id}:`, error);
     }

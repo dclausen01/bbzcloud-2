@@ -336,7 +336,7 @@ function SettingsPanel({ onClose }) {
                 aria-label="Zoom"
                 min={0.25}
                 max={4}
-                step={0.2}
+                step={0.05}
                 value={settings.globalZoom}
                 onChange={handleGlobalZoomChange}
               >

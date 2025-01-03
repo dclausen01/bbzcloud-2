@@ -179,22 +179,24 @@ async function setupFileWatcher() {
   const dbPath = db.getDatabasePath();
   lastKnownTimestamp = await db.getLastUpdateTimestamp();
 
-  fileWatcher = chokidar.watch(dbPath, {
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 2000,
-      pollInterval: 5000  // Reduced polling frequency to once per 5 seconds
-    },
-    usePolling: false  // Prefer native filesystem events over polling
-  });
-
-  fileWatcher.on('change', async () => {
+  // Instead of watching file changes, set up a periodic check every minute
+  const checkDatabaseChanges = async () => {
     const currentTimestamp = await db.getLastUpdateTimestamp();
     if (currentTimestamp > lastKnownTimestamp) {
       lastKnownTimestamp = currentTimestamp;
       mainWindow?.webContents.send('database-changed');
     }
+  };
+
+  // Initial check
+  checkDatabaseChanges();
+
+  // Set up periodic check every minute
+  const intervalId = setInterval(checkDatabaseChanges, 60000);
+
+  // Clean up interval when app quits
+  app.on('before-quit', () => {
+    clearInterval(intervalId);
   });
 }
 
@@ -444,13 +446,13 @@ function createWindow() {
       }
       if (shouldStartMinimized) {
         mainWindow.minimize();
-        mainWindow.setSkipTaskbar(true);
+        mainWindow.setSkipTaskbar(true)
       } else {
         if (windowState.isMaximized) {
           mainWindow.maximize();
         }
-        mainWindow.show();
       }
+      mainWindow.show();
     }, 3000);
   });
 }
@@ -1091,7 +1093,8 @@ app.on('activate', () => {
     const settings = store.get('settings');
     if (settings?.minimizedStart || process.argv.includes('--hidden')) {
       mainWindow.minimize();
-      mainWindow.setSkipTaskbar(true);
+      mainWindow.setSkipTaskbar(false);
+      mainWindow.show();
     } else {
       if (!mainWindow.isVisible()) {
         mainWindow.show();

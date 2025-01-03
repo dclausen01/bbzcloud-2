@@ -219,28 +219,26 @@ class DatabaseService {
     async ensureInitialized() {
         await this.initPromise;
         
-        // If connection is closed, reopen it
-        if (!this.isConnected) {
-            await new Promise((resolve, reject) => {
-                this.db = new sqlite3.Database(this.dbPath, (err) => {
-                    if (err) {
-                        console.error('Database connection error:', err);
-                        reject(err);
-                        return;
-                    }
-                    this.isConnected = true;
-                    resolve();
-                });
+        // Always create a new connection for each operation
+        await new Promise((resolve, reject) => {
+            this.db = new sqlite3.Database(this.dbPath, (err) => {
+                if (err) {
+                    console.error('Database connection error:', err);
+                    reject(err);
+                    return;
+                }
+                this.isConnected = true;
+                resolve();
             });
-            
-            // Enable foreign keys
-            await new Promise((resolve, reject) => {
-                this.db.run('PRAGMA foreign_keys = ON', (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
+        });
+        
+        // Enable foreign keys
+        await new Promise((resolve, reject) => {
+            this.db.run('PRAGMA foreign_keys = ON', (err) => {
+                if (err) reject(err);
+                else resolve();
             });
-        }
+        });
 
         // Ensure database is ready by running a test query
         await new Promise((resolve, reject) => {
@@ -257,13 +255,15 @@ class DatabaseService {
 
     // Helper to wrap database operations with proper connection handling
     async withConnection(operation) {
-        await this.ensureInitialized();
         try {
+            await this.ensureInitialized();
             const result = await operation();
             await this.closeConnection();
             return result;
         } catch (error) {
-            await this.closeConnection();
+            if (this.isConnected) {
+                await this.closeConnection();
+            }
             throw error;
         }
     }
@@ -292,9 +292,9 @@ class DatabaseService {
     async saveSettings(settings) {
         return this.withConnection(async () => {
             // Save zoom to electron-store (device specific)
-            if (typeof settings.globalZoom === 'number') {
-                this.store.set('globalZoom', settings.globalZoom);
-            }
+            const zoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
+            console.log('Saving zoom value:', zoom); // Debug log
+            this.store.set('globalZoom', zoom);
 
             // Save other settings to database
             const settingsToSave = {
@@ -345,7 +345,8 @@ class DatabaseService {
                         }
                         
                         // Get zoom from electron-store (device specific)
-                        const globalZoom = this.store.get('globalZoom', 1.0);
+                        const globalZoom = parseFloat(this.store.get('globalZoom')) || 1.0;
+                        console.log('Loading zoom value:', globalZoom); // Debug log
                         
                         // Only return the saved values, let the context handle defaults
                         resolve({
