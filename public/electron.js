@@ -206,15 +206,9 @@ let tray;
 let messageBoxIsDisplayed = false;
 const windowRegistry = new Map();
 
-const downloadTypes = [
-  '.mp4', '.mp3', '.ogg', '.flac', '.wav', '.mkv', '.mov', '.wmv',
-  '.oga', '.ogv', '.opus', '.xls', '.xlsx', '.ppt', '.zip', '.exe',
-  '.AppImage', '.snap', '.bin', '.sh', '.doc', '.docx', '.fls', '.pdf'
-];
-
 // Update autostart based on settings
-function updateAutostart() {
-  const settings = store.get('settings');
+async function updateAutostart() {
+  const { settings } = await db.getSettings();
   const shouldAutostart = settings?.autostart ?? true;
   
   if (!isDev) {
@@ -224,10 +218,6 @@ function updateAutostart() {
       args: ['--hidden']
     });
   }
-}
-
-function isDownloadType(url) {
-  return downloadTypes.some(type => url.toLowerCase().includes(type));
 }
 
 function isMicrosoft(url) {
@@ -356,9 +346,9 @@ function createSplashWindow() {
   splashWindow.setMenu(null);
 }
 
-function createWindow() {
+async function createWindow() {
   const windowState = restoreWindowState();
-  const settings = store.get('settings');
+  const { settings } = await db.getSettings();
   const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
   
   mainWindow = new BrowserWindow({
@@ -401,10 +391,10 @@ function createWindow() {
   mainWindow.on('maximize', saveWindowState);
   mainWindow.on('unmaximize', saveWindowState);
 
-  mainWindow.on('close', (event) => {
+  mainWindow.on('close', async (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
-      const settings = store.get('settings');
+      const { settings } = await db.getSettings();
       if (settings?.minimizedStart || process.argv.includes('--hidden')) {
         mainWindow.minimize();
         mainWindow.setSkipTaskbar(true);
@@ -415,8 +405,8 @@ function createWindow() {
     return false;
   });
 
-  mainWindow.on('minimize', (event) => {
-    const settings = store.get('settings');
+  mainWindow.on('minimize', async (event) => {
+    const { settings } = await db.getSettings();
     if (settings?.minimizedStart || process.argv.includes('--hidden')) {
       mainWindow.setSkipTaskbar(true);
     } else {
@@ -457,8 +447,8 @@ function createWindow() {
   });
 }
 
-function createWebviewWindow(url, title) {
-  const settings = store.get('settings');
+async function createWebviewWindow(url, title) {
+  const { settings } = await db.getSettings();
   const theme = settings?.theme || 'light';
   
   const win = new BrowserWindow({
@@ -1094,11 +1084,11 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('activate', () => {
+app.on('activate', async () => {
   if (mainWindow === null) {
-    createWindow();
+    await createWindow();
   } else {
-    const settings = store.get('settings');
+    const { settings } = await db.getSettings();
     if (settings?.minimizedStart || process.argv.includes('--hidden')) {
       mainWindow.minimize();
       mainWindow.setSkipTaskbar(false);
