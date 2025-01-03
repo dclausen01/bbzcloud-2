@@ -750,9 +750,17 @@ ipcMain.handle('save-settings', async (event, settings) => {
     updateAutostart();
     const theme = settings.theme || 'light';
     
-    // Send theme change to all windows
+    // Send theme change to all windows and their webviews
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('theme-changed', theme);
+      
+      // Get all webviews in this window
+      win.webContents.sendToFrame(
+        // Send to all frames (webviews are considered frames)
+        [...Array(win.webContents.frameCount)].map((_, i) => i),
+        'theme-changed',
+        theme
+      );
     });
     
     return { success: true };

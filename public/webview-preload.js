@@ -60,7 +60,10 @@ contextBridge.exposeInMainWorld(
     },
     // Listen for theme changes
     onThemeChanged: (callback) => {
+      // Listen for direct theme changes
       ipcRenderer.on('theme-changed', (_, theme) => callback(theme));
+      // Listen for theme changes from parent window
+      ipcRenderer.on('theme-changed-frame', (_, theme) => callback(theme));
     }
   }
 );
