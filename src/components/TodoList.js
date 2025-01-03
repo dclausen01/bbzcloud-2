@@ -220,7 +220,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
     loadData();
   }, [toast]);
 
-  // Save todo state on changes
+  // Save todo state on changes with debounce
   useEffect(() => {
     const saveTodos = async () => {
       try {
@@ -239,8 +239,11 @@ const TodoList = ({ initialText, onTextAdded }) => {
         });
       }
     };
+    
     if (!isLoading) {
-      saveTodos();
+      // Add debounce to prevent rapid saves
+      const timeoutId = setTimeout(saveTodos, 300);
+      return () => clearTimeout(timeoutId);
     }
   }, [todoState, isLoading, toast]);
 

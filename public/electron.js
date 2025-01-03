@@ -280,7 +280,6 @@ function createTray() {
     { 
       label: 'Öffnen',
       click: () => {
-        if (!mainWindow) return;
         if (mainWindow.isMinimized()) {
           mainWindow.restore();
         }
@@ -295,7 +294,6 @@ function createTray() {
     {
       label: 'Fenster maximieren',
       click: () => {
-        if (!mainWindow) return;
         mainWindow.show();
         mainWindow.focus();
         mainWindow.maximize();
@@ -313,8 +311,6 @@ function createTray() {
   tray.setContextMenu(contextMenu);
 
   tray.on('click', () => {
-    if (!mainWindow) return;
-    
     if (mainWindow.isMinimized()) {
       mainWindow.restore();
     }
@@ -352,15 +348,12 @@ function createSplashWindow() {
 
 async function createWindow() {
   const windowState = restoreWindowState();
-  const { settings } = await db.getSettings();
-  const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
-  
   mainWindow = new BrowserWindow({
     ...windowState,
     minWidth: 1000,
     minHeight: 700,
     show: false,
-    skipTaskbar: shouldStartMinimized,
+    skipTaskbar: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -433,20 +426,24 @@ async function createWindow() {
     }
   });
 
-  mainWindow.once('ready-to-show', () => {
-    setTimeout(() => {
+  mainWindow.once('ready-to-show', async () => {
+    setTimeout(async () => {
       if (splashWindow) {
         splashWindow.close();
       }
+      const { settings } = await db.getSettings();
+      const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
+      
       if (shouldStartMinimized) {
         mainWindow.minimize();
-        mainWindow.setSkipTaskbar(true)
+        mainWindow.setSkipTaskbar(true);
       } else {
         if (windowState.isMaximized) {
           mainWindow.maximize();
         }
+        mainWindow.show();
       }
-      mainWindow.show();
+      
     }, 3000);
   });
 }
@@ -1096,7 +1093,6 @@ app.on('activate', async () => {
     if (settings?.minimizedStart || process.argv.includes('--hidden')) {
       mainWindow.minimize();
       mainWindow.setSkipTaskbar(false);
-      mainWindow.show();
     } else {
       if (!mainWindow.isVisible()) {
         mainWindow.show();

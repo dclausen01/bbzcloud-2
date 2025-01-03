@@ -201,6 +201,9 @@ class DatabaseService {
     async closeConnection() {
         if (!this.db || !this.isConnected) return;
         
+        // Add a delay before closing to handle rapid sequential operations
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         try {
             await new Promise((resolve, reject) => {
                 this.db.close(err => {
@@ -219,18 +222,20 @@ class DatabaseService {
     async ensureInitialized() {
         await this.initPromise;
         
-        // Always create a new connection for each operation
-        await new Promise((resolve, reject) => {
-            this.db = new sqlite3.Database(this.dbPath, (err) => {
-                if (err) {
-                    console.error('Database connection error:', err);
-                    reject(err);
-                    return;
-                }
-                this.isConnected = true;
-                resolve();
+        // Only create a new connection if we don't have one
+        if (!this.isConnected) {
+            await new Promise((resolve, reject) => {
+                this.db = new sqlite3.Database(this.dbPath, (err) => {
+                    if (err) {
+                        console.error('Database connection error:', err);
+                        reject(err);
+                        return;
+                    }
+                    this.isConnected = true;
+                    resolve();
+                });
             });
-        });
+        }
         
         // Enable foreign keys
         await new Promise((resolve, reject) => {
