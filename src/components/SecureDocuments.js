@@ -20,18 +20,32 @@ import {
   AlertDialogHeader,
   AlertDialogContent,
   AlertDialogOverlay,
+  Input,
+  InputGroup,
+  InputLeftElement,
 } from '@chakra-ui/react';
-import { DeleteIcon } from '@chakra-ui/icons';
+import { DeleteIcon, SearchIcon } from '@chakra-ui/icons';
 
 function SecureDocuments() {
   const [files, setFiles] = useState([]);
   const [isReady, setIsReady] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [fileToDelete, setFileToDelete] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredFiles, setFilteredFiles] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const cancelRef = React.useRef();
   const toast = useToast();
   const { colorMode } = useColorMode();
+
+  // Filter files based on search query
+  useEffect(() => {
+    const filtered = files.filter(file => 
+      file.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    setFilteredFiles(filtered);
+  }, [files, searchQuery]);
 
   const loadFiles = useCallback(async () => {
     if (!isReady) return;
@@ -40,6 +54,64 @@ function SecureDocuments() {
       setFiles(result.files);
     }
   }, [isReady]);
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = [...e.dataTransfer.files];
+    
+    for (const file of files) {
+      const reader = new FileReader();
+      
+      reader.onload = async () => {
+        try {
+          const result = await window.electron.encryptAndStoreFile({
+            data: reader.result,
+            name: file.name,
+          });
+
+          if (result.success) {
+            loadFiles();
+            toast({
+              title: 'Erfolg',
+              description: 'Datei wurde verschlüsselt gespeichert.',
+              status: 'success',
+              duration: 3000,
+            });
+          }
+        } catch (error) {
+          toast({
+            title: 'Fehler',
+            description: 'Fehler beim Verarbeiten der Datei.',
+            status: 'error',
+            duration: 3000,
+          });
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+  }, [loadFiles, toast]);
 
   // Listen for file updates
   useEffect(() => {
@@ -219,8 +291,44 @@ function SecureDocuments() {
   }
 
   return (
-    <Box p={4}>
+    <Box 
+      p={4}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      position="relative"
+    >
+      {isDragging && (
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          bg="blue.50"
+          opacity={0.8}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          border="2px dashed"
+          borderColor="blue.500"
+          zIndex={1}
+        >
+          <Text fontSize="xl">Dateien hier ablegen</Text>
+        </Box>
+      )}
       <VStack spacing={4} align="stretch">
+        <InputGroup>
+          <InputLeftElement pointerEvents="none">
+            <SearchIcon color="gray.300" />
+          </InputLeftElement>
+          <Input
+            placeholder="Dateien durchsuchen..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </InputGroup>
         <Button
           as="label"
           htmlFor="file-upload"
@@ -247,7 +355,7 @@ function SecureDocuments() {
             </Tr>
           </Thead>
           <Tbody>
-            {files.map((file) => (
+            {filteredFiles.map((file) => (
               <Tr
                 key={file.id}
                 onClick={() => handleFileClick(file)}

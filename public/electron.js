@@ -1,5 +1,10 @@
 const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor } = require('electron');
 const path = require('path');
+const zlib = require('zlib');
+const util = require('util');
+const crypto = require('crypto');
+const compress = util.promisify(zlib.gzip);
+const decompress = util.promisify(zlib.gunzip);
 
 // List of webviews that need to be reloaded on system resume
 const webviewsToReload = ['outlook', 'wiki', 'handbook', 'moodle', 'webuntis'];
@@ -54,6 +59,31 @@ ipcMain.handle('create-github-issue', async (event, { title, body }) => {
     return { success: false, error: error.message };
   }
 });
+
+// Secure deletion function
+const secureDelete = async (filePath) => {
+  try {
+    const stats = await fs.stat(filePath);
+    const fileSize = stats.size;
+    
+    // Overwrite with random data 3 times
+    for (let i = 0; i < 3; i++) {
+      const randomData = Buffer.alloc(fileSize);
+      crypto.randomFillSync(randomData);
+      await fs.writeFile(filePath, randomData);
+    }
+    
+    // Zero out the file
+    await fs.writeFile(filePath, Buffer.alloc(fileSize));
+    
+    // Finally delete
+    await fs.unlink(filePath);
+  } catch (error) {
+    console.error('Error in secure delete:', error);
+    // Attempt normal delete as fallback
+    await fs.remove(filePath);
+  }
+};
 
 // Initialize electron store with minimal schema for window state and secure store
 const store = new Store({
@@ -940,6 +970,9 @@ ipcMain.handle('encrypt-and-store-file', async (event, { data, name }) => {
   try {
     const password = await getEncryptionPassword();
     const fileContent = Buffer.from(data);
+    
+    // Compress the file content
+    const compressedContent = await compress(fileContent);
     const fileId = uuidv4();
     
     const document = {
@@ -947,7 +980,8 @@ ipcMain.handle('encrypt-and-store-file', async (event, { data, name }) => {
       name,
       size: `${(fileContent.length / 1024).toFixed(2)} KB`,
       date: new Date().toISOString(),
-      content: fileContent
+      content: compressedContent,
+      compressed: true
     };
     
     await db.saveSecureDocument(document, password);
@@ -969,29 +1003,41 @@ ipcMain.handle('delete-secure-file', async (event, fileId) => {
 });
 
 ipcMain.handle('open-secure-file', async (event, fileId) => {
+  let tempPath = null;
+  let watcher = null;
+  
   try {
     const password = await getEncryptionPassword();
     const document = await db.getSecureDocument(fileId, password);
     
-    // Create temp file
-    const tempPath = path.join(os.tmpdir(), document.name);
-    await fs.writeFile(tempPath, document.content);
+    // Decompress if needed
+    const fileContent = document.compressed 
+      ? await decompress(document.content)
+      : document.content;
+    
+    // Create temp file with random name for security
+    const tempFileName = `bbzcloud-secure-${uuidv4()}-${document.name}`;
+    tempPath = path.join(os.tmpdir(), tempFileName);
+    await fs.writeFile(tempPath, fileContent);
     
     // Open file with default application
     shell.openPath(tempPath);
     
     // Watch for changes
-    const watcher = fs.watch(tempPath, async () => {
+    watcher = fs.watch(tempPath, async () => {
       try {
-        // Re-encrypt and update when file changes
         const updatedContent = await fs.readFile(tempPath);
+        const compressedContent = await compress(updatedContent);
+        
         const updatedDocument = {
           ...document,
-          content: updatedContent,
+          content: compressedContent,
+          compressed: true,
           date: new Date().toISOString()
         };
         
         await db.saveSecureDocument(updatedDocument, password);
+        await secureDelete(tempPath);
         
         // Notify frontend of file update
         mainWindow?.webContents.send('secure-file-updated');
@@ -1001,13 +1047,15 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
     });
     
     // Clean up temp file when app quits
-    app.on('before-quit', () => {
-      watcher.close();
-      fs.removeSync(tempPath);
+    app.on('before-quit', async () => {
+      if (watcher) watcher.close();
+      if (tempPath) await secureDelete(tempPath);
     });
     
     return { success: true };
   } catch (error) {
+    if (watcher) watcher.close();
+    if (tempPath) await secureDelete(tempPath);
     console.error('Error opening secure file:', error);
     return { success: false, error: error.message };
   }
@@ -1020,6 +1068,15 @@ app.on('ready', async () => {
   }
   
   try {    
+    // Clean up any leftover temp files
+    const tempDir = os.tmpdir();
+    const files = await fs.readdir(tempDir);
+    for (const file of files) {
+      if (file.includes('bbzcloud-secure-')) {
+        await secureDelete(path.join(tempDir, file));
+      }
+    }
+    
     await copyAssetsIfNeeded();
     await updateAutostart();
     createTray();
