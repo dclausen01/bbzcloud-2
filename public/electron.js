@@ -128,68 +128,6 @@ const store = new Store({
       type: 'string'
     }
   },
-  migrations: {
-    '1.0.2': store => {
-      // Initialize secure store
-      if (!store.has('secureStore')) {
-        store.set('secureStore', {
-          salt: '',
-          passwordHash: '',
-          files: []
-        });
-      }
-    },
-    '1.0.0': store => {
-      const settings = store.get('settings');
-      if (settings?.navigationButtons?.bbb) {
-        settings.navigationButtons.bbb.url = 'https://bbb.bbz-rd-eck.de/b/signin';
-        store.set('settings', settings);
-      }
-    },
-    '1.0.1': store => {
-      // Backup existing data
-      const existingTodos = store.get('todos', []);
-      const existingFolders = store.get('todoFolders', ['Default']);
-      const existingSortType = store.get('todoSortType', 'manual');
-      const existingSettings = store.get('settings', {});
-
-      // Clear store to ensure schema validation
-      store.clear();
-
-      // Restore settings first
-      if (Object.keys(existingSettings).length > 0) {
-        store.set('settings', existingSettings);
-      }
-
-      // Restore todo data with validation
-      if (existingFolders.length > 0) {
-        const validFolders = existingFolders.includes('Default') 
-          ? existingFolders 
-          : ['Default', ...existingFolders];
-        store.set('todoFolders', validFolders);
-      }
-
-      if (existingTodos.length > 0) {
-        const validTodos = existingTodos
-          .filter(todo => todo && typeof todo === 'object')
-          .map(todo => ({
-            id: Number(todo.id) || Date.now(),
-            text: String(todo.text || ''),
-            completed: Boolean(todo.completed),
-            folder: String(todo.folder || 'Default'),
-            createdAt: todo.createdAt && new Date(todo.createdAt).toISOString() || new Date().toISOString(),
-            reminder: todo.reminder ? new Date(todo.reminder).toISOString() : null
-          }));
-        store.set('todos', validTodos);
-      }
-
-      if (existingSortType) {
-        store.set('todoSortType', ['manual', 'date', 'completed'].includes(existingSortType) 
-          ? existingSortType 
-          : 'manual');
-      }
-    }
-  },
   clearInvalidConfig: true
 });
 
@@ -758,17 +696,6 @@ ipcMain.handle('get-settings', async () => {
     return { success: true, settings: settings || {} };
   } catch (error) {
     console.error('Error getting settings:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Migration handler
-ipcMain.handle('migrate-from-store', async () => {
-  try {
-    await db.migrateFromElectronStore();
-    return { success: true };
-  } catch (error) {
-    console.error('Error migrating data:', error);
     return { success: false, error: error.message };
   }
 });

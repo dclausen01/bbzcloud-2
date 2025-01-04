@@ -23,19 +23,6 @@ class DatabaseService {
                     type: 'number',
                     default: 1.0
                 }
-            },
-            beforeEachMigration: (store, context) => {
-                console.log('Migrating store:', context);
-            },
-            migrations: {
-                '1.0.0': store => {
-                    // Ensure encryption key is valid
-                    const key = store.get('encryptionKey');
-                    if (!key || typeof key !== 'string' || key.length < 32) {
-                        console.log('Migration: Regenerating encryption key');
-                        store.set('encryptionKey', CryptoJS.lib.WordArray.random(256/8).toString());
-                    }
-                }
             }
         });
         
@@ -806,39 +793,6 @@ class DatabaseService {
         });
     }
 
-    // Migration helpers
-    async migrateFromElectronStore() {
-        return this.withConnection(async () => {
-            const oldSettings = this.store.get('settings');
-            const oldTodoState = this.store.get('todoState');
-
-            try {
-                if (oldSettings) {
-                    await this.saveSettings(oldSettings);
-                }
-
-                if (oldTodoState) {
-                    await this.saveTodoState(oldTodoState);
-                }
-
-                // Backup old data with normalized path
-                const backupPath = path.normalize(path.join(app.getPath('userData'), 'store-backup.json'));
-                await fs.writeJson(backupPath, {
-                    settings: oldSettings,
-                    todoState: oldTodoState
-                });
-
-                // Clear old data
-                this.store.delete('settings');
-                this.store.delete('todoState');
-
-                return true;
-            } catch (error) {
-                console.error('Migration error:', error);
-                throw error;
-            }
-        });
-    }
 }
 
 module.exports = DatabaseService;
