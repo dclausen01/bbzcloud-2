@@ -387,7 +387,7 @@ async function createWindow() {
 async function createWebviewWindow(url, title) {
   // Get current theme from settings
   const { settings } = await db.getSettings();
-  const theme = settings?.theme || 'light';
+  const theme = settings?.theme || globalTheme;
   globalTheme = theme; // Update global theme to ensure consistency
   
   // Create the window with the current theme
