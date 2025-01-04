@@ -185,6 +185,9 @@ export function SettingsProvider({ children }) {
           customApps: Array.isArray(result.settings.customApps) 
             ? result.settings.customApps 
             : [],
+          // Ensure boolean values have proper defaults
+          autostart: result.settings.autostart ?? defaultSettings.autostart,
+          minimizedStart: result.settings.minimizedStart ?? defaultSettings.minimizedStart
         }));
       }
     } catch (error) {

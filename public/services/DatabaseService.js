@@ -325,9 +325,10 @@ class DatabaseService {
                 }), {}),
                 customApps: Array.isArray(settings.customApps) ? settings.customApps : [],
                 theme: settings.theme,
-                autostart: settings.autostart,
-                minimizedStart: settings.minimizedStart
+                autostart: settings.autostart ?? true,
+                minimizedStart: typeof settings.minimizedStart === 'boolean' ? settings.minimizedStart : false
             };
+            
 
             return new Promise((resolve, reject) => {
                 const timestamp = Date.now();
@@ -368,14 +369,21 @@ class DatabaseService {
                         console.log('Loading zoom value:', globalZoom); // Debug log
                         
                         // Only return the saved values, let the context handle defaults
-                        resolve({
+                        // Add debug logging
+                        console.log('Raw settings from database:', settings);
+                        console.log('Raw minimizedStart value:', settings.minimizedStart);
+                        
+                        const result = {
                             navigationButtons: settings?.navigationButtons || {},
                             customApps: Array.isArray(settings?.customApps) ? settings.customApps : [],
                             theme: settings?.theme,
                             globalZoom: globalZoom,
-                            autostart: settings?.autostart,
-                            minimizedStart: settings?.minimizedStart
-                        });
+                            autostart: settings.autostart ?? true,
+                            minimizedStart: settings.minimizedStart ?? false
+                        };
+                        
+                        console.log('Processed settings:', result);
+                        resolve(result);
                     }
                 );
             });

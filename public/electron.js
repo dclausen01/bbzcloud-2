@@ -349,14 +349,24 @@ function createSplashWindow() {
 async function createWindow() {
   const windowState = restoreWindowState();
   const { settings } = await db.getSettings();
+  console.log('Settings loaded from database:', settings);
+  console.log('Raw minimizedStart value:', settings?.minimizedStart);
+  
   const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
+  console.log('Calculated shouldStartMinimized:', shouldStartMinimized);
+  
+  // Debug notification for startup state
+  new Notification({
+    title: 'Window Creation Debug',
+    body: `Start Minimized Setting: ${settings?.minimizedStart}, Hidden Arg: ${process.argv.includes('--hidden')}`
+  }).show();
 
   mainWindow = new BrowserWindow({
     ...windowState,
     minWidth: 1000,
     minHeight: 700,
     skipTaskbar: false,
-    show: false,
+    show: !shouldStartMinimized,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -405,11 +415,26 @@ async function createWindow() {
   });
 
   mainWindow.once('ready-to-show', async () => {
+    // Debug notification for window show state
+    new Notification({
+      title: 'Window Show Debug',
+      body: `Should Start Minimized: ${shouldStartMinimized}, Is Maximized: ${windowState.isMaximized}`
+    }).show();
+
     if (!shouldStartMinimized) {
       if (windowState.isMaximized) {
         mainWindow.maximize();
       }
       mainWindow.show();
+    } else {
+      // Debug notification for minimized start
+      new Notification({
+        title: 'Window Minimize Debug',
+        body: 'Attempting to start minimized'
+      }).show();
+      mainWindow.minimize();
+      // Ensure window stays hidden
+      mainWindow.hide();
     }
 
     // Close splash window after a delay to ensure smooth transition
@@ -1021,13 +1046,25 @@ app.on('ready', async () => {
     return;
   }
   
-  await copyAssetsIfNeeded();
-  updateAutostart();
-  createTray();
-  createSplashWindow();
-  createWindow();
-  await setupFileWatcher();
-  autoUpdater.checkForUpdatesAndNotify();
+  try {
+    // Ensure database is initialized first
+    await db.ensureInitialized();
+    console.log('Database initialized');
+
+    // Load settings before any window creation
+    const { settings } = await db.getSettings();
+    console.log('Initial settings loaded:', settings);
+    
+    await copyAssetsIfNeeded();
+    await updateAutostart();
+    createTray();
+    createSplashWindow();
+    await createWindow();
+    await setupFileWatcher();
+    autoUpdater.checkForUpdatesAndNotify();
+  } catch (error) {
+    console.error('Error during app initialization:', error);
+  }
 
   // Handle system resume events
   powerMonitor.on('resume', () => {
