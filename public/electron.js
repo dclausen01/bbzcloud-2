@@ -1,6 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor } = require('electron');
 const path = require('path');
-const axios = require('axios');
 
 // List of webviews that need to be reloaded on system resume
 const webviewsToReload = ['outlook', 'wiki', 'handbook', 'moodle', 'webuntis'];
@@ -10,10 +9,8 @@ const Store = require('electron-store');
 const keytar = require('keytar');
 const fs = require('fs-extra');
 const { Notification } = require('electron');
-const CryptoJS = require('crypto-js');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
-const chokidar = require('chokidar');
 const DatabaseService = require('./services/DatabaseService');
 
 // Single instance lock
@@ -348,25 +345,15 @@ function createSplashWindow() {
 
 async function createWindow() {
   const windowState = restoreWindowState();
-  const { settings } = await db.getSettings();
-  console.log('Settings loaded from database:', settings);
-  console.log('Raw minimizedStart value:', settings?.minimizedStart);
-  
-  const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
-  console.log('Calculated shouldStartMinimized:', shouldStartMinimized);
-  
-  // Debug notification for startup state
-  new Notification({
-    title: 'Window Creation Debug',
-    body: `Start Minimized Setting: ${settings?.minimizedStart}, Hidden Arg: ${process.argv.includes('--hidden')}`
-  }).show();
+  // Ensure database is initialized before creating main window
+  await db.ensureInitialized();
 
   mainWindow = new BrowserWindow({
     ...windowState,
     minWidth: 1000,
     minHeight: 700,
     skipTaskbar: false,
-    show: !shouldStartMinimized,
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -415,10 +402,13 @@ async function createWindow() {
   });
 
   mainWindow.once('ready-to-show', async () => {
-    // Debug notification for window show state
+    const { settings } = await db.getSettings();
+    const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
+    
+    // Debug notification for startup state
     new Notification({
-      title: 'Window Show Debug',
-      body: `Should Start Minimized: ${shouldStartMinimized}, Is Maximized: ${windowState.isMaximized}`
+      title: 'Window Creation Debug',
+      body: `Start Setting: ${settings}`
     }).show();
 
     if (!shouldStartMinimized) {
@@ -433,8 +423,6 @@ async function createWindow() {
         body: 'Attempting to start minimized'
       }).show();
       mainWindow.minimize();
-      // Ensure window stays hidden
-      mainWindow.hide();
     }
 
     // Close splash window after a delay to ensure smooth transition

@@ -326,7 +326,7 @@ class DatabaseService {
                 customApps: Array.isArray(settings.customApps) ? settings.customApps : [],
                 theme: settings.theme,
                 autostart: settings.autostart ?? true,
-                minimizedStart: typeof settings.minimizedStart === 'boolean' ? settings.minimizedStart : false
+                minimizedStart: settings.minimizedStart ?? false
             };
             
 
