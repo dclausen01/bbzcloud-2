@@ -50,12 +50,12 @@
         padding: 8px;
         background-color: #f5f5f5;
         border-bottom: 1px solid #ddd;
-        transition: all 0.2s ease;
+        transition: background-color 0.3s ease, border-color 0.3s ease;
       }
 
       .dark-mode .navigation-bar {
-        background-color: #2D3748;
-        border-bottom-color: #4A5568;
+        background-color: #1A202C;
+        border-bottom-color: #2D3748;
       }
 
       .nav-button {
@@ -63,14 +63,15 @@
         margin: 0 2px;
         border: none;
         background-color: #fff;
+        color: #1A202C;
         border-radius: 4px;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: background-color 0.3s ease, color 0.3s ease, opacity 0.3s ease;
       }
 
       .dark-mode .nav-button {
-        background-color: #4A5568;
-        color: #fff;
+        background-color: #2D3748;
+        color: #E2E8F0;
       }
 
       .nav-button:hover {
@@ -78,7 +79,7 @@
       }
 
       .dark-mode .nav-button:hover {
-        background-color: #2D3748;
+        background-color: #4A5568;
       }
 
       .nav-button:disabled {
@@ -113,13 +114,30 @@
       const url = urlParams.get('url');
       const theme = urlParams.get('theme');
 
-      // Apply initial theme
+      // Apply initial theme immediately when script runs
       if (theme === 'dark') {
         document.body.classList.add('dark-mode');
+      } else {
+        document.body.classList.remove('dark-mode');
       }
+
+      // Also apply theme when DOM is fully loaded
+      document.addEventListener('DOMContentLoaded', () => {
+        if (theme === 'dark') {
+          document.body.classList.add('dark-mode');
+        } else {
+          document.body.classList.remove('dark-mode');
+        }
+      });
 
       // Listen for theme changes
       window.electron.onThemeChanged((newTheme) => {
+        // Update URL parameter without reloading
+        const url = new URL(window.location.href);
+        url.searchParams.set('theme', newTheme);
+        window.history.replaceState({}, '', url.toString());
+        
+        // Apply theme
         if (newTheme === 'dark') {
           document.body.classList.add('dark-mode');
         } else {

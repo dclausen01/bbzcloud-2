@@ -385,9 +385,12 @@ async function createWindow() {
 }
 
 async function createWebviewWindow(url, title) {
+  // Get current theme from settings
   const { settings } = await db.getSettings();
   const theme = settings?.theme || 'light';
+  globalTheme = theme; // Update global theme to ensure consistency
   
+  // Create the window with the current theme
   const win = new BrowserWindow({
     width: 1000,
     height: 800,
@@ -408,15 +411,17 @@ async function createWebviewWindow(url, title) {
     icon: getAssetPath('icon.ico')
   });
 
-  win.loadURL(
-    isDev
-      ? `http://localhost:3000/webview.html?url=${encodeURIComponent(url)}&theme=${theme}`
-      : `file://${path.join(__dirname, '../build/webview.html')}?url=${encodeURIComponent(url)}&theme=${theme}`
-  );
+  // Load URL with current theme
+  const urlWithTheme = isDev
+    ? `http://localhost:3000/webview.html?url=${encodeURIComponent(url)}&theme=${theme}`
+    : `file://${path.join(__dirname, '../build/webview.html')}?url=${encodeURIComponent(url)}&theme=${theme}`;
+  
+  win.loadURL(urlWithTheme);
+
+  // Register this window in the registry for theme updates
+  windowRegistry.set(url, win);
 
   win.setMenu(null);
-
-  windowRegistry.set(url, win);
 
   win.on('closed', () => {
     windowRegistry.delete(url);
@@ -666,18 +671,29 @@ ipcMain.handle('save-settings', async (event, settings) => {
     await db.saveSettings(settings);
     updateAutostart();
     const theme = settings.theme || globalTheme;
+    globalTheme = theme;
     
-    // Send theme change to all windows and their webviews
+    // Update all windows with the new theme
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('theme-changed', theme);
-      
-      // Get all webviews in this window
-      win.webContents.sendToFrame(
-        // Send to all frames (webviews are considered frames)
-        [...Array(win.webContents.frameCount)].map((_, i) => i),
-        'theme-changed',
-        theme
-      );
+      if (!win.isDestroyed()) {
+        // Send theme change event to all windows
+        win.webContents.send('theme-changed', theme);
+        
+        // Send to all frames (webviews) in the window
+        win.webContents.sendToFrame(
+          [...Array(win.webContents.frameCount)].map((_, i) => i),
+          'theme-changed',
+          theme
+        );
+
+        // For webview windows, also update the URL parameter
+        const url = win.webContents.getURL();
+        if (url.includes('webview.html')) {
+          const urlObj = new URL(url);
+          urlObj.searchParams.set('theme', theme);
+          win.loadURL(urlObj.toString());
+        }
+      }
     });
     
     return { success: true };
@@ -791,11 +807,10 @@ app.on('web-contents-created', (event, contents) => {
       return { action: 'deny' };
     }
 
-    if ((url.toLowerCase().includes('onedrive') || url.toLowerCase().includes('sharepoint')) && !url.includes('stashcat')) {
-      if (url.includes('about:blank') || url.includes('download') || url.includes('sharepoint')) {
-        createWebviewWindow(url, 'Microsoft');
-        return { action: 'deny' };
-      }
+    // Handle all new windows with our webview wrapper
+    if (!url.includes('about:blank')) {
+      createWebviewWindow(url, 'BBZCloud');
+      return { action: 'deny' };
     }
 
     return { action: 'allow' };
