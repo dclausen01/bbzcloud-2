@@ -53,7 +53,6 @@ function App() {
   const [showBBBPassword, setShowBBBPassword] = useState(false);
   const [isLoadingEmail, setIsLoadingEmail] = useState(true);
   const [dbPath, setDbPath] = useState('');
-  const [isMigrating, setIsMigrating] = useState(false);
 
   useEffect(() => {
     setColorMode(settings.theme);

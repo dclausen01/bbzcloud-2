@@ -15,6 +15,8 @@ const DatabaseService = require('./services/DatabaseService');
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
+let shouldStartMinimized = false;
+let globalTheme = 'light';
 
 if (!gotTheLock) {
   app.quit();
@@ -200,7 +202,6 @@ async function setupFileWatcher() {
 let mainWindow;
 let splashWindow;
 let tray;
-let messageBoxIsDisplayed = false;
 const windowRegistry = new Map();
 
 // Update autostart based on settings
@@ -215,11 +216,6 @@ async function updateAutostart() {
       args: ['--hidden']
     });
   }
-}
-
-function isMicrosoft(url) {
-  return url.toLowerCase().includes('onedrive') || 
-         url.toLowerCase().includes('sharepoint');
 }
 
 const getAssetPath = (asset) => {
@@ -347,6 +343,11 @@ async function createWindow() {
   const windowState = restoreWindowState();
   // Ensure database is initialized before creating main window
   await db.ensureInitialized();
+  
+  // Debug: Check settings right before window creation
+  const settings = await db.getSettings();
+  shouldStartMinimized = settings?.minimizedStart;
+  globalTheme = settings?.theme || 'light';
 
   mainWindow = new BrowserWindow({
     ...windowState,
@@ -391,37 +392,18 @@ async function createWindow() {
   mainWindow.on('close', async (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
-      const { settings } = await db.getSettings();
-      if (settings?.minimizedStart || process.argv.includes('--hidden')) {
-        mainWindow.minimize();
-      } else {
-        mainWindow.minimize();
-      }
+      mainWindow.minimize();
     }
     return false;
   });
 
   mainWindow.once('ready-to-show', async () => {
-    const { settings } = await db.getSettings();
-    const shouldStartMinimized = settings?.minimizedStart || process.argv.includes('--hidden');
-    
-    // Debug notification for startup state
-    new Notification({
-      title: 'Window Creation Debug',
-      body: `Start Setting: ${settings}`
-    }).show();
-
     if (!shouldStartMinimized) {
       if (windowState.isMaximized) {
         mainWindow.maximize();
       }
       mainWindow.show();
     } else {
-      // Debug notification for minimized start
-      new Notification({
-        title: 'Window Minimize Debug',
-        body: 'Attempting to start minimized'
-      }).show();
       mainWindow.minimize();
     }
 
@@ -716,7 +698,7 @@ ipcMain.handle('save-settings', async (event, settings) => {
   try {
     await db.saveSettings(settings);
     updateAutostart();
-    const theme = settings.theme || 'light';
+    const theme = settings.theme || globalTheme;
     
     // Send theme change to all windows and their webviews
     BrowserWindow.getAllWindows().forEach((win) => {
@@ -741,6 +723,8 @@ ipcMain.handle('save-settings', async (event, settings) => {
 ipcMain.handle('get-settings', async () => {
   try {
     const settings = await db.getSettings();
+    shouldStartMinimized = settings?.minimizedStart;
+    globalTheme = settings?.theme || 'light';
     return { success: true, settings: settings || {} };
   } catch (error) {
     console.error('Error getting settings:', error);
@@ -852,7 +836,7 @@ app.on('web-contents-created', (event, contents) => {
       return { action: 'deny' };
     }
 
-    if (isMicrosoft(url) && !url.includes('stashcat')) {
+    if ((url.toLowerCase().includes('onedrive') || url.toLowerCase().includes('sharepoint')) && !url.includes('stashcat')) {
       if (url.includes('about:blank') || url.includes('download') || url.includes('sharepoint')) {
         createWebviewWindow(url, 'Microsoft');
         return { action: 'deny' };
@@ -879,6 +863,7 @@ app.on('web-contents-created', (event, contents) => {
     });
 
     item.once('done', (event, state) => {
+      let messageBoxIsDisplayed = false;
       if (state === 'completed') {
         mainWindow.webContents.send('download', 'completed');
         
@@ -1034,15 +1019,7 @@ app.on('ready', async () => {
     return;
   }
   
-  try {
-    // Ensure database is initialized first
-    await db.ensureInitialized();
-    console.log('Database initialized');
-
-    // Load settings before any window creation
-    const { settings } = await db.getSettings();
-    console.log('Initial settings loaded:', settings);
-    
+  try {    
     await copyAssetsIfNeeded();
     await updateAutostart();
     createTray();
@@ -1079,8 +1056,7 @@ app.on('activate', async () => {
     await createWindow();
   } else {
     if (!mainWindow.isVisible()) {
-      const { settings } = await db.getSettings();
-      if (settings?.minimizedStart || process.argv.includes('--hidden')) {
+      if (shouldStartMinimized) {
         mainWindow.minimize();
       } else {
         const windowState = store.get('settings.windowState');

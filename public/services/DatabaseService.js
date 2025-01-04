@@ -277,7 +277,13 @@ class DatabaseService {
         try {
             await this.ensureInitialized();
             const result = await operation();
-            await this.closeConnection();
+            // Don't close connection immediately, let it stay open for subsequent operations
+            if (this.closeTimeout) {
+                clearTimeout(this.closeTimeout);
+            }
+            if (this.isConnected) {
+                this.closeConnection();
+            }
             return result;
         } catch (error) {
             if (this.isConnected) {
