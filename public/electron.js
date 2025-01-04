@@ -457,7 +457,6 @@ function createContextMenu(webContents, selectedText) {
       click: () => {
         if (selectedText) {
           mainWindow.webContents.send('add-todo', selectedText);
-          console.log('Context menu - Sent text to main window:', selectedText);
         }
       }
     }
@@ -741,7 +740,6 @@ autoUpdater.on('update-downloaded', (info) => {
 
 // Handle context menu events from webviews
 ipcMain.on('showContextMenu', (event, data) => {
-  console.log('Main process - Received context menu event:', data);
   const menu = createContextMenu(event.sender, data.selectionText);
   menu.popup();
 });

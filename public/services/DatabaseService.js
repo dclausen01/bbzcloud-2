@@ -86,13 +86,10 @@ class DatabaseService {
         try {
             // Generate or retrieve encryption key
             let encryptionKey = this.store.get('encryptionKey');
-            console.log('Retrieved encryption key exists:', Boolean(encryptionKey));
             
             if (!encryptionKey) {
-                console.log('Generating new encryption key');
                 encryptionKey = CryptoJS.lib.WordArray.random(256/8).toString();
                 this.store.set('encryptionKey', encryptionKey);
-                console.log('New encryption key saved to store');
             }
             
             // Validate encryption key format
@@ -100,18 +97,15 @@ class DatabaseService {
                 console.error('Invalid encryption key format, regenerating');
                 encryptionKey = CryptoJS.lib.WordArray.random(256/8).toString();
                 this.store.set('encryptionKey', encryptionKey);
-                console.log('Regenerated encryption key saved to store');
             }
             
             this.encryptionKey = encryptionKey;
-            console.log('Encryption setup completed successfully');
         } catch (error) {
             console.error('Error in setupEncryption:', error);
             // Fallback to new key generation
             const newKey = CryptoJS.lib.WordArray.random(256/8).toString();
             this.store.set('encryptionKey', newKey);
             this.encryptionKey = newKey;
-            console.log('Fallback encryption key generated and saved');
         }
     }
 
@@ -148,6 +142,12 @@ class DatabaseService {
                             updated_at INTEGER NOT NULL
                         )
                     `);
+
+                    // Insert Default folder if it doesn't exist
+                    this.db.run(`
+                        INSERT OR IGNORE INTO todo_folders (name, updated_at)
+                        VALUES ('Default', ?)
+                    `, [Date.now()]);
 
                     // Secure documents table
                     this.db.run(`
@@ -305,7 +305,6 @@ class DatabaseService {
         return this.withConnection(async () => {
             // Save zoom to electron-store (device specific)
             const zoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
-            console.log('Saving zoom value:', zoom); // Debug log
             this.store.set('globalZoom', zoom);
 
             // Save other settings to database
@@ -359,13 +358,8 @@ class DatabaseService {
                         
                         // Get zoom from electron-store (device specific)
                         const globalZoom = parseFloat(this.store.get('globalZoom')) || 1.0;
-                        console.log('Loading zoom value:', globalZoom); // Debug log
                         
-                        // Only return the saved values, let the context handle defaults
-                        // Add debug logging
-                        console.log('Raw settings from database:', settings);
-                        console.log('Raw minimizedStart value:', settings.minimizedStart);
-                        
+                        // Only return the saved values, let the context handle defaults                       
                         const result = {
                             navigationButtons: settings?.navigationButtons || {},
                             customApps: Array.isArray(settings?.customApps) ? settings.customApps : [],
@@ -374,8 +368,6 @@ class DatabaseService {
                             autostart: settings.autostart ?? true,
                             minimizedStart: settings.minimizedStart ?? false
                         };
-                        
-                        console.log('Processed settings:', result);
                         resolve(result);
                     }
                 );
@@ -591,8 +583,20 @@ class DatabaseService {
             const timestamp = Date.now();
             
             return new Promise((resolve, reject) => {
+                // Convert Buffer to base64 string for storage
+                const contentBase64 = Buffer.isBuffer(document.content)
+                    ? document.content.toString('base64')
+                    : Buffer.from(document.content).toString('base64');
+
+                // Create metadata object
+                const metadata = {
+                    compressed: document.compressed || false,
+                    content: contentBase64
+                };
+
+                // Encrypt the metadata
                 const encrypted = CryptoJS.AES.encrypt(
-                    document.content.toString('base64'),
+                    JSON.stringify(metadata),
                     password
                 ).toString();
 
@@ -648,13 +652,20 @@ class DatabaseService {
                             return;
                         }
                         try {
+                            // Decrypt the metadata
                             const decrypted = CryptoJS.AES.decrypt(row.content, password);
-                            const content = Buffer.from(decrypted.toString(CryptoJS.enc.Utf8), 'base64');
+                            const metadata = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
+                            
+                            // Convert base64 back to Buffer
+                            const content = Buffer.from(metadata.content, 'base64');
+                            
                             resolve({
                                 ...row,
-                                content
+                                content,
+                                compressed: metadata.compressed
                             });
                         } catch (error) {
+                            console.error('Decryption error:', error);
                             reject(new Error('Failed to decrypt document'));
                         }
                     }
@@ -754,7 +765,6 @@ class DatabaseService {
                             for (const win of windows) {
                                 if (win?.webContents) {
                                     win.webContents.send('database-changed');
-                                    console.log('Sent database-changed event to window');
                                 }
                             }
                         } catch (error) {

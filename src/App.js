@@ -183,7 +183,6 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = window.electron.onAddTodo((text) => {
-      console.log('App - Received text from context menu:', text);
       setContextMenuText(text);
       onTodoOpen(); // Open todo drawer when text is selected
       window.electron.debug('App - Set context menu text and opened drawer');
