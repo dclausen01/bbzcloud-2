@@ -758,6 +758,11 @@ autoUpdater.on('update-downloaded', (info) => {
   mainWindow.webContents.send('update-status', 'Update heruntergeladen. Installation beim nächsten Neustart.');
 });
 
+// Handle update installation
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
+
 // Handle context menu events from webviews
 ipcMain.on('showContextMenu', (event, data) => {
   const menu = createContextMenu(event.sender, data.selectionText);
@@ -870,10 +875,15 @@ app.on('web-contents-created', (event, contents) => {
 
 Menu.setApplicationMenu(null);
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   app.isQuitting = true;
   if (mainWindow) {
     saveWindowState();
+  }
+  
+  // Check if we have a downloaded update and install it
+  if (autoUpdater.getFeedURL() && autoUpdater.updateDownloaded) {
+    autoUpdater.quitAndInstall(false);
   }
 });
 

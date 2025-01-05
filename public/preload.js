@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeListener('update-status', subscription);
     };
   },
+  installUpdate: () => ipcRenderer.invoke('install-update'),
   onDownloadProgress: (callback) => {
     const subscription = (event, progress) => callback(progress);
     ipcRenderer.on('download', subscription);
