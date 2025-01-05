@@ -144,19 +144,23 @@ async function setupFileWatcher() {
   }
 
   const dbPath = db.getDatabasePath();
-  lastKnownTimestamp = await db.getLastUpdateTimestamp();
+  let lastMTime = fs.statSync(dbPath).mtimeMs;
 
-  // Instead of watching file changes, set up a periodic check every minute
-  const checkDatabaseChanges = async () => {
-    const currentTimestamp = await db.getLastUpdateTimestamp();
-    if (currentTimestamp > lastKnownTimestamp) {
-      lastKnownTimestamp = currentTimestamp;
-      mainWindow?.webContents.send('database-changed');
+  // Set up periodic check every minute
+  const checkDatabaseChanges = () => {
+    try {
+      const stats = fs.statSync(dbPath);
+      const currentMTime = stats.mtimeMs;
+      
+      // Only trigger reload if modification time has changed
+      if (currentMTime > lastMTime) {
+        lastMTime = currentMTime;
+        mainWindow?.webContents.send('database-changed');
+      }
+    } catch (error) {
+      console.error('Error checking database file:', error);
     }
   };
-
-  // Initial check
-  checkDatabaseChanges();
 
   // Set up periodic check every minute
   const intervalId = setInterval(checkDatabaseChanges, 60000);
@@ -674,31 +678,35 @@ ipcMain.handle('save-settings', async (event, settings) => {
   try {
     await db.saveSettings(settings);
     updateAutostart();
-    const theme = settings.theme || globalTheme;
-    globalTheme = theme;
+    const newTheme = settings.theme || globalTheme;
     
-    // Update all windows with the new theme
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        // Send theme change event to all windows
-        win.webContents.send('theme-changed', theme);
-        
-        // Send to all frames (webviews) in the window
-        win.webContents.sendToFrame(
-          [...Array(win.webContents.frameCount)].map((_, i) => i),
-          'theme-changed',
-          theme
-        );
+    // Only update theme if it actually changed
+    if (newTheme !== globalTheme) {
+      globalTheme = newTheme;
+      
+      // Update all windows with the new theme
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          // Send theme change event to all windows
+          win.webContents.send('theme-changed', newTheme);
+          
+          // Send to all frames (webviews) in the window
+          win.webContents.sendToFrame(
+            [...Array(win.webContents.frameCount)].map((_, i) => i),
+            'theme-changed',
+            newTheme
+          );
 
-        // For webview windows, also update the URL parameter
-        const url = win.webContents.getURL();
-        if (url.includes('webview.html')) {
-          const urlObj = new URL(url);
-          urlObj.searchParams.set('theme', theme);
-          win.loadURL(urlObj.toString());
+          // For webview windows, also update the URL parameter
+          const url = win.webContents.getURL();
+          if (url.includes('webview.html')) {
+            const urlObj = new URL(url);
+            urlObj.searchParams.set('theme', newTheme);
+            win.loadURL(urlObj.toString());
+          }
         }
-      }
-    });
+      });
+    }
     
     return { success: true };
   } catch (error) {
