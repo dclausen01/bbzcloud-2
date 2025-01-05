@@ -160,10 +160,14 @@ export function SettingsProvider({ children }) {
 
   // Function to load settings that can be called from outside
   const loadSettings = useCallback(async () => {
+    setIsLoading(true);
     try {
       const result = await window.electron.getSettings();
       if (result.success && result.settings) {
-        // Merge navigation buttons while preserving hardcoded titles
+        // Start with default settings
+        const newSettings = { ...defaultSettings };
+
+        // Merge navigation buttons while preserving hardcoded titles and defaults
         const updatedNavigationButtons = Object.entries(defaultSettings.navigationButtons).reduce((acc, [key, defaultButton]) => {
           const savedButton = result.settings.navigationButtons?.[key] || {};
           return {
@@ -171,24 +175,26 @@ export function SettingsProvider({ children }) {
             [key]: {
               ...defaultButton,
               ...savedButton,
-              // Preserve the hardcoded title
-              title: defaultButton.title
+              // Preserve the hardcoded title and ensure visible property exists
+              title: defaultButton.title,
+              visible: savedButton.visible ?? defaultButton.visible
             }
           };
         }, {});
 
-        setSettings(prevSettings => ({
-          ...defaultSettings,
-          ...result.settings,
+        // Update settings with loaded data and ensure all required properties exist
+        setSettings({
+          ...newSettings,
           navigationButtons: updatedNavigationButtons,
           standardApps: defaultSettings.standardApps,
           customApps: Array.isArray(result.settings.customApps) 
             ? result.settings.customApps 
             : [],
-          // Ensure boolean values have proper defaults
+          theme: result.settings.theme || defaultSettings.theme,
+          globalZoom: result.settings.globalZoom || defaultSettings.globalZoom,
           autostart: result.settings.autostart ?? defaultSettings.autostart,
           minimizedStart: result.settings.minimizedStart ?? defaultSettings.minimizedStart
-        }));
+        });
       }
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -201,9 +207,10 @@ export function SettingsProvider({ children }) {
   useEffect(() => {
     loadSettings();
 
-    const handleDatabaseChange = () => {
-      loadSettings();
-      console.log('Settings reloaded after database change');
+    const handleDatabaseChange = async () => {
+      console.log('Database changed, reloading settings...');
+      await loadSettings();
+      console.log('Settings successfully reloaded after database change');
     };
     
     window.electron.on('database-changed', handleDatabaseChange);
@@ -333,9 +340,10 @@ export function SettingsProvider({ children }) {
     toggleDarkMode
   };
 
+  // Don't render children until settings are loaded
   return (
     <SettingsContext.Provider value={value}>
-      {children}
+      {isLoading ? null : children}
     </SettingsContext.Provider>
   );
 }
