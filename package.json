@@ -126,10 +126,12 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "BBZ Cloud"
+      "shortcutName": "BBZ Cloud",
+      "packDestinationDir": "AppData"
     },
     "dmg": {
       "title": "BBZ Cloud",
