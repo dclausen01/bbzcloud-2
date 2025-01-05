@@ -12,6 +12,36 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
+  // Expose navigation methods through ref
+  React.useImperativeHandle(ref, () => ({
+    goBack: () => {
+      const webview = activeWebView && (
+        webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`)
+      );
+      if (webview && webview.canGoBack()) {
+        webview.goBack();
+      }
+    },
+    goForward: () => {
+      const webview = activeWebView && (
+        webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`)
+      );
+      if (webview && webview.canGoForward()) {
+        webview.goForward();
+      }
+    },
+    reload: () => {
+      const webview = activeWebView && (
+        webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`)
+      );
+      if (webview) {
+        webview.reload();
+      }
+    }
+  }));
   const webviewRefs = useRef({});
   const [isLoading, setIsLoading] = useState({});
   const [downloadProgress, setDownloadProgress] = useState(null);

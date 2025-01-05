@@ -6,7 +6,7 @@ const standardApps = {
   "SchulSHPortal": {
     "id": "SchulSHPortal",
     "title": "Schul.SH Portal",
-    "url": "https://portal.schule-sh.de/univention/portal/",
+    "url": "https://portal.schule-sh.de/",
     "buttonVariant": "solid"
   },
   "Hubbs": {
