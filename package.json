@@ -1,18 +1,18 @@
 {
   "name": "bbzcloud",
-  "version": "1.9.4",
+  "version": "1.9.5",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "private": true,
   "homepage": "./",
   "bugs": {
-    "url": "https://github.com/koyuawsmbrtn/bbz-cloud/issues"
+    "url": "https://github.com/dclausen01/bbzcloud-2/issues"
   },
   "license": "MIT",
   "author": {
-    "name": "koyu.space",
-    "email": "support@koyu.space",
-    "url": "https://koyu.space"
+    "name": "Dennis Clausen",
+    "email": "dennis.clausen@bbz-rd-eck.de",
+    "url": "https://github.com/dclausen01"
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",

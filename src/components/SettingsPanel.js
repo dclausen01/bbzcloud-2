@@ -276,8 +276,17 @@ function SettingsPanel({ onClose }) {
   return (
     <VStack spacing={6} align="stretch">
       {version && (
-        <Box fontSize="sm" color="gray.500" textAlign="right" mb={-4}>
-          <Text>Version {version} • <a href="https://github.com/koyuawsmbrtn/bbz-cloud" style={{textDecoration: 'underline'}}>GitHub</a></Text>
+        <Box fontSize="sm" color="gray.500" mb={-4}>
+          <HStack justify="space-between">
+            <Text>
+              <a href="https://wiki.bbz-rd-eck.com/doku.php?id=anleitungen_allgemein:bbzcloudapp" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
+                ❓ Hilfe
+              </a>
+            </Text>
+            <Text>
+              Version {version} • <a href="https://github.com/dclausen01/bbzcloud-2" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>GitHub</a>
+            </Text>
+          </HStack>
         </Box>
       )}
       <Box>

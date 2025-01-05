@@ -62,6 +62,8 @@ function App() {
     const loadInitialData = async () => {
       try {
         // Load credentials
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        sleep(500); // wait half a second to make loading of credentials more reliable
         const [emailResult, passwordResult, bbbPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',

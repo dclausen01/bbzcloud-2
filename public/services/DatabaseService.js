@@ -396,16 +396,18 @@ class DatabaseService {
                         });
                         folderStmt.finalize();
                         
-                        // Insert todos
+                        // Insert todos with encrypted text
                         const todoStmt = this.db.prepare(`
                             INSERT INTO todos (id, text, completed, folder, created_at, reminder, updated_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         `);
                         
                         todoState.todos.forEach(todo => {
+                            // Only encrypt the text content
+                            const encryptedText = this.encrypt(todo.text);
                             todoStmt.run(
                                 todo.id,
-                                todo.text,
+                                encryptedText,
                                 todo.completed ? 1 : 0,
                                 todo.folder,
                                 todo.createdAt,
@@ -458,7 +460,7 @@ class DatabaseService {
                         }
                         result.todos = rows.map(todo => ({
                             id: todo.id,
-                            text: todo.text,
+                            text: this.decrypt(todo.text), // Decrypt the text content
                             completed: Boolean(todo.completed),
                             folder: todo.folder,
                             createdAt: todo.created_at,

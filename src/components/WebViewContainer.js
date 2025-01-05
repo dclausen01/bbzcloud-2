@@ -14,6 +14,7 @@ import { useSettings } from '../context/SettingsContext';
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   const webviewRefs = useRef({});
   const [isLoading, setIsLoading] = useState({});
+  const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
   const [imageError, setImageError] = useState(false);
   const [credsAreSet, setCredsAreSet] = useState({});
@@ -59,6 +60,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     });
     return () => unsubscribe();
   }, [setColorMode]);
+
+  // Listen for download progress
+  useEffect(() => {
+    const handleDownload = (progress) => {
+      if (progress === 'completed' || progress === 'failed' || progress === 'interrupted') {
+        setDownloadProgress(null);
+      } else if (progress === 'paused') {
+        setDownloadProgress('paused');
+      } else if (typeof progress === 'number') {
+        setDownloadProgress(progress);
+      }
+    };
+
+    window.electron.on('download', handleDownload);
+    return () => window.electron.removeListener('download', handleDownload);
+  }, []);
 
   // Listen for system resume events
   useEffect(() => {
@@ -461,6 +478,30 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   return (
     <Box h="100%" w="100%" position="relative" overflow="hidden">
+      {/* Download Progress */}
+      {downloadProgress !== null && (
+        <Box
+          position="fixed"
+          bottom="4"
+          right="4"
+          width="300px"
+          bg="white"
+          boxShadow="md"
+          borderRadius="md"
+          p="3"
+          zIndex={9999}
+        >
+          <Text mb="2" fontSize="sm">
+            {downloadProgress === 'paused' ? 'Download pausiert' : 'Download läuft...'}
+          </Text>
+          <Progress
+            value={downloadProgress === 'paused' ? 0 : downloadProgress}
+            size="sm"
+            colorScheme="blue"
+            isIndeterminate={downloadProgress === -1}
+          />
+        </Box>
+      )}
       {/* Standard apps */}
       {Object.entries(standardApps).map(([id, config]) => {
         if (!config.visible) return null;
