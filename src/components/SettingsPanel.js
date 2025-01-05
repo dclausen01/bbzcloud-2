@@ -284,7 +284,7 @@ function SettingsPanel({ onClose }) {
               </a>
             </Text>
             <Text>
-              Version {version} • <a href="https://github.com/dclausen01/bbzcloud-2" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>GitHub</a>
+              Version {version} • <a href="https://github.com/dclausen01/bbzcloud-2/" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>GitHub</a>
             </Text>
           </HStack>
         </Box>

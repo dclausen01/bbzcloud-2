@@ -13,9 +13,6 @@ class DatabaseService {
             name: 'bbzcloud-store',
             clearInvalidConfig: true,
             schema: {
-                encryptionKey: {
-                    type: 'string'
-                },
                 databasePath: {
                     type: 'string'
                 },
@@ -26,12 +23,15 @@ class DatabaseService {
             }
         });
         
-        this.setupEncryption();
-        
         // Initialize database asynchronously
-        this.initPromise = this.initializeDatabase().catch(err => {
+        this.initPromise = this.initialize().catch(err => {
             console.error('Failed to initialize database:', err);
         });
+    }
+
+    async initialize() {
+        await this.setupEncryption();
+        await this.initializeDatabase();
     }
 
     async initializeDatabase() {
@@ -82,30 +82,21 @@ class DatabaseService {
         }
     }
 
-    setupEncryption() {
+    async setupEncryption() {
         try {
-            // Generate or retrieve encryption key
-            let encryptionKey = this.store.get('encryptionKey');
+            // Get encryption key from keytar
+            const keytar = require('keytar');
+            const password = await keytar.getPassword('bbzcloud', 'password');
             
-            if (!encryptionKey) {
-                encryptionKey = CryptoJS.lib.WordArray.random(256/8).toString();
-                this.store.set('encryptionKey', encryptionKey);
+            if (!password) {
+                throw new Error('No password found in keytar');
             }
             
-            // Validate encryption key format
-            if (typeof encryptionKey !== 'string' || encryptionKey.length < 32) {
-                console.error('Invalid encryption key format, regenerating');
-                encryptionKey = CryptoJS.lib.WordArray.random(256/8).toString();
-                this.store.set('encryptionKey', encryptionKey);
-            }
-            
-            this.encryptionKey = encryptionKey;
+            // Use password as encryption key
+            this.encryptionKey = password;
         } catch (error) {
             console.error('Error in setupEncryption:', error);
-            // Fallback to new key generation
-            const newKey = CryptoJS.lib.WordArray.random(256/8).toString();
-            this.store.set('encryptionKey', newKey);
-            this.encryptionKey = newKey;
+            throw new Error('Failed to setup encryption: ' + error.message);
         }
     }
 
@@ -287,16 +278,19 @@ class DatabaseService {
 
     decrypt(encryptedData) {
         if (!encryptedData || !this.encryptionKey) {
-            return null;
+            throw new Error('Missing encrypted data or encryption key');
         }
         
         try {
             const bytes = CryptoJS.AES.decrypt(encryptedData, this.encryptionKey);
             const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
-            return decryptedStr ? JSON.parse(decryptedStr) : null;
+            if (!decryptedStr) {
+                throw new Error('Decryption resulted in empty string');
+            }
+            return JSON.parse(decryptedStr);
         } catch (error) {
             console.error('Decryption error:', error);
-            return null;
+            throw new Error('Failed to decrypt data: ' + error.message);
         }
     }
 
