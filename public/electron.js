@@ -760,6 +760,9 @@ ipcMain.on('showContextMenu', (event, data) => {
   menu.popup();
 });
 
+// Track active downloads to prevent multiple dialogs
+const activeDownloads = new Set();
+
 app.on('web-contents-created', (event, contents) => {
   contents.on('will-redirect', (e, url) => {
     if (
@@ -815,9 +818,6 @@ app.on('web-contents-created', (event, contents) => {
 
     return { action: 'allow' };
   });
-
-  // Track active downloads to prevent multiple dialogs
-  const activeDownloads = new Set();
 
   contents.session.on('will-download', (event, item, webContents) => {
     const downloadId = item.getURL();
