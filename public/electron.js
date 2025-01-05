@@ -816,7 +816,13 @@ app.on('web-contents-created', (event, contents) => {
     return { action: 'allow' };
   });
 
+  // Track active downloads to prevent multiple dialogs
+  const activeDownloads = new Set();
+
   contents.session.on('will-download', (event, item, webContents) => {
+    const downloadId = item.getURL();
+    activeDownloads.add(downloadId);
+
     item.on('updated', (event, state) => {
       if (state === 'interrupted') {
         mainWindow.webContents.send('download', 'interrupted');
@@ -833,29 +839,26 @@ app.on('web-contents-created', (event, contents) => {
     });
 
     item.once('done', (event, state) => {
-      let messageBoxIsDisplayed = false;
-      if (state === 'completed') {
+      if (state === 'completed' && activeDownloads.has(downloadId)) {
         mainWindow.webContents.send('download', 'completed');
         
-        if (!messageBoxIsDisplayed) {
-          messageBoxIsDisplayed = true;
-          dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            buttons: ['Ok', 'Datei öffnen', 'Ordner öffnen'],
-            title: 'Download',
-            message: 'Download abgeschlossen'
-          }).then((response) => {
-            if (response.response === 1) {
-              shell.openPath(item.getSavePath());
-            }
-            if (response.response === 2) {
-              shell.openPath(path.dirname(item.getSavePath()));
-            }
-            messageBoxIsDisplayed = false;
-          });
-        }
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          buttons: ['Ok', 'Datei öffnen', 'Ordner öffnen'],
+          title: 'Download',
+          message: 'Download abgeschlossen'
+        }).then((response) => {
+          if (response.response === 1) {
+            shell.openPath(item.getSavePath());
+          }
+          if (response.response === 2) {
+            shell.openPath(path.dirname(item.getSavePath()));
+          }
+          activeDownloads.delete(downloadId);
+        });
       } else {
         mainWindow.webContents.send('download', 'failed');
+        activeDownloads.delete(downloadId);
       }
     });
   });

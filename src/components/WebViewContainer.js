@@ -63,7 +63,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   // Listen for download progress
   useEffect(() => {
-    const handleDownload = (progress) => {
+    const unsubscribe = window.electron.onDownloadProgress((progress) => {
       if (progress === 'completed' || progress === 'failed' || progress === 'interrupted') {
         setDownloadProgress(null);
       } else if (progress === 'paused') {
@@ -71,10 +71,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       } else if (typeof progress === 'number') {
         setDownloadProgress(progress);
       }
-    };
-
-    window.electron.on('download', handleDownload);
-    return () => window.electron.removeListener('download', handleDownload);
+    });
+    return () => unsubscribe();
   }, []);
 
   // Listen for system resume events
@@ -485,8 +483,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           bottom="4"
           right="4"
           width="300px"
-          bg="white"
-          boxShadow="md"
+          bg={colorMode === 'light' ? 'white' : 'gray.700'}
+          color={colorMode === 'light' ? 'gray.800' : 'white'}
+          boxShadow="lg"
           borderRadius="md"
           p="3"
           zIndex={9999}
