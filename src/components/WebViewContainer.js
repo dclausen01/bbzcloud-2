@@ -383,41 +383,50 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   }, []); // Empty dependency array means this runs once when component mounts
 
   useEffect(() => {
+    // Track event listeners for cleanup
+    const eventCleanups = new Map();
+
+    // Helper to add event listener with cleanup
+    const addWebviewListener = (webview, event, handler) => {
+      webview.addEventListener(event, handler);
+      const cleanups = eventCleanups.get(webview) || [];
+      cleanups.push(() => webview.removeEventListener(event, handler));
+      eventCleanups.set(webview, cleanups);
+    };
+
     // Set up event listeners for all webviews
-    document.querySelectorAll('webview').forEach((webview) => {
+    const setupWebviewListeners = (webview) => {
       const id = webview.id.replace('wv-', '').toLowerCase();
 
-      webview.addEventListener('did-start-loading', () => {
+      // Loading state handlers
+      addWebviewListener(webview, 'did-start-loading', () => {
         setIsLoading(prev => ({ ...prev, [id]: true }));
       });
 
-      webview.addEventListener('did-stop-loading', () => {
+      addWebviewListener(webview, 'did-stop-loading', () => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
       });
 
-      webview.addEventListener('did-finish-load', async () => {
+      // Load completion handler
+      addWebviewListener(webview, 'did-finish-load', async () => {
         if (activeWebView && activeWebView.id === id) {
           onNavigate(webview.getURL());
         }
 
-        // Apply zoom level
         await applyZoom(webview, id);
-
-        // Inject credentials if needed
         await injectCredentials(webview, id);
 
-        // Check if this webview should have context menu
+        // Context menu setup (only add once)
         const url = webview.getURL();
         if (
           url.includes('schul.cloud') ||
-          url.includes('portal.bbz-rd-eck.com') || // Moodle
+          url.includes('portal.bbz-rd-eck.com') ||
           url.includes('taskcards.app') ||
           url.includes('wiki.bbz-rd-eck.com')
         ) {
-          webview.addEventListener('context-menu', async (e) => {
+          const contextMenuHandler = async (e) => {
             e.preventDefault();
             try {
-              // Get selected text directly from the webview
               const selectedText = await webview.executeJavaScript(`window.getSelection().toString()`);
               if (selectedText) {
                 window.electron.send('showContextMenu', {
@@ -429,20 +438,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             } catch (error) {
               console.error('Error getting selected text:', error);
             }
-          });
+          };
+          addWebviewListener(webview, 'context-menu', contextMenuHandler);
         }
       });
 
-      webview.addEventListener('did-navigate', (e) => {
-        // Reset credentials flag on navigation to allow re-injection if needed
+      // Navigation handler
+      addWebviewListener(webview, 'did-navigate', () => {
         if (id === 'handbook') {
           setCredsAreSet(prev => ({ ...prev, [id]: false }));
         }
       });
 
-      webview.addEventListener('did-fail-load', (error) => {
+      // Error handler
+      addWebviewListener(webview, 'did-fail-load', (error) => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
-        // Only show error toast for actual failures (errorCode < -3) after startup period
         if (!isStartupPeriod && error.errorCode < -3) {
           toast({
             title: 'Fehler beim Laden der Seite',
@@ -453,8 +463,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           });
         }
       });
-    });
-  }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast]);
+    };
+
+    // Set up listeners for existing webviews
+    const webviews = document.querySelectorAll('webview');
+    webviews.forEach(setupWebviewListeners);
+
+    // Cleanup function
+    return () => {
+      eventCleanups.forEach((cleanups, webview) => {
+        cleanups.forEach(cleanup => cleanup());
+      });
+      eventCleanups.clear();
+    };
+  }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast, isStartupPeriod]);
 
   if (!activeWebView && !Object.keys(standardApps).length) {
     return (

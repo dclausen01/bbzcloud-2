@@ -777,10 +777,64 @@ ipcMain.on('showContextMenu', (event, data) => {
   menu.popup();
 });
 
-// Track active downloads and their states to prevent multiple dialogs
-const activeDownloads = new Map();
+// Global dialog state
+let isShowingDialog = false;
 
 app.on('web-contents-created', (event, contents) => {
+  // Set up download handler for this web contents
+  contents.session.on('will-download', (event, item) => {
+    item.on('updated', (event, state) => {
+      if (state === 'interrupted') {
+        mainWindow.webContents.send('download', 'interrupted');
+      } else if (state === 'progressing') {
+        if (item.isPaused()) {
+          mainWindow.webContents.send('download', 'paused');
+        } else {
+          const percent = item.getTotalBytes() 
+            ? (item.getReceivedBytes() / item.getTotalBytes()) * 100 
+            : -1;
+          mainWindow.webContents.send('download', percent);
+        }
+      }
+    });
+
+    item.once('done', async (event, state) => {
+      if (state === 'completed') {
+        mainWindow.webContents.send('download', 'completed');
+        
+        // Only show dialog if no other dialog is showing
+        if (!isShowingDialog) {
+          isShowingDialog = true;
+          
+          try {
+            const response = await dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              buttons: ['Ok', 'Datei öffnen', 'Ordner öffnen'],
+              title: 'Download',
+              message: 'Download abgeschlossen',
+              noLink: true,
+              modal: true,
+              defaultId: 0,
+              cancelId: 0
+            });
+            
+            if (response.response === 1) {
+              shell.openPath(item.getSavePath());
+            } else if (response.response === 2) {
+              shell.openPath(path.dirname(item.getSavePath()));
+            }
+          } catch (error) {
+            console.error('Error showing download dialog:', error);
+          } finally {
+            isShowingDialog = false;
+          }
+        }
+      } else {
+        mainWindow.webContents.send('download', 'failed');
+      }
+    });
+  });
+
   contents.on('will-redirect', (e, url) => {
     if (
       url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
@@ -836,68 +890,6 @@ app.on('web-contents-created', (event, contents) => {
     return { action: 'allow' };
   });
 
-  contents.session.on('will-download', (event, item, webContents) => {
-    const downloadId = `${item.getURL()}-${Date.now()}-${Math.random()}`;
-    
-    // Only proceed if this download isn't already being handled
-    if (activeDownloads.has(downloadId)) {
-      return;
-    }
-    
-    activeDownloads.set(downloadId, {
-      state: 'started',
-      item: item
-    });
-
-    item.on('updated', (event, state) => {
-      if (state === 'interrupted') {
-        mainWindow.webContents.send('download', 'interrupted');
-      } else if (state === 'progressing') {
-        if (item.isPaused()) {
-          mainWindow.webContents.send('download', 'paused');
-        } else {
-          const percent = item.getTotalBytes() 
-            ? (item.getReceivedBytes() / item.getTotalBytes()) * 100 
-            : -1;
-          mainWindow.webContents.send('download', percent);
-        }
-      }
-    });
-
-    item.once('done', (event, state) => {
-      const download = activeDownloads.get(downloadId);
-      if (!download || download.state === 'handled') {
-        return;
-      }
-
-      if (state === 'completed') {
-        mainWindow.webContents.send('download', 'completed');
-        
-        // Mark as handled before showing dialog
-        activeDownloads.set(downloadId, { ...download, state: 'handled' });
-        
-        dialog.showMessageBox(mainWindow, {
-          type: 'info',
-          buttons: ['Ok', 'Datei öffnen', 'Ordner öffnen'],
-          title: 'Download',
-          message: 'Download abgeschlossen'
-        }).then((response) => {
-          if (response.response === 1) {
-            shell.openPath(item.getSavePath());
-          }
-          if (response.response === 2) {
-            shell.openPath(path.dirname(item.getSavePath()));
-          }
-        }).finally(() => {
-          // Clean up after dialog is closed
-          activeDownloads.delete(downloadId);
-        });
-      } else {
-        mainWindow.webContents.send('download', 'failed');
-        activeDownloads.delete(downloadId);
-      }
-    });
-  });
 });
 
 Menu.setApplicationMenu(null);
