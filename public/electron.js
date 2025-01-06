@@ -777,8 +777,8 @@ ipcMain.on('showContextMenu', (event, data) => {
   menu.popup();
 });
 
-// Track active downloads to prevent multiple dialogs
-const activeDownloads = new Set();
+// Track active downloads and their states to prevent multiple dialogs
+const activeDownloads = new Map();
 
 app.on('web-contents-created', (event, contents) => {
   contents.on('will-redirect', (e, url) => {
@@ -837,8 +837,17 @@ app.on('web-contents-created', (event, contents) => {
   });
 
   contents.session.on('will-download', (event, item, webContents) => {
-    const downloadId = item.getURL();
-    activeDownloads.add(downloadId);
+    const downloadId = `${item.getURL()}-${Date.now()}-${Math.random()}`;
+    
+    // Only proceed if this download isn't already being handled
+    if (activeDownloads.has(downloadId)) {
+      return;
+    }
+    
+    activeDownloads.set(downloadId, {
+      state: 'started',
+      item: item
+    });
 
     item.on('updated', (event, state) => {
       if (state === 'interrupted') {
@@ -856,8 +865,16 @@ app.on('web-contents-created', (event, contents) => {
     });
 
     item.once('done', (event, state) => {
-      if (state === 'completed' && activeDownloads.has(downloadId)) {
+      const download = activeDownloads.get(downloadId);
+      if (!download || download.state === 'handled') {
+        return;
+      }
+
+      if (state === 'completed') {
         mainWindow.webContents.send('download', 'completed');
+        
+        // Mark as handled before showing dialog
+        activeDownloads.set(downloadId, { ...download, state: 'handled' });
         
         dialog.showMessageBox(mainWindow, {
           type: 'info',
@@ -871,6 +888,8 @@ app.on('web-contents-created', (event, contents) => {
           if (response.response === 2) {
             shell.openPath(path.dirname(item.getSavePath()));
           }
+        }).finally(() => {
+          // Clean up after dialog is closed
           activeDownloads.delete(downloadId);
         });
       } else {
