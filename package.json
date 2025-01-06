@@ -126,8 +126,6 @@
     },
     "nsis": {
       "oneClick": true,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BBZ Cloud"
