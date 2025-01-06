@@ -693,7 +693,7 @@ ipcMain.handle('save-settings', async (event, settings) => {
       // Update all windows with the new theme
       const windows = BrowserWindow.getAllWindows();
       windows.forEach((win) => {
-        if (!win.isDestroyed()) {
+        if (!win.isDestroyed() || win !== mainWindow) {
           // Send theme change event to all windows
           win.webContents.send('theme-changed', newTheme);
           
