@@ -683,12 +683,12 @@ ipcMain.handle('save-settings', async (event, settings) => {
         // Send theme change event to all windows
         win.webContents.send('theme-changed', theme);
         
-        // Send to all frames (webviews) in the window
+        /* Send to all frames (webviews) in the window
         win.webContents.sendToFrame(
           [...Array(win.webContents.frameCount)].map((_, i) => i),
           'theme-changed',
           theme
-        );
+        ); */
 
         // For webview windows, also update the URL parameter
         const url = win.webContents.getURL();
