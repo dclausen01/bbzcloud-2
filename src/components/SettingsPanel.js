@@ -40,7 +40,17 @@ function SettingsPanel({ onClose }) {
     bbbPassword: ''
   });
   const [version, setVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState('');
   const toast = useToast();
+
+  useEffect(() => {
+    // Listen for update status
+    const unsubscribe = window.electron.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     // Load version
@@ -285,6 +295,21 @@ function SettingsPanel({ onClose }) {
             </Text>
             <Text>
               Version {version} • <a href="https://github.com/dclausen01/bbzcloud-2/" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>GitHub</a>
+              {updateStatus && (
+                <Text as="span" ml={2}>
+                  • {updateStatus}
+                  {updateStatus.includes('heruntergeladen') && (
+                    <Button
+                      size="sm"
+                      colorScheme="green"
+                      ml={2}
+                      onClick={() => window.electron.installUpdate()}
+                    >
+                      Update installieren
+                    </Button>
+                  )}
+                </Text>
+              )}
             </Text>
           </HStack>
         </Box>

@@ -34,6 +34,7 @@ function SecureDocuments() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredFiles, setFilteredFiles] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const cancelRef = React.useRef();
   const toast = useToast();
@@ -55,17 +56,28 @@ function SecureDocuments() {
     }
   }, [isReady]);
 
-  // Drag and drop handlers
+  // Drag and drop handlers with counter-based approach
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
+    setDragCounter(prev => prev + 1);
     setIsDragging(true);
   }, []);
 
   const handleDragLeave = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    setDragCounter(prev => {
+      const newCounter = prev - 1;
+      // Only set isDragging to false when we've left all drag zones
+      requestAnimationFrame(() => {
+        if (newCounter <= 0) {
+          setIsDragging(false);
+          setDragCounter(0); // Reset counter to prevent negative values
+        }
+      });
+      return newCounter;
+    });
   }, []);
 
   const handleDragOver = useCallback((e) => {
@@ -74,6 +86,7 @@ function SecureDocuments() {
   }, []);
 
   const handleDrop = useCallback(async (e) => {
+    setDragCounter(0);
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -306,8 +319,8 @@ function SecureDocuments() {
           left={0}
           right={0}
           bottom={0}
-          bg="blue.50"
-          opacity={0.8}
+          bg={colorMode === 'light' ? 'blue.50' : 'blue.900'}
+          opacity={0.9}
           display="flex"
           alignItems="center"
           justifyContent="center"

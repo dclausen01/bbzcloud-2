@@ -55,7 +55,7 @@
     "build": "cross-env PUBLIC_URL=./ react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "electron-dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron-dev": "concurrently --kill-others \"cross-env BROWSER=none npm start\" \"wait-on -t 30000 http://localhost:3000 && electron .\"",
     "postinstall": "electron-builder install-app-deps",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder -mwl",
@@ -125,8 +125,9 @@
       }
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BBZ Cloud"

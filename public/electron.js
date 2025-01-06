@@ -144,21 +144,31 @@ async function setupFileWatcher() {
   }
 
   const dbPath = db.getDatabasePath();
-  lastKnownTimestamp = await db.getLastUpdateTimestamp();
+  let lastMTime = fs.statSync(dbPath).mtimeMs;
 
-  // Instead of watching file changes, set up a periodic check every minute
+  // Set up periodic check every minute
   const checkDatabaseChanges = async () => {
-    const currentTimestamp = await db.getLastUpdateTimestamp();
-    if (currentTimestamp > lastKnownTimestamp) {
-      lastKnownTimestamp = currentTimestamp;
-      mainWindow?.webContents.send('database-changed');
+    try {
+      const stats = fs.statSync(dbPath);
+      const currentMTime = stats.mtimeMs;
+    
+      // Only trigger reload if modification time has changed and settings actually changed
+      if (currentMTime > lastMTime) {
+        const currentSettings = await db.getSettings();
+        const currentSettingsStr = JSON.stringify(currentSettings);
+        
+        if (!global.lastSettingsStr || global.lastSettingsStr !== currentSettingsStr) {
+          global.lastSettingsStr = currentSettingsStr;
+          lastMTime = currentMTime;
+          mainWindow?.webContents.send('database-changed');
+        } 
+      } 
+    } catch (error) {
+      console.error('[Database Check] Error:', error);
     }
   };
 
-  // Initial check
-  checkDatabaseChanges();
-
-  // Set up periodic check every minute
+  // Set up periodic check every 60 seconds
   const intervalId = setInterval(checkDatabaseChanges, 60000);
 
   // Clean up interval when app quits
@@ -674,31 +684,29 @@ ipcMain.handle('save-settings', async (event, settings) => {
   try {
     await db.saveSettings(settings);
     updateAutostart();
-    const theme = settings.theme || globalTheme;
-    globalTheme = theme;
+    const newTheme = settings.theme || globalTheme;
     
-    // Update all windows with the new theme
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        // Send theme change event to all windows
-        win.webContents.send('theme-changed', theme);
-        
-        /* Send to all frames (webviews) in the window
-        win.webContents.sendToFrame(
-          [...Array(win.webContents.frameCount)].map((_, i) => i),
-          'theme-changed',
-          theme
-        ); */
-
-        // For webview windows, also update the URL parameter
-        const url = win.webContents.getURL();
-        if (url.includes('webview.html')) {
-          const urlObj = new URL(url);
-          urlObj.searchParams.set('theme', theme);
-          win.loadURL(urlObj.toString());
+    // Only update theme if it actually changed
+    if (newTheme !== globalTheme) {
+      globalTheme = newTheme;
+      
+      // Update all windows with the new theme
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          // Send theme change event to all windows
+          win.webContents.send('theme-changed', newTheme);
+          
+          // For child webview windows, also update the URL parameter
+          const url = win.webContents.getURL();
+          if (url.includes('webview.html')) {
+            const urlObj = new URL(url);
+            urlObj.searchParams.set('theme', newTheme);
+            win.loadURL(urlObj.toString());
+          }
         }
-      }
-    });
+      });
+    }
     
     return { success: true };
   } catch (error) {
@@ -758,16 +766,75 @@ autoUpdater.on('update-downloaded', (info) => {
   mainWindow.webContents.send('update-status', 'Update heruntergeladen. Installation beim nächsten Neustart.');
 });
 
+// Handle update installation
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
+
 // Handle context menu events from webviews
 ipcMain.on('showContextMenu', (event, data) => {
   const menu = createContextMenu(event.sender, data.selectionText);
   menu.popup();
 });
 
-// Track active downloads to prevent multiple dialogs
-const activeDownloads = new Set();
+// Global dialog state
+let isShowingDialog = false;
 
 app.on('web-contents-created', (event, contents) => {
+  // Set up download handler for this web contents
+  contents.session.on('will-download', (event, item) => {
+    item.on('updated', (event, state) => {
+      if (state === 'interrupted') {
+        mainWindow.webContents.send('download', 'interrupted');
+      } else if (state === 'progressing') {
+        if (item.isPaused()) {
+          mainWindow.webContents.send('download', 'paused');
+        } else {
+          const percent = item.getTotalBytes() 
+            ? (item.getReceivedBytes() / item.getTotalBytes()) * 100 
+            : -1;
+          mainWindow.webContents.send('download', percent);
+        }
+      }
+    });
+
+    item.once('done', async (event, state) => {
+      if (state === 'completed') {
+        mainWindow.webContents.send('download', 'completed');
+        
+        // Only show dialog if no other dialog is showing
+        if (!isShowingDialog) {
+          isShowingDialog = true;
+          
+          try {
+            const response = await dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              buttons: ['Ok', 'Datei öffnen', 'Ordner öffnen'],
+              title: 'Download',
+              message: 'Download abgeschlossen',
+              noLink: true,
+              modal: true,
+              defaultId: 0,
+              cancelId: 0
+            });
+            
+            if (response.response === 1) {
+              shell.openPath(item.getSavePath());
+            } else if (response.response === 2) {
+              shell.openPath(path.dirname(item.getSavePath()));
+            }
+          } catch (error) {
+            console.error('Error showing download dialog:', error);
+          } finally {
+            isShowingDialog = false;
+          }
+        }
+      } else {
+        mainWindow.webContents.send('download', 'failed');
+      }
+    });
+  });
+
   contents.on('will-redirect', (e, url) => {
     if (
       url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
@@ -823,57 +890,19 @@ app.on('web-contents-created', (event, contents) => {
     return { action: 'allow' };
   });
 
-  contents.session.on('will-download', (event, item, webContents) => {
-    const downloadId = item.getURL();
-    activeDownloads.add(downloadId);
-
-    item.on('updated', (event, state) => {
-      if (state === 'interrupted') {
-        mainWindow.webContents.send('download', 'interrupted');
-      } else if (state === 'progressing') {
-        if (item.isPaused()) {
-          mainWindow.webContents.send('download', 'paused');
-        } else {
-          const percent = item.getTotalBytes() 
-            ? (item.getReceivedBytes() / item.getTotalBytes()) * 100 
-            : -1;
-          mainWindow.webContents.send('download', percent);
-        }
-      }
-    });
-
-    item.once('done', (event, state) => {
-      if (state === 'completed' && activeDownloads.has(downloadId)) {
-        mainWindow.webContents.send('download', 'completed');
-        
-        dialog.showMessageBox(mainWindow, {
-          type: 'info',
-          buttons: ['Ok', 'Datei öffnen', 'Ordner öffnen'],
-          title: 'Download',
-          message: 'Download abgeschlossen'
-        }).then((response) => {
-          if (response.response === 1) {
-            shell.openPath(item.getSavePath());
-          }
-          if (response.response === 2) {
-            shell.openPath(path.dirname(item.getSavePath()));
-          }
-          activeDownloads.delete(downloadId);
-        });
-      } else {
-        mainWindow.webContents.send('download', 'failed');
-        activeDownloads.delete(downloadId);
-      }
-    });
-  });
 });
 
 Menu.setApplicationMenu(null);
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   app.isQuitting = true;
   if (mainWindow) {
     saveWindowState();
+  }
+  
+  // Check if we have a downloaded update and install it
+  if (autoUpdater.getFeedURL() && autoUpdater.updateDownloaded) {
+    autoUpdater.quitAndInstall(false);
   }
 });
 
