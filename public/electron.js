@@ -147,22 +147,38 @@ async function setupFileWatcher() {
   let lastMTime = fs.statSync(dbPath).mtimeMs;
 
   // Set up periodic check every minute
-  const checkDatabaseChanges = () => {
+  const checkDatabaseChanges = async () => {
     try {
+      console.log('[Database Check] Checking database file modification time...');
       const stats = fs.statSync(dbPath);
       const currentMTime = stats.mtimeMs;
       
-      // Only trigger reload if modification time has changed
+      console.log('[Database Check] Current mTime:', new Date(currentMTime).toISOString());
+      console.log('[Database Check] Last mTime:', new Date(lastMTime).toISOString());
+      
+      // Only trigger reload if modification time has changed and settings actually changed
       if (currentMTime > lastMTime) {
-        lastMTime = currentMTime;
-        mainWindow?.webContents.send('database-changed');
+        console.log('[Database Check] File modified, checking settings...');
+        const currentSettings = await db.getSettings();
+        const currentSettingsStr = JSON.stringify(currentSettings);
+        
+        if (!global.lastSettingsStr || global.lastSettingsStr !== currentSettingsStr) {
+          console.log('[Database Check] Settings changed, triggering reload');
+          global.lastSettingsStr = currentSettingsStr;
+          lastMTime = currentMTime;
+          mainWindow?.webContents.send('database-changed');
+        } else {
+          console.log('[Database Check] Settings unchanged, skipping reload');
+        }
+      } else {
+        console.log('[Database Check] No changes detected');
       }
     } catch (error) {
-      console.error('Error checking database file:', error);
+      console.error('[Database Check] Error:', error);
     }
   };
 
-  // Set up periodic check every minute
+  // Set up periodic check every 60 seconds
   const intervalId = setInterval(checkDatabaseChanges, 60000);
 
   // Clean up interval when app quits
@@ -680,12 +696,19 @@ ipcMain.handle('save-settings', async (event, settings) => {
     updateAutostart();
     const newTheme = settings.theme || globalTheme;
     
+    console.log('[Settings] Saving settings...');
+    console.log('[Theme] Current theme:', globalTheme);
+    console.log('[Theme] New theme:', newTheme);
+    
     // Only update theme if it actually changed
     if (newTheme !== globalTheme) {
+      console.log('[Theme] Theme changed, updating all windows');
       globalTheme = newTheme;
       
       // Update all windows with the new theme
-      BrowserWindow.getAllWindows().forEach((win) => {
+      const windows = BrowserWindow.getAllWindows();
+      console.log('[Theme] Updating', windows.length, 'windows');
+      windows.forEach((win) => {
         if (!win.isDestroyed()) {
           // Send theme change event to all windows
           win.webContents.send('theme-changed', newTheme);
@@ -1055,13 +1078,17 @@ app.on('ready', async () => {
 
   // Handle system resume events
   powerMonitor.on('resume', () => {
+    console.log('[System] System resumed from sleep');
     if (mainWindow) {
+      console.log('[System] Triggering reload for webviews:', webviewsToReload);
       mainWindow.webContents.send('system-resumed', webviewsToReload);
     }
   });
 
   powerMonitor.on('unlock-screen', () => {
+    console.log('[System] Screen unlocked');
     if (mainWindow) {
+      console.log('[System] Triggering reload for webviews:', webviewsToReload);
       mainWindow.webContents.send('system-resumed', webviewsToReload);
     }
   });

@@ -97,7 +97,7 @@ const defaultSettings = {
     },
     office: {
       visible: true,
-      url: 'https://www.microsoft365.com/?auth=2',
+      url: 'https://m365.cloud.microsoft/?auth=2',
       title: 'Office',
       buttonVariant: 'lilac',
       zoom: 1.0
