@@ -134,9 +134,8 @@ const store = new Store({
 // Initialize database service
 const db = new DatabaseService();
 
-// File change detection
+/* File change detection
 let fileWatcher = null;
-let lastKnownTimestamp = 0;
 
 async function setupFileWatcher() {
   if (fileWatcher) {
@@ -146,7 +145,7 @@ async function setupFileWatcher() {
   const dbPath = db.getDatabasePath();
   let lastMTime = fs.statSync(dbPath).mtimeMs;
 
-  /* Set up periodic check every minute
+  // Set up periodic check every minute
   const checkDatabaseChanges = async () => {
     try {
       const stats = fs.statSync(dbPath);
@@ -547,7 +546,7 @@ ipcMain.handle('change-database-location', async (event) => {
       }
 
       await db.changeDatabaseLocation(newDbPath);
-      await setupFileWatcher(); // Reset file watcher for new location
+      // await setupFileWatcher(); // Reset file watcher for new location
       return { success: true, path: newDbPath };
     }
     return { success: false };
@@ -1059,7 +1058,7 @@ app.on('ready', async () => {
     createTray();
     createSplashWindow();
     await createWindow();
-    await setupFileWatcher();
+    // await setupFileWatcher();
     autoUpdater.checkForUpdatesAndNotify();
   } catch (error) {
     console.error('Error during app initialization:', error);
