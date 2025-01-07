@@ -618,7 +618,7 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
   }
 });
 
-ipcMain.handle('update-badge', (event, isBadge) => {
+ipcMain.on('update-badge', (event, isBadge) => {
   if (process.platform === 'win32') {
     // For Windows:
     // - Use icon_badge.png for overlay (just the notification dot)
@@ -628,11 +628,11 @@ ipcMain.handle('update-badge', (event, isBadge) => {
         console.error('Failed to load badge icon');
       }
       mainWindow?.setOverlayIcon(icon,'NeueNachrichten');
-      // mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
+      mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
       tray?.setImage(getAssetPath('tray-lowres_badge.png'));
     } else {
       mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
-      // mainWindow?.setIcon(getAssetPath('icon.png'));
+      mainWindow?.setIcon(getAssetPath('icon.png'));
       tray?.setImage(getAssetPath('tray-lowres.png'));
     }
   } else if (process.platform === 'darwin') {
