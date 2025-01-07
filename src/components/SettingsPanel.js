@@ -155,6 +155,40 @@ function SettingsPanel({ onClose }) {
   const handleSaveCredentials = async () => {
     setIsSaving(true);
     try {
+      // First check if this is a password change
+      if (credentials.password) {
+        const currentPassword = await window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'password'
+        });
+        
+        // If there's an existing password and it's different from the new one
+        if (currentPassword.success && currentPassword.password && 
+            currentPassword.password !== credentials.password) {
+          // Show toast for re-encryption process
+          const reEncryptToast = toast({
+            title: 'Passwort wird geändert',
+            description: 'Verschlüsselte Daten werden neu verschlüsselt...',
+            status: 'info',
+            duration: null,
+            isClosable: false,
+          });
+
+          // Re-encrypt data with new password
+          try {
+            const reEncryptResult = await window.electron.reEncryptData(credentials.password);
+            if (!reEncryptResult.success) {
+              throw new Error(reEncryptResult.error || 'Fehler bei der Neuverschlüsselung');
+            }
+          } catch (error) {
+            toast.close(reEncryptToast);
+            throw new Error(`Fehler bei der Neuverschlüsselung: ${error.message}`);
+          }
+          toast.close(reEncryptToast);
+        }
+      }
+
+      // Save all credentials
       const results = await Promise.all([
         credentials.email ? window.electron.saveCredentials({
           service: 'bbzcloud',
@@ -178,6 +212,7 @@ function SettingsPanel({ onClose }) {
       if (allSuccessful) {
         toast({
           title: 'Zugangsdaten gespeichert',
+          description: credentials.password ? 'Alle Daten wurden erfolgreich neu verschlüsselt.' : undefined,
           status: 'success',
           duration: 3000,
         });
