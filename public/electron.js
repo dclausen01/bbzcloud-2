@@ -619,38 +619,47 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
 });
 
 ipcMain.on('update-badge', (event, isBadge) => {
-  if (process.platform === 'win32') {
-    // For Windows:
-    // - Use icon_badge.png for overlay (just the notification dot)
-    if (isBadge) {
-      const icon = nativeImage.createFromPath(getAssetPath('icon_badge.png')).resize({ width: 16, height: 16 });
-      if (icon.isEmpty()) {
-        console.error('Failed to load badge icon');
+  try {
+    if (process.platform === 'win32') {
+      // For Windows:
+      // - Use icon_badge.png for overlay (just the notification dot)
+      if (isBadge) {
+        const icon = nativeImage.createFromPath(getAssetPath('icon_badge.png'));
+        if (!icon.isEmpty()) {
+          mainWindow?.setOverlayIcon(icon, 'NeueNachrichten');
+          mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
+          tray?.setImage(getAssetPath('tray-lowres_badge.png'));
+        } else {
+          console.log('Error creating overlay icon');
+        }
+      } else {
+        mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
+        mainWindow?.setIcon(getAssetPath('icon.png'));
+        tray?.setImage(getAssetPath('tray-lowres.png'));
       }
-      mainWindow?.setOverlayIcon(icon,'NeueNachrichten');
-      mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
-      tray?.setImage(getAssetPath('tray-lowres_badge.png'));
+    } else if (process.platform === 'darwin') {
+      // For macOS
+      if (isBadge) {
+        const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
+        if (!badgeIcon.isEmpty()) {
+          tray?.setImage(badgeIcon);
+        }
+      } else {
+        const normalIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
+        if (!normalIcon.isEmpty()) {
+          tray?.setImage(normalIcon);
+        }
+      }
     } else {
-      mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
-      mainWindow?.setIcon(getAssetPath('icon.png'));
-      tray?.setImage(getAssetPath('tray-lowres.png'));
+      // For Linux and others
+      if (isBadge) {
+        tray?.setImage(getAssetPath('tray_badge.png'));
+      } else {
+        tray?.setImage(getAssetPath('tray.png'));
+      }
     }
-  } else if (process.platform === 'darwin') {
-    // For macOS
-    if (isBadge) {
-      const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
-      tray?.setImage(badgeIcon);
-    } else {
-      const normalIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
-      tray?.setImage(normalIcon);
-    }
-  } else {
-    // For Linux and others
-    if (isBadge) {
-      tray?.setImage(getAssetPath('tray_badge.png'));
-    } else {
-      tray?.setImage(getAssetPath('tray.png'));
-    }
+  } catch (error) {
+    console.error('Error updating badge:', error);
   }
 });
 

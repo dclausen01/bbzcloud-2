@@ -64,11 +64,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   // Apply zoom level to a webview
   const applyZoom = useCallback(async (webview, id) => {
+    if (!webview || !webview.getWebContents) return;
+
     try {
+      // Wait a bit to ensure webview is ready
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       const zoomFactor = settings.globalZoom;
-      await webview.setZoomFactor(zoomFactor);
+      // First check if webview is ready
+      if (webview.getWebContents) {
+        await webview.setZoomFactor(zoomFactor);
+      }
     } catch (error) {
-      console.error(`Error setting zoom for ${id}:`, error);
+      // Only log if it's not a "webview is not ready" error
+      if (!error.message?.includes('WebContents') && !error.message?.includes('not ready')) {
+        console.error(`Error setting zoom for ${id}:`, error);
+      }
     }
   }, [settings.globalZoom]);
 
@@ -408,12 +419,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       });
 
       // Load completion handler
-      addWebviewListener(webview, 'did-finish-load', async () => {
+      addWebviewListener(webview, 'dom-ready', async () => {
         if (activeWebView && activeWebView.id === id) {
           onNavigate(webview.getURL());
         }
 
-        await applyZoom(webview, id);
+        // Apply zoom after a short delay to ensure webview is ready
+        setTimeout(async () => {
+          await applyZoom(webview, id);
+        }, 1000);
+        
         await injectCredentials(webview, id);
 
         // Context menu setup (only add once)
