@@ -618,15 +618,16 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
   }
 });
 
-ipcMain.on('update-badge', (event, isBadge) => {
+ipcMain.handle('update-badge', (event, isBadge) => {
+  const icon = nativeImage.createFromPath(getAssetPath('icon_badge.png'));
+  if (icon.isEmpty()) {
+    console.error('Failed to load badge icon');
+  }
   if (process.platform === 'win32') {
     // For Windows:
     // - Use icon_badge.png for overlay (just the notification dot)
     if (isBadge) {
-      mainWindow?.setOverlayIcon(
-        nativeImage.createFromPath(getAssetPath('icon_badge.png')),
-        'NeueNachrichten'
-      );
+      mainWindow?.setOverlayIcon(icon,'NeueNachrichten');
       mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
       tray?.setImage(getAssetPath('tray-lowres_badge.png'));
     } else {

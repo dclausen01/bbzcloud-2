@@ -125,10 +125,7 @@
       }
     },
     "nsis": {
-      "oneClick": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "BBZ Cloud"
+      "differentialPackage": false 
     },
     "dmg": {
       "title": "BBZ Cloud",
