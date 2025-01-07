@@ -146,7 +146,7 @@ async function setupFileWatcher() {
   const dbPath = db.getDatabasePath();
   let lastMTime = fs.statSync(dbPath).mtimeMs;
 
-  // Set up periodic check every minute
+  /* Set up periodic check every minute
   const checkDatabaseChanges = async () => {
     try {
       const stats = fs.statSync(dbPath);
@@ -176,6 +176,7 @@ async function setupFileWatcher() {
     clearInterval(intervalId);
   });
 }
+*/
 
 let mainWindow;
 let splashWindow;
