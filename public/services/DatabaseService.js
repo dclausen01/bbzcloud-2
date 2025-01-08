@@ -88,15 +88,11 @@ class DatabaseService {
             const keytar = require('keytar');
             const password = await keytar.getPassword('bbzcloud', 'password');
             
-            if (!password) {
-                throw new Error('No password found in keytar');
-            }
-            
-            // Use password as encryption key
-            this.encryptionKey = password;
+            // Store password if exists, otherwise encryption features will be disabled
+            this.encryptionKey = password || null;
         } catch (error) {
             console.error('Error in setupEncryption:', error);
-            throw new Error('Failed to setup encryption: ' + error.message);
+            this.encryptionKey = null;
         }
     }
 
@@ -273,12 +269,18 @@ class DatabaseService {
 
     // Encryption/Decryption helpers
     encrypt(data) {
+        if (!this.encryptionKey) {
+            throw new Error('Encryption is not set up. Please set a password in settings first.');
+        }
         return CryptoJS.AES.encrypt(JSON.stringify(data), this.encryptionKey).toString();
     }
 
     decrypt(encryptedData) {
-        if (!encryptedData || !this.encryptionKey) {
-            throw new Error('Missing encrypted data or encryption key');
+        if (!encryptedData) {
+            throw new Error('Missing encrypted data');
+        }
+        if (!this.encryptionKey) {
+            throw new Error('Encryption is not set up. Please set a password in settings first.');
         }
         
         try {
@@ -314,7 +316,6 @@ class DatabaseService {
                 autostart: settings.autostart ?? true,
                 minimizedStart: settings.minimizedStart ?? false
             };
-            
 
             return new Promise((resolve, reject) => {
                 const timestamp = Date.now();
@@ -798,7 +799,6 @@ class DatabaseService {
             });
         });
     }
-
 }
 
 module.exports = DatabaseService;

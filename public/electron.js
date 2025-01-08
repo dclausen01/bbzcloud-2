@@ -934,8 +934,14 @@ async function getEncryptionPassword() {
 // Secure store handlers
 ipcMain.handle('check-secure-store-access', async () => {
   try {
-    const password = await getEncryptionPassword();
-    return { success: Boolean(password) };
+    const password = await keytar.getPassword('bbzcloud', 'password');
+    if (!password) {
+      return { 
+        success: false, 
+        error: 'Bitte richten Sie zuerst ein Passwort in den Einstellungen ein.'
+      };
+    }
+    return { success: true };
   } catch (error) {
     console.error('Error in check-secure-store-access:', error);
     return { success: false, error: error.message };
