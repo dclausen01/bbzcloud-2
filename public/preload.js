@@ -200,6 +200,16 @@ contextBridge.exposeInMainWorld('electron', {
       console.error('Error creating GitHub issue:', error);
       return { success: false, error: error.message };
     }
+  },
+
+  // Zoom control
+  setZoomFactor: async (webContentsId, zoomFactor) => {
+    try {
+      return await ipcRenderer.invoke('set-zoom-factor', { webContentsId, zoomFactor });
+    } catch (error) {
+      console.error('Error setting zoom factor:', error);
+      return { success: false, error: error.message };
+    }
   }
 });
 

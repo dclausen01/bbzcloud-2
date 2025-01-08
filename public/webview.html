@@ -171,6 +171,19 @@
         webview.reload();
       }
 
+      // Apply zoom when webview is ready
+      webview.addEventListener('dom-ready', async () => {
+        try {
+          const { success, settings } = await window.electron.getSettings();
+          if (success && settings.globalZoom) {
+            const webContentsId = await webview.getWebContentsId();
+            await window.electron.setZoomFactor(webContentsId, settings.globalZoom);
+          }
+        } catch (error) {
+          console.error('Error applying zoom:', error);
+        }
+      });
+
       // Event listeners
       webview.addEventListener('did-fail-load', (event) => {
         errorContainer.style.display = 'block';

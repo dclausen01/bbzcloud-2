@@ -1067,6 +1067,21 @@ app.on('window-all-closed', () => {
   }
 });
 
+// Handle zoom factor changes
+ipcMain.handle('set-zoom-factor', async (event, { webContentsId, zoomFactor }) => {
+  try {
+    const contents = webContents.fromId(webContentsId);
+    if (contents) {
+      await contents.setZoomFactor(zoomFactor);
+      return { success: true };
+    }
+    return { success: false, error: 'WebContents not found' };
+  } catch (error) {
+    console.error('Error setting zoom factor:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 app.on('activate', async () => {
   if (mainWindow === null) {
     await createWindow();
