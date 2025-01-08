@@ -216,6 +216,17 @@ function App() {
     loadAppIcon();
   }, []);
 
+  // Listen for database changes
+  useEffect(() => {
+    const unsubscribe = window.electron.on('database-changed', () => {
+      // Reload all webviews when database changes
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     if (!activeWebView && settings.navigationButtons) {
       const filteredButtons = filterNavigationButtons();
