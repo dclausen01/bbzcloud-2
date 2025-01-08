@@ -487,6 +487,16 @@ ipcMain.handle('get-database-path', () => {
   return db.getDatabasePath();
 });
 
+ipcMain.handle('reencrypt-data', async (event, { oldPassword, newPassword }) => {
+  try {
+    await db.reencryptData(oldPassword, newPassword);
+    return { success: true };
+  } catch (error) {
+    console.error('Error reencrypting data:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('change-database-location', async (event) => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {

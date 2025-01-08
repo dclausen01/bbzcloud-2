@@ -165,6 +165,14 @@ contextBridge.exposeInMainWorld('electron', {
   getDatabasePath: () => ipcRenderer.invoke('get-database-path'),
   changeDatabaseLocation: (newPath) => ipcRenderer.invoke('change-database-location', newPath),
   migrateFromStore: () => ipcRenderer.invoke('migrate-from-store'),
+  reencryptData: async (oldPassword, newPassword) => {
+    try {
+      return await ipcRenderer.invoke('reencrypt-data', { oldPassword, newPassword });
+    } catch (error) {
+      console.error('Error reencrypting data:', error);
+      return { success: false, error: error.message };
+    }
+  },
 
   // Event listeners for secure file updates and database changes
   on: (channel, callback) => {

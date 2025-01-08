@@ -96,6 +96,91 @@ class DatabaseService {
         }
     }
 
+    async reencryptData(oldPassword, newPassword) {
+        return this.withConnection(async () => {
+            // First verify we can decrypt with old password
+            this.encryptionKey = oldPassword;
+            try {
+                await this.getTodoState(); // This will throw if decryption fails
+            } catch (error) {
+                throw new Error('Invalid old password');
+            }
+
+            // Start transaction
+            return new Promise((resolve, reject) => {
+                this.db.serialize(() => {
+                    this.db.run('BEGIN TRANSACTION');
+
+                    try {
+                        // 1. Reencrypt todos
+                        this.db.all('SELECT * FROM todos', [], async (err, todos) => {
+                            if (err) throw err;
+
+                            const todoStmt = this.db.prepare(`
+                                UPDATE todos 
+                                SET text = ?
+                                WHERE id = ?
+                            `);
+
+                            for (const todo of todos) {
+                                // Decrypt with old password
+                                const decryptedText = this.decrypt(todo.text);
+                                
+                                // Encrypt with new password
+                                this.encryptionKey = newPassword;
+                                const newEncryptedText = this.encrypt(decryptedText);
+                                
+                                todoStmt.run(newEncryptedText, todo.id);
+                            }
+                            todoStmt.finalize();
+                        });
+
+                        // 2. Reencrypt secure documents
+                        this.db.all('SELECT * FROM secure_documents', [], async (err, docs) => {
+                            if (err) throw err;
+
+                            const docStmt = this.db.prepare(`
+                                UPDATE secure_documents 
+                                SET content = ?
+                                WHERE id = ?
+                            `);
+
+                            for (const doc of docs) {
+                                try {
+                                    // Decrypt with old password
+                                    const decrypted = CryptoJS.AES.decrypt(doc.content, oldPassword);
+                                    const metadata = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
+                                    
+                                    // Encrypt with new password
+                                    const newEncrypted = CryptoJS.AES.encrypt(
+                                        JSON.stringify(metadata),
+                                        newPassword
+                                    ).toString();
+                                    
+                                    docStmt.run(newEncrypted, doc.id);
+                                } catch (error) {
+                                    console.error('Error reencrypting document:', error);
+                                }
+                            }
+                            docStmt.finalize();
+                        });
+
+                        // Update encryption key
+                        this.encryptionKey = newPassword;
+
+                        this.db.run('COMMIT', (err) => {
+                            if (err) reject(err);
+                            else resolve(true);
+                        });
+                    } catch (error) {
+                        this.db.run('ROLLBACK');
+                        reject(error);
+                    }
+                });
+            });
+        });
+    }
+
     async createTables() {
         return new Promise((resolve, reject) => {
             this.db.serialize(() => {
