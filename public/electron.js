@@ -487,16 +487,6 @@ ipcMain.handle('get-database-path', () => {
   return db.getDatabasePath();
 });
 
-ipcMain.handle('re-encrypt-data', async (event, newPassword) => {
-  try {
-    await db.reEncryptAllData(newPassword);
-    return { success: true };
-  } catch (error) {
-    console.error('Error re-encrypting data:', error);
-    return { success: false, error: error.message };
-  }
-});
-
 ipcMain.handle('change-database-location', async (event) => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -621,17 +611,6 @@ ipcMain.handle('schedule-notification', async (event, { title, body, when }) => 
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
   try {
     await keytar.setPassword(service, account, password);
-    
-    // If this is the main password being set, reinitialize encryption
-    if (service === 'bbzcloud' && account === 'password') {
-      try {
-        await db.setupEncryption();
-        db.encryptionEnabled = true;
-      } catch (error) {
-        console.error('Error reinitializing encryption:', error);
-      }
-    }
-    
     return { success: true };
   } catch (error) {
     console.error('Error in save-credentials:', error);

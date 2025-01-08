@@ -192,16 +192,6 @@ contextBridge.exposeInMainWorld('electron', {
       console.error('Error creating GitHub issue:', error);
       return { success: false, error: error.message };
     }
-  },
-
-  // Re-encryption functionality
-  reEncryptData: async (newPassword) => {
-    try {
-      return await ipcRenderer.invoke('re-encrypt-data', newPassword);
-    } catch (error) {
-      console.error('Error re-encrypting data:', error);
-      return { success: false, error: error.message };
-    }
   }
 });
 
