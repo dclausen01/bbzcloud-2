@@ -370,12 +370,8 @@ async function createWindow() {
   mainWindow.on('close', async (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
-      if (process.platform === 'win32') {
-        mainWindow.minimize();
-      } else {
-        mainWindow.hide();
+      mainWindow.hide();
       }
-    }
     return false;
   });
 
