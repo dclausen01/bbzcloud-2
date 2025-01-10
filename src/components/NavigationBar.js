@@ -13,7 +13,9 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const { colorMode } = useColorMode();
   const { settings } = useSettings();
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const showText = windowWidth >= 1400;
+  // Adjust width threshold based on zoom - as zoom increases, we need more space for text
+  const effectiveWidth = windowWidth / settings.navbarZoom;
+  const showText = effectiveWidth >= 1400;
 
   useEffect(() => {
     const handleResize = () => {

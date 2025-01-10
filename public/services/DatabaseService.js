@@ -19,6 +19,10 @@ class DatabaseService {
                 globalZoom: {
                     type: 'number',
                     default: 1.0
+                },
+                navbarZoom: {
+                    type: 'number',
+                    default: 1.0
                 }
             }
         });
@@ -384,9 +388,11 @@ class DatabaseService {
     // Settings operations
     async saveSettings(settings) {
         return this.withConnection(async () => {
-            // Save zoom to electron-store (device specific)
-            const zoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
-            this.store.set('globalZoom', zoom);
+            // Save zooms to electron-store (device specific)
+            const globalZoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
+            const navbarZoom = typeof settings.navbarZoom === 'number' ? settings.navbarZoom : 1.0;
+            this.store.set('globalZoom', globalZoom);
+            this.store.set('navbarZoom', navbarZoom);
 
             // Save other settings to database
             const settingsToSave = {
@@ -436,8 +442,9 @@ class DatabaseService {
                             console.error('Error parsing settings:', error);
                         }
                         
-                        // Get zoom from electron-store (device specific)
+                        // Get zooms from electron-store (device specific)
                         const globalZoom = parseFloat(this.store.get('globalZoom')) || 1.0;
+                        const navbarZoom = parseFloat(this.store.get('navbarZoom')) || 1.0;
                         
                         // Only return the saved values, let the context handle defaults                       
                         const result = {
@@ -445,6 +452,7 @@ class DatabaseService {
                             customApps: Array.isArray(settings?.customApps) ? settings.customApps : [],
                             theme: settings?.theme,
                             globalZoom: globalZoom,
+                            navbarZoom: navbarZoom,
                             autostart: settings.autostart ?? true,
                             minimizedStart: settings.minimizedStart ?? false
                         };
