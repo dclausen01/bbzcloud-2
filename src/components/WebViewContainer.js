@@ -64,22 +64,18 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   // Apply zoom level to a webview
   const applyZoom = useCallback(async (webview, id) => {
-    if (!webview || !webview.getWebContents) return;
+    if (!webview) return;
 
     try {
-      // Wait a bit to ensure webview is ready
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
       const zoomFactor = settings.globalZoom;
-      // First check if webview is ready
-      if (webview.getWebContents) {
-        await webview.setZoomFactor(zoomFactor);
+      
+      // Get webContentsId from webview
+      const webContentsId = await webview.getWebContentsId();
+      if (webContentsId) {
+        await window.electron.setZoomFactor(webContentsId, zoomFactor);
       }
     } catch (error) {
-      // Only log if it's not a "webview is not ready" error
-      if (!error.message?.includes('WebContents') && !error.message?.includes('not ready')) {
-        console.error(`Error setting zoom for ${id}:`, error);
-      }
+      console.error(`Error setting zoom for ${id}:`, error);
     }
   }, [settings.globalZoom]);
 
@@ -312,8 +308,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
           );        
-          await sleep(5000);
-          webview.reload();
+          await sleep(5000).then(() => {
+            webview.reload();
+          });
           break;
       }
 

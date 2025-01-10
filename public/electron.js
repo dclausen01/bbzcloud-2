@@ -134,49 +134,6 @@ const store = new Store({
 // Initialize database service
 const db = new DatabaseService();
 
-/* File change detection
-let fileWatcher = null;
-
-async function setupFileWatcher() {
-  if (fileWatcher) {
-    fileWatcher.close();
-  }
-
-  const dbPath = db.getDatabasePath();
-  let lastMTime = fs.statSync(dbPath).mtimeMs;
-
-  // Set up periodic check every minute
-  const checkDatabaseChanges = async () => {
-    try {
-      const stats = fs.statSync(dbPath);
-      const currentMTime = stats.mtimeMs;
-    
-      // Only trigger reload if modification time has changed and settings actually changed
-      if (currentMTime > lastMTime) {
-        const currentSettings = await db.getSettings();
-        const currentSettingsStr = JSON.stringify(currentSettings);
-        
-        if (!global.lastSettingsStr || global.lastSettingsStr !== currentSettingsStr) {
-          global.lastSettingsStr = currentSettingsStr;
-          lastMTime = currentMTime;
-          mainWindow?.webContents.send('database-changed');
-        } 
-      } 
-    } catch (error) {
-      console.error('[Database Check] Error:', error);
-    }
-  };
-
-  // Set up periodic check every 60 seconds
-  const intervalId = setInterval(checkDatabaseChanges, 60000);
-
-  // Clean up interval when app quits
-  app.on('before-quit', () => {
-    clearInterval(intervalId);
-  });
-}
-*/
-
 let mainWindow;
 let splashWindow;
 let tray;
@@ -390,7 +347,7 @@ async function createWindow() {
 
   mainWindow = new BrowserWindow({
     ...windowState,
-    minWidth: 1000,
+    minWidth: 1050,
     minHeight: 700,
     skipTaskbar: false,
     show: false,
@@ -1251,6 +1208,21 @@ app.on('ready', async () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+// Handle zoom factor changes
+ipcMain.handle('set-zoom-factor', async (event, { webContentsId, zoomFactor }) => {
+  try {
+    const contents = webContents.fromId(webContentsId);
+    if (contents) {
+      await contents.setZoomFactor(zoomFactor);
+      return { success: true };
+    }
+    return { success: false, error: 'WebContents not found' };
+  } catch (error) {
+    console.error('Error setting zoom factor:', error);
+    return { success: false, error: error.message };
   }
 });
 
