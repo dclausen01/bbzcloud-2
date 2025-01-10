@@ -359,7 +359,8 @@ class DatabaseService {
     // Encryption/Decryption helpers
     encrypt(data) {
         if (!this.encryptionKey) {
-            throw new Error('Encryption is not set up. Please set a password in settings first.');
+            // If no encryption key is set, return data as-is
+            return JSON.stringify(data);
         }
         return CryptoJS.AES.encrypt(JSON.stringify(data), this.encryptionKey).toString();
     }
@@ -369,7 +370,13 @@ class DatabaseService {
             throw new Error('Missing encrypted data');
         }
         if (!this.encryptionKey) {
-            throw new Error('Encryption is not set up. Please set a password in settings first.');
+            // If no encryption key is set, try to parse data as unencrypted JSON
+            try {
+                return JSON.parse(encryptedData);
+            } catch (error) {
+                console.error('Error parsing unencrypted data:', error);
+                throw new Error('Failed to parse data');
+            }
         }
         
         try {

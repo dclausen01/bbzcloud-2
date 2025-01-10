@@ -41,6 +41,9 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 
+// Helper function for delays
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function App() {
   const { setColorMode } = useColorMode();
   const { settings } = useSettings();
@@ -62,8 +65,7 @@ function App() {
     const loadInitialData = async () => {
       try {
         // Load credentials
-        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        sleep(500); // wait half a second to make loading of credentials more reliable
+        await sleep(1000); // wait a second to make loading of credentials more reliable
         const [emailResult, passwordResult, bbbPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',
@@ -139,8 +141,9 @@ function App() {
       window.electron.debug('Triggering database reload...');
       window.electron.emit('database-changed');
       
-      // Close modal and reload the app
+      // Close modal and reload the app after a delay to ensure credentials are saved
       setShowWelcomeModal(false);
+      await sleep(2000); // Wait 2 seconds before reload to ensure credentials are saved
       window.location.reload();
     } catch (error) {
       console.error('Error saving credentials:', error);
@@ -306,8 +309,8 @@ function App() {
         borderBottom="1px"
         borderColor={settings.theme === 'light' ? 'gray.200' : 'gray.700'}
       >
-        {/* Left section */}
-        <Flex minW="fit-content" justify="flex-start" align="center">
+        {/* Left section - Fixed width */}
+        <Box w="120px" pl={2}>
           {appIconPath && (
             <Image
               src={`file://${appIconPath}`}
@@ -315,91 +318,103 @@ function App() {
               height="28px"
               width="28px"
               objectFit="contain"
-              mr={2}
               cursor="pointer"
               onClick={() => handleOpenInNewWindow('https://www.bbz-rd-eck.de', 'BBZ Rendsburg-Eckernförde')}
             />
           )}
-        </Flex>
+        </Box>
 
         {/* Center section */}
-        <Flex flex="1" justify="center" align="center">
-          <NavigationBar
-            buttons={filteredNavigationButtons}
-            onButtonClick={handleNavigationClick}
-            onNewWindow={handleOpenInNewWindow}
-          />
-        </Flex>
+        <Box flex="1" position="relative">
+          <Box 
+            position="absolute"
+            left="50%"
+            top="50%"
+            style={{ transform: 'translate(-50%, -50%)' }}
+            zIndex={1}
+          >
+            <NavigationBar
+              buttons={filteredNavigationButtons}
+              onButtonClick={handleNavigationClick}
+              onNewWindow={handleOpenInNewWindow}
+            />
+          </Box>
+        </Box>
 
-        {/* Right section */}
-        <Flex minW="fit-content" justify="flex-end" align="center" gap={2}>
-          <CustomAppsMenu
-            apps={settings.customApps}
-            standardApps={settings.standardApps}
-            onAppClick={handleCustomAppClick}
-            onNewWindow={handleOpenInNewWindow}
-          />
+        {/* Right section - Fixed width */}
+        <Box w="320px" pr={2}>
+          <Flex justify="flex-end" align="center" gap={2}>
+            <CustomAppsMenu
+              apps={settings.customApps}
+              standardApps={settings.standardApps}
+              onAppClick={handleCustomAppClick}
+              onNewWindow={handleOpenInNewWindow}
+            />
 
-          {activeWebView && (
-            <Flex gap={1}>
-              <ButtonGroup size="sm" isAttached variant="outline">
-                <Tooltip label="Zurück" placement="top">
+            {activeWebView && (
+              <Flex gap={1}>
+                <ButtonGroup size="sm" isAttached variant="outline">
+                  <Tooltip label="Zurück" placement="top">
+                    <IconButton
+                      icon={<span>←</span>}
+                      onClick={() => handleWebViewNavigation('goBack')}
+                      aria-label="Zurück"
+                      height="28px"
+                    />
+                  </Tooltip>
+                  <Tooltip label="Vorwärts" placement="top">
+                    <IconButton
+                      icon={<span>→</span>}
+                      onClick={() => handleWebViewNavigation('goForward')}
+                      aria-label="Vorwärts"
+                      height="28px"
+                    />
+                  </Tooltip>
+                  <Tooltip label="Neu laden" placement="top">
+                    <IconButton
+                      icon={<span>↻</span>}
+                      onClick={() => handleWebViewNavigation('reload')}
+                      aria-label="Neu laden"
+                      height="28px"
+                    />
+                  </Tooltip>
+                </ButtonGroup>
+
+                <Tooltip label="Link kopieren" placement="top">
                   <IconButton
-                    icon={<span>←</span>}
-                    onClick={() => handleWebViewNavigation('goBack')}
-                    aria-label="Zurück"
+                    icon={<span>📋</span>}
+                    onClick={handleCopyUrl}
+                    aria-label="Link kopieren"
                     height="28px"
+                    variant="outline"
                   />
                 </Tooltip>
-                <Tooltip label="Vorwärts" placement="top">
-                  <IconButton
-                    icon={<span>→</span>}
-                    onClick={() => handleWebViewNavigation('goForward')}
-                    aria-label="Vorwärts"
-                    height="28px"
-                  />
-                </Tooltip>
-                <Tooltip label="Neu laden" placement="top">
-                  <IconButton
-                    icon={<span>↻</span>}
-                    onClick={() => handleWebViewNavigation('reload')}
-                    aria-label="Neu laden"
-                    height="28px"
-                  />
-                </Tooltip>
-              </ButtonGroup>
+              </Flex>
+            )}
 
-              <Tooltip label="Link kopieren" placement="top">
+            <DocumentsMenu 
+              onNavigate={(view) => {
+                if (view === 'todo') {
+                  onTodoOpen();
+                } else if (view === 'secure-documents') {
+                  onSecureDocsOpen();
+                }
+              }} 
+            />
+
+            <ButtonGroup size="sm">
+              <Tooltip label="Einstellungen" placement="top">
                 <IconButton
-                  icon={<span>📋</span>}
-                  onClick={handleCopyUrl}
-                  aria-label="Link kopieren"
+                  aria-label="Einstellungen öffnen"
+                  icon={<span>⚙️</span>}
+                  onClick={onSettingsOpen}
+                  variant="ghost"
                   height="28px"
-                  variant="outline"
                 />
               </Tooltip>
-            </Flex>
-          )}
-
-          <DocumentsMenu onNavigate={(view) => {
-            if (view === 'todo') {
-              onTodoOpen();
-            } else if (view === 'secure-documents') {
-              onSecureDocsOpen();
-            }
-          }} />
-          <ButtonGroup size="sm">
-            <Tooltip label="Einstellungen" placement="top">
-              <IconButton
-                aria-label="Einstellungen öffnen"
-                icon={<span>⚙️</span>}
-                onClick={onSettingsOpen}
-                variant="ghost"
-                height="28px"
-              />
-            </Tooltip>
-          </ButtonGroup>
-        </Flex>
+            </ButtonGroup>
+          </Flex>
+        </Box>
       </Flex>
 
       <Box flex="1" position="relative" overflow="hidden">

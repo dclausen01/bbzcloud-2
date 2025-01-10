@@ -335,6 +335,16 @@ function createSplashWindow() {
   splashWindow.setMenu(null);
 }
 
+// Calculate minWidth based on zoom factor
+function calculateMinWidth(zoomFactor) {
+  const baseMinWidth = 1150;
+  // Add extra width for higher zoom factors
+  if (zoomFactor >= 1.1) {
+    return baseMinWidth + ((zoomFactor - 1) * 750); // Progressively increase width based on zoom
+  }
+  return baseMinWidth;
+}
+
 async function createWindow() {
   const windowState = restoreWindowState();
   // Ensure database is initialized before creating main window
@@ -344,10 +354,12 @@ async function createWindow() {
   const settings = await db.getSettings();
   shouldStartMinimized = settings?.minimizedStart;
   globalTheme = settings?.theme || 'light';
+  
+  const initialMinWidth = calculateMinWidth(settings?.navbarZoom || 1.0);
 
   mainWindow = new BrowserWindow({
     ...windowState,
-    minWidth: 1050,
+    minWidth: initialMinWidth,
     minHeight: 700,
     skipTaskbar: false,
     show: false,
@@ -722,6 +734,23 @@ ipcMain.handle('save-settings', async (event, settings) => {
     updateAutostart();
     const newTheme = settings.theme || globalTheme;
     
+    // Update minWidth if navbar zoom changed
+    if (settings.navbarZoom && mainWindow) {
+      const newMinWidth = calculateMinWidth(settings.navbarZoom);
+      mainWindow.setMinimumSize(newMinWidth, 700);
+      
+      // Get current window size
+      const bounds = mainWindow.getBounds();
+      
+      // If current width is less than new minimum, resize the window
+      if (bounds.width < newMinWidth) {
+        mainWindow.setBounds({
+          ...bounds,
+          width: newMinWidth
+        });
+      }
+    }
+    
     // Only update theme if it actually changed
     if (newTheme !== globalTheme) {
       globalTheme = newTheme;
@@ -756,6 +785,24 @@ ipcMain.handle('get-settings', async () => {
     const settings = await db.getSettings();
     shouldStartMinimized = settings?.minimizedStart;
     globalTheme = settings?.theme || 'light';
+    
+    // Update window minWidth when settings are loaded
+    if (mainWindow && settings?.navbarZoom) {
+      const newMinWidth = calculateMinWidth(settings.navbarZoom);
+      mainWindow.setMinimumSize(newMinWidth, 700);
+      
+      // Get current window size
+      const bounds = mainWindow.getBounds();
+      
+      // If current width is less than new minimum, resize the window
+      if (bounds.width < newMinWidth) {
+        mainWindow.setBounds({
+          ...bounds,
+          width: newMinWidth
+        });
+      }
+    }
+    
     return { success: true, settings: settings || {} };
   } catch (error) {
     console.error('Error getting settings:', error);
