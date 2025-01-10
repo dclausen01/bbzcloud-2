@@ -135,7 +135,13 @@ function App() {
         }) : Promise.resolve()
       ]);
       
+      // Trigger a database change event to reload settings
+      window.electron.debug('Triggering database reload...');
+      window.electron.emit('database-changed');
+      
+      // Close modal and reload the app
       setShowWelcomeModal(false);
+      window.location.reload();
     } catch (error) {
       console.error('Error saving credentials:', error);
       toast({

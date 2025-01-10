@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor, screen } = require('electron');
 const path = require('path');
 const zlib = require('zlib');
 const util = require('util');
@@ -188,10 +188,31 @@ async function updateAutostart() {
   const shouldAutostart = settings?.autostart ?? true;
   
   if (!isDev) {
+    const appPath = app.getPath('exe');
+    const args = [];
+    
+    // Add platform-specific settings
+    if (process.platform === 'win32') {
+      // For Windows, use the minimized argument if needed
+      if (settings?.minimizedStart) {
+        args.push('--minimized');
+      }
+    } else if (process.platform === 'linux') {
+      // For Linux, we need the full path to the executable
+      if (appPath.endsWith('bbzcloud')) {
+        // If running the AppImage/binary directly
+        args.push('--no-sandbox');
+      }
+      if (settings?.minimizedStart) {
+        args.push('--minimized');
+      }
+    }
+    
     app.setLoginItemSettings({
       openAtLogin: shouldAutostart,
-      path: app.getPath('exe'),
-      args: ['--hidden']
+      path: appPath,
+      args: args,
+      enabled: shouldAutostart
     });
   }
 }
@@ -212,10 +233,50 @@ function saveWindowState() {
   });
 }
 
+function ensureWindowBoundsVisible(savedBounds) {
+  // Get all available displays
+  const displays = screen.getAllDisplays();
+  
+  // Calculate total visible area
+  const visibleArea = displays.reduce((area, display) => {
+    const { x, y, width, height } = display.bounds;
+    
+    area.minX = Math.min(area.minX, x);
+    area.minY = Math.min(area.minY, y);
+    area.maxX = Math.max(area.maxX, x + width);
+    area.maxY = Math.max(area.maxY, y + height);
+    
+    return area;
+  }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+
+  // Check if window is completely outside visible area
+  const isWindowVisible = !(
+    savedBounds.x >= visibleArea.maxX ||
+    savedBounds.x + savedBounds.width <= visibleArea.minX ||
+    savedBounds.y >= visibleArea.maxY ||
+    savedBounds.y + savedBounds.height <= visibleArea.minY
+  );
+
+  if (!isWindowVisible) {
+    // If not visible, center window on primary display
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.workAreaSize;
+    
+    return {
+      width: savedBounds.width,
+      height: savedBounds.height,
+      x: Math.round((width - savedBounds.width) / 2),
+      y: Math.round((height - savedBounds.height) / 2)
+    };
+  }
+
+  return savedBounds;
+}
+
 function restoreWindowState() {
   const windowState = store.get('settings.windowState');
   if (windowState) {
-    return windowState;
+    return ensureWindowBoundsVisible(windowState);
   }
   return {
     width: 1450,
@@ -376,7 +437,9 @@ async function createWindow() {
   });
 
   mainWindow.once('ready-to-show', async () => {
-    if (!shouldStartMinimized) {
+    const startMinimized = shouldStartMinimized || process.argv.includes('--minimized');
+    
+    if (!startMinimized) {
       if (windowState.isMaximized) {
         mainWindow.maximize();
       }
@@ -1082,21 +1145,106 @@ app.on('ready', async () => {
     await createWindow();
     // await setupFileWatcher();
     autoUpdater.checkForUpdatesAndNotify();
+
+    // Handle startup arguments
+    const startMinimized = process.argv.includes('--minimized');
+    if (startMinimized && mainWindow) {
+      mainWindow.minimize();
+    }
   } catch (error) {
     console.error('Error during app initialization:', error);
   }
 
-  // Handle system resume events
+  // Handle system resume and display change events
   powerMonitor.on('resume', () => {
+    // Check and adjust main window position
     if (mainWindow) {
+      const bounds = mainWindow.getBounds();
+      const newBounds = ensureWindowBoundsVisible(bounds);
+      if (newBounds !== bounds) {
+        mainWindow.setBounds(newBounds);
+      }
       mainWindow.webContents.send('system-resumed', webviewsToReload);
     }
+
+    // Check and adjust all webview windows
+    windowRegistry.forEach((win) => {
+      if (!win.isDestroyed()) {
+        const bounds = win.getBounds();
+        const newBounds = ensureWindowBoundsVisible(bounds);
+        if (newBounds !== bounds) {
+          win.setBounds(newBounds);
+        }
+      }
+    });
   });
 
   powerMonitor.on('unlock-screen', () => {
+    // Check and adjust main window position
     if (mainWindow) {
+      const bounds = mainWindow.getBounds();
+      const newBounds = ensureWindowBoundsVisible(bounds);
+      if (newBounds !== bounds) {
+        mainWindow.setBounds(newBounds);
+      }
       mainWindow.webContents.send('system-resumed', webviewsToReload);
     }
+
+    // Check and adjust all webview windows
+    windowRegistry.forEach((win) => {
+      if (!win.isDestroyed()) {
+        const bounds = win.getBounds();
+        const newBounds = ensureWindowBoundsVisible(bounds);
+        if (newBounds !== bounds) {
+          win.setBounds(newBounds);
+        }
+      }
+    });
+  });
+
+  // Handle display changes (monitor connect/disconnect)
+  screen.on('display-added', () => {
+    // Check and adjust main window position
+    if (mainWindow) {
+      const bounds = mainWindow.getBounds();
+      const newBounds = ensureWindowBoundsVisible(bounds);
+      if (newBounds !== bounds) {
+        mainWindow.setBounds(newBounds);
+      }
+    }
+
+    // Check and adjust all webview windows
+    windowRegistry.forEach((win) => {
+      if (!win.isDestroyed()) {
+        const bounds = win.getBounds();
+        const newBounds = ensureWindowBoundsVisible(bounds);
+        if (newBounds !== bounds) {
+          win.setBounds(newBounds);
+        }
+      }
+    });
+  });
+
+  screen.on('display-removed', () => {
+    // Check and adjust main window position
+    if (mainWindow) {
+      const bounds = mainWindow.getBounds();
+      const newBounds = ensureWindowBoundsVisible(bounds);
+      if (newBounds !== bounds) {
+        mainWindow.setBounds(newBounds);
+      }
+    }
+
+    // Check and adjust all webview windows
+    windowRegistry.forEach((win) => {
+      if (!win.isDestroyed()) {
+        const bounds = win.getBounds();
+        const newBounds = ensureWindowBoundsVisible(bounds);
+        if (newBounds !== bounds) {
+          win.setBounds(newBounds);
+        }
+      }
+    });
   });
 });
 

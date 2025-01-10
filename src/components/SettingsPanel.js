@@ -25,7 +25,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings } = useSettings();
   const { setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -260,8 +260,13 @@ function SettingsPanel({ onClose }) {
     updateGlobalZoom(value);
   };
 
+  const handleNavbarZoomChange = (value) => {
+    updateNavbarZoom(value);
+  };
+
   const resetZoom = () => {
     updateGlobalZoom(1.0);
+    updateNavbarZoom(1.0);
   };
 
   if (isLoading) {
@@ -363,37 +368,75 @@ function SettingsPanel({ onClose }) {
         <Text fontSize="lg" fontWeight="bold" mb={4}>
           Zoom
         </Text>
-        <FormControl mb={2}>
-          <HStack spacing={4} align="center">
-            <Box flex="1">
-              <Slider
-                aria-label="Zoom"
-                min={0.25}
-                max={4}
-                step={0.05}
-                value={settings.globalZoom}
-                onChange={handleGlobalZoomChange}
-              >
-                <SliderTrack>
-                  <SliderFilledTrack />
-                </SliderTrack>
-                <Tooltip 
-                  label={`${Math.round(settings.globalZoom * 100)}%`} 
-                  placement="top" 
-                  isOpen={true}
-                >
-                  <SliderThumb />
-                </Tooltip>
-              </Slider>
-            </Box>
-            <Text minW="45px" textAlign="right">
-              {Math.round(settings.globalZoom * 100)}%
-            </Text>
-          </HStack>
-        </FormControl>
-        <Button size="sm" onClick={resetZoom}>
-          Zoom zurücksetzen
-        </Button>
+        <VStack spacing={4} align="stretch">
+          <Box>
+            <FormLabel mb={2}>Webseiten Zoom</FormLabel>
+            <FormControl mb={2}>
+              <HStack spacing={4} align="center">
+                <Box flex="1">
+                  <Slider
+                    aria-label="Webseiten Zoom"
+                    min={0.25}
+                    max={4}
+                    step={0.05}
+                    value={settings.globalZoom}
+                    onChange={handleGlobalZoomChange}
+                  >
+                    <SliderTrack>
+                      <SliderFilledTrack />
+                    </SliderTrack>
+                    <Tooltip 
+                      label={`${Math.round(settings.globalZoom * 100)}%`} 
+                      placement="top" 
+                      isOpen={true}
+                    >
+                      <SliderThumb />
+                    </Tooltip>
+                  </Slider>
+                </Box>
+                <Text minW="45px" textAlign="right">
+                  {Math.round(settings.globalZoom * 100)}%
+                </Text>
+              </HStack>
+            </FormControl>
+          </Box>
+
+          <Box>
+            <FormLabel mb={2}>Navigationsleiste Zoom</FormLabel>
+            <FormControl mb={2}>
+              <HStack spacing={4} align="center">
+                <Box flex="1">
+                  <Slider
+                    aria-label="Navigationsleiste Zoom"
+                    min={0.25}
+                    max={4}
+                    step={0.05}
+                    value={settings.navbarZoom}
+                    onChange={handleNavbarZoomChange}
+                  >
+                    <SliderTrack>
+                      <SliderFilledTrack />
+                    </SliderTrack>
+                    <Tooltip 
+                      label={`${Math.round(settings.navbarZoom * 100)}%`} 
+                      placement="top" 
+                      isOpen={true}
+                    >
+                      <SliderThumb />
+                    </Tooltip>
+                  </Slider>
+                </Box>
+                <Text minW="45px" textAlign="right">
+                  {Math.round(settings.navbarZoom * 100)}%
+                </Text>
+              </HStack>
+            </FormControl>
+          </Box>
+
+          <Button size="sm" onClick={resetZoom}>
+            Zoom zurücksetzen
+          </Button>
+        </VStack>
       </Box>
 
       <Divider />

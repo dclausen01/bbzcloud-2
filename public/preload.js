@@ -191,6 +191,12 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeListener(channel, callback);
     }
   },
+  emit: (channel) => {
+    const validChannels = ['database-changed'];
+    if (validChannels.includes(channel)) {
+      ipcRenderer.send(channel);
+    }
+  },
 
   // GitHub issue creation
   createGithubIssue: async (data) => {

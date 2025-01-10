@@ -150,6 +150,7 @@ const defaultSettings = {
   theme: 'light',
   startupDelay: 3000,
   globalZoom: 1.0,
+  navbarZoom: 1.0,
   autostart: true,
   minimizedStart: false
 };
@@ -192,6 +193,7 @@ export function SettingsProvider({ children }) {
             : [],
           theme: result.settings.theme || defaultSettings.theme,
           globalZoom: result.settings.globalZoom || defaultSettings.globalZoom,
+          navbarZoom: result.settings.navbarZoom || defaultSettings.navbarZoom,
           autostart: result.settings.autostart ?? defaultSettings.autostart,
           minimizedStart: result.settings.minimizedStart ?? defaultSettings.minimizedStart
         });
@@ -327,6 +329,13 @@ export function SettingsProvider({ children }) {
     }));
   };
 
+  const updateNavbarZoom = (zoom) => {
+    setSettings(prevSettings => ({
+      ...prevSettings,
+      navbarZoom: zoom
+    }));
+  };
+
   const value = {
     settings,
     updateSettings,
@@ -337,7 +346,8 @@ export function SettingsProvider({ children }) {
     toggleAutostart,
     toggleMinimizedStart,
     isLoading,
-    toggleDarkMode
+    toggleDarkMode,
+    updateNavbarZoom
   };
 
   // Don't render children until settings are loaded

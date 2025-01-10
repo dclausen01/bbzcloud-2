@@ -7,9 +7,11 @@ import {
   ButtonGroup,
   useColorMode,
 } from '@chakra-ui/react';
+import { useSettings } from '../context/SettingsContext';
 
 function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const { colorMode } = useColorMode();
+  const { settings } = useSettings();
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const showText = windowWidth >= 1400;
 
@@ -39,7 +41,17 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   };
 
   return (
-    <Flex as="nav" gap={1} align="center" minWidth="0" flex="0 1 auto">
+    <Flex 
+      as="nav" 
+      gap={1} 
+      align="center" 
+      minWidth="0" 
+      flex="0 1 auto"
+      style={{
+        transform: `scale(${settings.navbarZoom})`,
+        transformOrigin: 'left center'
+      }}
+    >
       {Object.entries(buttons)
         .filter(([_, config]) => config.visible)
         .map(([id, config]) => (
