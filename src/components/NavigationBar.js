@@ -14,8 +14,14 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const { settings } = useSettings();
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   // Adjust width threshold based on zoom - as zoom increases, we need less width since elements are larger
-  const baseThreshold = 1400;
-  const zoomAdjustedThreshold = baseThreshold * ((settings.navbarZoom + (1 - settings.navbarZoom)) + 0.02);
+  let baseThreshold = 1400;
+  // Adjust threshold based on zoom level - adjusting baseThreshold by 10% for each zoom level before calculating zoomAdjustedThreshold
+  if (settings.navbarZoom < 1) {
+    baseThreshold -= baseThreshold * (settings.navbarZoom / 6);
+  } else if (settings.navbarZoom > 1) {
+    baseThreshold += baseThreshold * (settings.navbarZoom / 6);
+  }
+  const zoomAdjustedThreshold = baseThreshold * (settings.navbarZoom + (1 / settings.navbarZoom) / 10);
   const showText = windowWidth >= zoomAdjustedThreshold;
 
   useEffect(() => {

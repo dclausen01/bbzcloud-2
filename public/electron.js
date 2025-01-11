@@ -340,7 +340,7 @@ function calculateMinWidth(zoomFactor) {
   const baseMinWidth = 1150;
   // Add extra width for higher zoom factors
   if (zoomFactor >= 1.1) {
-    return baseMinWidth + ((zoomFactor - 1) * 750); // Progressively increase width based on zoom
+    return baseMinWidth + ((zoomFactor - 1) * 1150); // Progressively increase width based on zoom
   }
   return baseMinWidth;
 }
