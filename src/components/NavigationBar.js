@@ -13,9 +13,8 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const { colorMode } = useColorMode();
   const { settings } = useSettings();
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  // Adjust width threshold based on zoom - as zoom increases, we need less width since elements are larger
+  // Adjust width threshold for text in buttons based on zoom - as zoom increases, we can allow less width since elements are larger
   const baseThreshold = 1460;
-  let zoomThreshold;
   // Adjust threshold based on zoom level
   const zoomThresholds = {
     0.7: baseThreshold - 90,
@@ -31,7 +30,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
     1.2: baseThreshold + 160,
   };
 
-  zoomThreshold = zoomThresholds[settings.navbarZoom] || baseThreshold;
+  const zoomThreshold = zoomThresholds[settings.navbarZoom] || baseThreshold;
 
   const showText = windowWidth >= zoomThreshold;
 
