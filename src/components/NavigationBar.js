@@ -21,7 +21,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   } else if (settings.navbarZoom > 1) {
     baseThreshold += baseThreshold * (settings.navbarZoom / 8.5);
   }
-  const zoomAdjustedThreshold = baseThreshold * (settings.navbarZoom + (1 / settings.navbarZoom) / 11);
+  const zoomAdjustedThreshold = baseThreshold * (settings.navbarZoom + (1 / settings.navbarZoom) / 15);
   const showText = windowWidth >= zoomAdjustedThreshold;
 
   useEffect(() => {
@@ -52,7 +52,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   return (
     <Flex 
       as="nav" 
-      gap={1} 
+      gap={0.5} 
       align="center" 
       minWidth="0"
       maxWidth="100%"
