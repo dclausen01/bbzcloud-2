@@ -28,23 +28,6 @@
         height: 100%;
       }
 
-      .error-container {
-        display: none;
-        padding: 20px;
-        text-align: center;
-        color: #721c24;
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        margin: 20px;
-        border-radius: 4px;
-      }
-
-      .dark-mode .error-container {
-        color: #f8d7da;
-        background-color: #721c24;
-        border-color: #f5c6cb;
-      }
-
       .navigation-bar {
         display: flex;
         padding: 8px;
@@ -93,10 +76,7 @@
       <button class="nav-button" onclick="goBack()" title="Zurück">←</button>
       <button class="nav-button" onclick="goForward()" title="Vorwärts">→</button>
       <button class="nav-button" onclick="refresh()" title="Neu laden">↻</button>
-    </div>
-    <div id="error" class="error-container">
-      <h3>Fehler beim Laden der Seite</h3>
-      <p id="error-message"></p>
+      <button class="nav-button" onclick="copyCurrentUrl()" title="URL kopieren">📋</button>
     </div>
     <webview 
       id="webview" 
@@ -106,8 +86,6 @@
     ></webview>
     <script>
       const webview = document.getElementById('webview');
-      const errorContainer = document.getElementById('error');
-      const errorMessage = document.getElementById('error-message');
 
       // Get URL and theme from query parameters
       const urlParams = new URLSearchParams(window.location.search);
@@ -148,10 +126,6 @@
       if (url) {
         webview.src = url;
         document.title = `BBZCloud - ${url}`;
-      } else {
-        errorContainer.style.display = 'block';
-        errorMessage.textContent = 'Keine URL angegeben';
-        webview.style.display = 'none';
       }
 
       // Navigation functions
@@ -171,6 +145,15 @@
         webview.reload();
       }
 
+      async function copyCurrentUrl() {
+        try {
+          const currentUrl = await webview.getURL();
+          await navigator.clipboard.writeText(currentUrl);
+        } catch (error) {
+          console.error('Error copying URL:', error);
+        }
+      }
+
       // Apply zoom when webview is ready
       webview.addEventListener('dom-ready', async () => {
         try {
@@ -182,16 +165,6 @@
         } catch (error) {
           console.error('Error applying zoom:', error);
         }
-      });
-
-      // Event listeners
-      webview.addEventListener('did-fail-load', (event) => {
-        errorContainer.style.display = 'block';
-        errorMessage.textContent = `Fehler beim Laden: ${event.errorDescription}`;
-      });
-
-      webview.addEventListener('did-start-loading', () => {
-        errorContainer.style.display = 'none';
       });
 
       // Update navigation buttons state

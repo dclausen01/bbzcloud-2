@@ -21,7 +21,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   } else if (settings.navbarZoom > 1) {
     baseThreshold += baseThreshold * (settings.navbarZoom / 8.5);
   }
-  const zoomAdjustedThreshold = baseThreshold * (settings.navbarZoom + (1 / settings.navbarZoom) / 10);
+  const zoomAdjustedThreshold = baseThreshold * (settings.navbarZoom + (1 / settings.navbarZoom) / 11);
   const showText = windowWidth >= zoomAdjustedThreshold;
 
   useEffect(() => {
