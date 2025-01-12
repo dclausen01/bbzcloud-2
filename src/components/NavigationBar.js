@@ -17,7 +17,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   let baseThreshold = 1430;
   // Adjust threshold based on zoom level - adjusting baseThreshold by 10% for each zoom level before calculating zoomAdjustedThreshold
   if (settings.navbarZoom < 1) {
-    baseThreshold += baseThreshold * (settings.navbarZoom / 7.5);
+    baseThreshold += baseThreshold * (settings.navbarZoom / 6.5);
   } else if (settings.navbarZoom > 1) {
     baseThreshold += baseThreshold * (settings.navbarZoom / 8.5);
   }
