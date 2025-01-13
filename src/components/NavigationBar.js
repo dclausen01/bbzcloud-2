@@ -17,10 +17,10 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const baseThreshold = 1480;
   // Adjust threshold based on zoom level
   const zoomThresholds = {
-    0.7: baseThreshold - 180,
-    0.75: baseThreshold - 140,
-    0.8: baseThreshold - 110,
-    0.85: baseThreshold - 60,
+    0.7: baseThreshold - 200,
+    0.75: baseThreshold - 160,
+    0.8: baseThreshold - 120,
+    0.85: baseThreshold - 70,
     0.9: baseThreshold - 45,
     0.95: baseThreshold + 15,
     1.0: baseThreshold + 70,
