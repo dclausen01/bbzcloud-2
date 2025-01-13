@@ -338,11 +338,8 @@ function createSplashWindow() {
 // Calculate minWidth based on zoom factor
 function calculateMinWidth(zoomFactor) {
   const baseMinWidth = 1150;
-  // Add extra width for higher zoom factors
-  if (zoomFactor >= 1.1 || zoomFactor <= 0.8) {
-    return baseMinWidth + ((zoomFactor - 1) * 1150); // Progressively increase width based on zoom
-  } 
-  return baseMinWidth;
+  // Adjust width for all zoom factors
+  return Math.round(baseMinWidth * zoomFactor); // Scale width proportionally with zoom
 }
 
 async function createWindow() {
