@@ -307,10 +307,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           );
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
-          );        
-          await sleep(5000).then(() => {
-            webview.reload();
-          });
+          );
+          sleep(5000);
+          webview.reload();   
           break;
       }
 
