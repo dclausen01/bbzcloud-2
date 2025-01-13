@@ -23,7 +23,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
     0.85: baseThreshold - 60,
     0.9: baseThreshold - 45,
     0.95: baseThreshold,
-    1.0: baseThreshold + 25,
+    1.0: baseThreshold + 50,
     1.05: baseThreshold + 95,
     1.1: baseThreshold + 110,
     1.15: baseThreshold + 150,
