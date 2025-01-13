@@ -515,6 +515,27 @@ ipcMain.handle('get-database-path', () => {
   return db.getDatabasePath();
 });
 
+// Custom apps handlers
+ipcMain.handle('get-custom-apps', async () => {
+  try {
+    const apps = await db.getCustomApps();
+    return { success: true, apps };
+  } catch (error) {
+    console.error('Error getting custom apps:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('save-custom-apps', async (event, apps) => {
+  try {
+    await db.saveCustomApps(apps);
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving custom apps:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('reencrypt-data', async (event, { oldPassword, newPassword }) => {
   try {
     await db.reencryptData(oldPassword, newPassword);

@@ -157,7 +157,20 @@ const defaultSettings = {
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(defaultSettings);
+  const [customApps, setCustomApps] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Function to load custom apps
+  const loadCustomApps = useCallback(async () => {
+    try {
+      const result = await window.electron.getCustomApps();
+      if (result.success) {
+        setCustomApps(result.apps);
+      }
+    } catch (error) {
+      console.error('Failed to load custom apps:', error);
+    }
+  }, []);
 
   // Function to load settings that can be called from outside
   const loadSettings = useCallback(async () => {
@@ -207,12 +220,17 @@ export function SettingsProvider({ children }) {
 
   // Initial load and database change handler
   useEffect(() => {
-    loadSettings();
+    const init = async () => {
+      await loadSettings();
+      await loadCustomApps();
+    };
+    init();
 
     const handleDatabaseChange = async () => {
-      console.log('Database changed, reloading settings...');
+      console.log('Database changed, reloading data...');
       await loadSettings();
-      console.log('Settings successfully reloaded after database change');
+      await loadCustomApps();
+      console.log('Data successfully reloaded after database change');
     };
     
     window.electron.on('database-changed', handleDatabaseChange);
@@ -220,7 +238,7 @@ export function SettingsProvider({ children }) {
     return () => {
       window.electron.off('database-changed', handleDatabaseChange);
     };
-  }, [loadSettings]);
+  }, [loadSettings, loadCustomApps]);
 
   useEffect(() => {
     const saveSettings = async () => {
@@ -284,28 +302,37 @@ export function SettingsProvider({ children }) {
     });
   };
 
-  const addCustomApp = (app) => {
-    setSettings(prevSettings => {
-      const currentCustomApps = Array.isArray(prevSettings.customApps) 
-        ? prevSettings.customApps 
-        : [];
-
-      return {
-        ...prevSettings,
-        customApps: [...currentCustomApps, {
+  const addCustomApp = async (app) => {
+    try {
+      const result = await window.electron.saveCustomApps([
+        ...customApps,
+        {
           ...app,
           buttonVariant: 'solid',
-          zoom: prevSettings.globalZoom
-        }]
-      };
-    });
+          zoom: settings.globalZoom
+        }
+      ]);
+      if (result.success) {
+        await loadCustomApps();
+      }
+    } catch (error) {
+      console.error('Failed to add custom app:', error);
+      throw error;
+    }
   };
 
-  const removeCustomApp = (appId) => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      customApps: prevSettings.customApps.filter(app => app.id !== appId)
-    }));
+  const removeCustomApp = async (appId) => {
+    try {
+      const result = await window.electron.saveCustomApps(
+        customApps.filter(app => app.id !== appId)
+      );
+      if (result.success) {
+        await loadCustomApps();
+      }
+    } catch (error) {
+      console.error('Failed to remove custom app:', error);
+      throw error;
+    }
   };
 
   const toggleAutostart = () => {
@@ -337,7 +364,7 @@ export function SettingsProvider({ children }) {
   };
 
   const value = {
-    settings,
+    settings: { ...settings, customApps },
     updateSettings,
     toggleButtonVisibility,
     updateGlobalZoom,

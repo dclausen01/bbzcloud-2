@@ -165,6 +165,24 @@ contextBridge.exposeInMainWorld('electron', {
   getDatabasePath: () => ipcRenderer.invoke('get-database-path'),
   changeDatabaseLocation: (newPath) => ipcRenderer.invoke('change-database-location', newPath),
   migrateFromStore: () => ipcRenderer.invoke('migrate-from-store'),
+  
+  // Custom apps functionality
+  getCustomApps: async () => {
+    try {
+      return await ipcRenderer.invoke('get-custom-apps');
+    } catch (error) {
+      console.error('Error getting custom apps:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  saveCustomApps: async (apps) => {
+    try {
+      return await ipcRenderer.invoke('save-custom-apps', apps);
+    } catch (error) {
+      console.error('Error saving custom apps:', error);
+      return { success: false, error: error.message };
+    }
+  },
   reencryptData: async (oldPassword, newPassword) => {
     try {
       return await ipcRenderer.invoke('reencrypt-data', { oldPassword, newPassword });

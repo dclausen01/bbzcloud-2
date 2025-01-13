@@ -409,7 +409,6 @@ class DatabaseService {
                         visible: button.visible
                     }
                 }), {}),
-                customApps: Array.isArray(settings.customApps) ? settings.customApps : [],
                 theme: settings.theme,
                 autostart: settings.autostart ?? true,
                 minimizedStart: settings.minimizedStart ?? false
@@ -456,7 +455,6 @@ class DatabaseService {
                         // Only return the saved values, let the context handle defaults                       
                         const result = {
                             navigationButtons: settings?.navigationButtons || {},
-                            customApps: Array.isArray(settings?.customApps) ? settings.customApps : [],
                             theme: settings?.theme,
                             globalZoom: globalZoom,
                             navbarZoom: navbarZoom,
