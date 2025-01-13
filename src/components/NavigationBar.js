@@ -23,11 +23,11 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
     0.85: baseThreshold - 70,
     0.9: baseThreshold - 45,
     0.95: baseThreshold + 15,
-    1.0: baseThreshold + 70,
-    1.05: baseThreshold + 115,
-    1.1: baseThreshold + 170,
-    1.15: baseThreshold + 210,
-    1.2: baseThreshold + 250,
+    1.0: baseThreshold + 85,
+    1.05: baseThreshold + 130,
+    1.1: baseThreshold + 185,
+    1.15: baseThreshold + 230,
+    1.2: baseThreshold + 270,
   };
 
   const zoomThreshold = zoomThresholds[settings.navbarZoom] || baseThreshold;
