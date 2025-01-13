@@ -339,9 +339,9 @@ function createSplashWindow() {
 function calculateMinWidth(zoomFactor) {
   const baseMinWidth = 1150;
   // Add extra width for higher zoom factors
-  if (zoomFactor >= 1.1) {
+  if (zoomFactor >= 1.1 || zoomFactor <= 0.8) {
     return baseMinWidth + ((zoomFactor - 1) * 1150); // Progressively increase width based on zoom
-  }
+  } 
   return baseMinWidth;
 }
 
