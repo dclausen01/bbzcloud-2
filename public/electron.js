@@ -338,11 +338,19 @@ function createSplashWindow() {
 // Calculate minWidth based on zoom factor
 function calculateMinWidth(zoomFactor) {
   const baseMinWidth = 1150;
-  // Add extra width for higher zoom factors
-  if (zoomFactor >= 1.1) {
-    return baseMinWidth + ((zoomFactor - 1) * 1150); // Progressively increase width based on zoom
-  }
-  return baseMinWidth;
+  // Dampen the zoom factor's effect
+  const dampening = 0.75; // Reduces the impact of zoom changes
+  const zoomDiff = zoomFactor - 1.0; // How far we are from normal zoom
+  const dampedZoom = 1.0 + (zoomDiff * dampening); // Apply dampening to the difference
+  
+  // Calculate width with dampened zoom
+  const width = Math.round(baseMinWidth * dampedZoom);
+  
+  // Ensure width stays within reasonable bounds
+  const minAllowed = Math.round(baseMinWidth * 0.55); // Never go below 55% of base
+  const maxAllowed = Math.round(baseMinWidth * 1.75); // Never exceed 175% of base
+  
+  return Math.min(Math.max(width, minAllowed), maxAllowed);
 }
 
 async function createWindow() {
@@ -758,12 +766,14 @@ ipcMain.handle('save-settings', async (event, settings) => {
     // Update minWidth if navbar zoom changed
     if (settings.navbarZoom && mainWindow) {
       const newMinWidth = calculateMinWidth(settings.navbarZoom);
+      
+      // Update the minimum size constraint
       mainWindow.setMinimumSize(newMinWidth, 700);
       
       // Get current window size
       const bounds = mainWindow.getBounds();
       
-      // If current width is less than new minimum, resize the window
+      // Only resize if current width is less than new minimum
       if (bounds.width < newMinWidth) {
         mainWindow.setBounds({
           ...bounds,
@@ -810,12 +820,14 @@ ipcMain.handle('get-settings', async () => {
     // Update window minWidth when settings are loaded
     if (mainWindow && settings?.navbarZoom) {
       const newMinWidth = calculateMinWidth(settings.navbarZoom);
+      
+      // Update the minimum size constraint
       mainWindow.setMinimumSize(newMinWidth, 700);
       
       // Get current window size
       const bounds = mainWindow.getBounds();
       
-      // If current width is less than new minimum, resize the window
+      // Only resize if current width is less than new minimum
       if (bounds.width < newMinWidth) {
         mainWindow.setBounds({
           ...bounds,
