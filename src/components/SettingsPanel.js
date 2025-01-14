@@ -294,9 +294,6 @@ function SettingsPanel({ onClose }) {
         <Box fontSize="sm" color="gray.500" mb={-4}>
           <HStack justify="space-between">
             <HStack spacing={4}>
-              <Button size="sm" onClick={() => window.electron.reloadApp()} colorScheme="gray">
-                🔃 App neu laden
-              </Button>
               <Text>
                 <a href="https://wiki.bbz-rd-eck.com/doku.php?id=anleitungen_allgemein:bbzcloudapp" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
                   ❓ Hilfe
@@ -315,12 +312,15 @@ function SettingsPanel({ onClose }) {
                       ml={2}
                       onClick={() => window.electron.installUpdate()}
                     >
-                      Update installieren
+                      Update
                     </Button>
                   )}
                 </Text>
               )}
             </Text>
+            <Button size="sm" onClick={() => window.electron.reloadApp()} colorScheme="gray">
+                🔃 App neu laden
+            </Button>
           </HStack>
         </Box>
       )}
