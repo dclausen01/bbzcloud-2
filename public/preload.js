@@ -234,7 +234,10 @@ contextBridge.exposeInMainWorld('electron', {
       console.error('Error setting zoom factor:', error);
       return { success: false, error: error.message };
     }
-  }
+  },
+
+  // App reload functionality
+  reloadApp: () => ipcRenderer.invoke('reload-app')
 });
 
 // Remove this if you don't need it

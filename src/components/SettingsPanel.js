@@ -293,11 +293,16 @@ function SettingsPanel({ onClose }) {
       {version && (
         <Box fontSize="sm" color="gray.500" mb={-4}>
           <HStack justify="space-between">
-            <Text>
-              <a href="https://wiki.bbz-rd-eck.com/doku.php?id=anleitungen_allgemein:bbzcloudapp" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
-                ❓ Hilfe
-              </a>
-            </Text>
+            <HStack spacing={4}>
+              <Text>
+                <a href="https://wiki.bbz-rd-eck.com/doku.php?id=anleitungen_allgemein:bbzcloudapp" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
+                  ❓ Hilfe
+                </a>
+              </Text>
+              <Button size="sm" onClick={() => window.electron.reloadApp()} colorScheme="gray">
+                🔄 App neu laden
+              </Button>
+            </HStack>
             <Text>
               Version {version} • <a href="https://github.com/dclausen01/bbzcloud-2/" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>GitHub</a>
               {updateStatus && (

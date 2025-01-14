@@ -835,6 +835,13 @@ ipcMain.handle('get-version', () => {
   return app.getVersion();
 });
 
+ipcMain.handle('reload-app', () => {
+  if (mainWindow) {
+    mainWindow.reload();
+  }
+  return { success: true };
+});
+
 ipcMain.handle('get-asset-path', async (event, asset) => {
   const assetPath = getAssetPath(asset);
   try {
