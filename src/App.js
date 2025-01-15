@@ -310,7 +310,7 @@ function App() {
         borderColor={settings.theme === 'light' ? 'gray.200' : 'gray.700'}
       >
         {/* Left section - Dynamic width */}
-        <Box minW="60px" w="auto" pl={2}>
+        <Box minW="40px" w="auto" pl={1}>
           {appIconPath && (
             <Image
               src={`file://${appIconPath}`}
@@ -324,9 +324,9 @@ function App() {
           )}
         </Box>
 
-        {/* Center section */}
-        <Box flex="1" display="flex" justifyContent="center" alignItems="center">
-          <Box>
+        {/* Center section - Allow more space for navigation */}
+        <Box flex="1" display="flex" justifyContent="flex-start" alignItems="center" minW={0} flexShrink={1}>
+          <Box flex="1" minW={0}>
             <NavigationBar
               buttons={filteredNavigationButtons}
               onButtonClick={handleNavigationClick}
@@ -335,9 +335,9 @@ function App() {
           </Box>
         </Box>
 
-        {/* Right section - Fixed width */}
-        <Box w="320px" pr={2}>
-          <Flex justify="flex-end" align="center" gap={2}>
+        {/* Right section - Responsive width */}
+        <Box minW="auto" pr={2} overflow="hidden">
+          <Flex justify="flex-end" align="center" gap={1} flexShrink={1} minW={0} flexWrap="nowrap">
             <CustomAppsMenu
               apps={settings.customApps}
               standardApps={settings.standardApps}
@@ -346,7 +346,7 @@ function App() {
             />
 
             {activeWebView && (
-              <Flex gap={1}>
+              <Flex gap={1} flexShrink={1} minW={0}>
                 <ButtonGroup size="sm" isAttached variant="outline">
                   <Tooltip label="Zurück" placement="top">
                     <IconButton
