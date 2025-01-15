@@ -337,7 +337,7 @@ function createSplashWindow() {
 
 // Calculate minWidth based on zoom factor
 function calculateMinWidth(zoomFactor) {
-  const baseMinWidth = 1150;
+  const baseMinWidth = 1050;
   // Dampen the zoom factor's effect
   const dampening = 0.75; // Reduces the impact of zoom changes
   const zoomDiff = zoomFactor - 1.0; // How far we are from normal zoom

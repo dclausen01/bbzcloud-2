@@ -309,8 +309,8 @@ function App() {
         borderBottom="1px"
         borderColor={settings.theme === 'light' ? 'gray.200' : 'gray.700'}
       >
-        {/* Left section - Fixed width */}
-        <Box w="120px" pl={2}>
+        {/* Left section - Dynamic width */}
+        <Box minW="60px" w="auto" pl={2}>
           {appIconPath && (
             <Image
               src={`file://${appIconPath}`}
@@ -325,14 +325,8 @@ function App() {
         </Box>
 
         {/* Center section */}
-        <Box flex="1" position="relative">
-          <Box 
-            position="absolute"
-            left="50%"
-            top="50%"
-            style={{ transform: 'translate(-50%, -50%)' }}
-            zIndex={1}
-          >
+        <Box flex="1" display="flex" justifyContent="center" alignItems="center">
+          <Box>
             <NavigationBar
               buttons={filteredNavigationButtons}
               onButtonClick={handleNavigationClick}
