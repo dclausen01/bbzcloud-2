@@ -52,35 +52,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [imageError, setImageError] = useState(false);
   const [credsAreSet, setCredsAreSet] = useState({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [failedWebviews, setFailedWebviews] = useState({});
-
-  // Handle online/offline status
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOffline(false);
-      // Reload all failed webviews when coming back online
-      Object.keys(failedWebviews).forEach(id => {
-        const webview = webviewRefs.current[id]?.current;
-        if (webview) {
-          webview.reload();
-        }
-      });
-      setFailedWebviews({});
-    };
-    
-    const handleOffline = () => {
-      setIsOffline(true);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Disable error toasts for first 15 seconds after startup
   useEffect(() => {
@@ -518,22 +490,28 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }
           }));
 
-          if (!isOffline) {
-            toast({
-              title: `Fehler beim Laden von ${standardApps[id]?.title || id}`,
-              description: (
-                <Flex direction="column" gap={2}>
-                  <Text>{error.errorDescription || 'Die Seite konnte nicht geladen werden'}</Text>
-                  <Button size="sm" onClick={() => handleRetryWebview(id)}>
-                    Erneut versuchen
-                  </Button>
-                </Flex>
-              ),
-              status: 'error',
-              duration: 10000,
-              isClosable: true,
-            });
-          }
+          const toastId = `error-${id}-${Date.now()}`;
+          toast({
+            id: toastId,
+            title: `Fehler beim Laden von ${standardApps[id]?.title || id}`,
+            description: (
+              <Flex direction="column" gap={2}>
+                <Text>{error.errorDescription || 'Die Seite konnte nicht geladen werden'}</Text>
+                <Button 
+                  size="sm" 
+                  onClick={() => {
+                    handleRetryWebview(id);
+                    toast.close(toastId);
+                  }}
+                >
+                  Erneut versuchen
+                </Button>
+              </Flex>
+            ),
+            status: 'error',
+            duration: null,
+            isClosable: true,
+          });
         }
       });
     };
@@ -601,39 +579,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   return (
     <Box h="100%" w="100%" position="relative" overflow="hidden">
-      {/* Offline Overlay */}
-      {isOffline && (
-        <Box
-          position="absolute"
-          top={0}
-          left={0}
-          right={0}
-          bottom={0}
-          bg="blackAlpha.700"
-          zIndex={1000}
-          backdropFilter="blur(5px)"
-        >
-          <Center h="100%">
-            <VStack spacing={4} color="white">
-              <Text fontSize="xl">Keine Internetverbindung</Text>
-              <Text>Die ToDo-Liste und sicheren Dokumente sind weiterhin verfügbar.</Text>
-              <Button
-                colorScheme="blue"
-                onClick={() => {
-                  Object.keys(webviewRefs.current).forEach(id => {
-                    const webview = webviewRefs.current[id]?.current;
-                    if (webview) {
-                      webview.reload();
-                    }
-                  });
-                }}
-              >
-                Erneut versuchen
-              </Button>
-            </VStack>
-          </Center>
-        </Box>
-      )}
       {/* Download Progress */}
       {downloadProgress !== null && (
         <Box
