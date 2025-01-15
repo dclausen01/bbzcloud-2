@@ -324,9 +324,9 @@ function App() {
           )}
         </Box>
 
-        {/* Center section - Allow more space for navigation */}
-        <Box flex="1" display="flex" justifyContent="flex-start" alignItems="center" minW={0} flexShrink={1}>
-          <Box flex="1" minW={0}>
+        {/* Center section - Center navigation with equal spacing */}
+        <Box flex="1" display="flex" justifyContent="center" alignItems="center" minW={0}>
+          <Box>
             <NavigationBar
               buttons={filteredNavigationButtons}
               onButtonClick={handleNavigationClick}

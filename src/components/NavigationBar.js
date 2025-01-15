@@ -62,15 +62,14 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   return (
     <Flex 
       as="nav" 
-      gap="1px"
+      gap={2}
       align="center" 
-      minWidth="0"
-      maxWidth="100%"
-      flex="1 1 auto"
-      overflow="hidden"
+      minWidth="fit-content"
+      width="fit-content"
+      flex="0 0 auto"
       position="relative"
       flexWrap="nowrap"
-      px="1px"
+      flexShrink={0}
       style={{
         transform: `scale(${settings.navbarZoom})`,
         transformOrigin: 'center center'
@@ -79,7 +78,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
       {Object.entries(buttons)
         .filter(([_, config]) => config.visible)
         .map(([id, config]) => (
-          <ButtonGroup key={id} size="sm" isAttached variant="outline" spacing={0} flexShrink={1} minW={0}>
+          <ButtonGroup key={id} size="sm" isAttached variant="outline" spacing={0}>
             <Tooltip label={!showText ? config.title : undefined} placement="top">
               <Button
                 onClick={() => onButtonClick(id)}
