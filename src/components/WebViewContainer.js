@@ -54,6 +54,34 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
   const [failedWebviews, setFailedWebviews] = useState({});
 
+  // Translate error codes to user-friendly German messages
+  const getErrorMessage = (error) => {
+    switch (error.errorCode) {
+      case -2:
+        return 'Die Verbindung wurde unterbrochen';
+      case -3:
+        return 'Der Server konnte nicht gefunden werden';
+      case -6:
+        return 'Die Verbindung wurde zurückgesetzt';
+      case -7:
+        return 'Die Serververbindung ist fehlgeschlagen';
+      case -21:
+        return 'Die Netzwerkverbindung wurde getrennt';
+      case -105:
+        return 'Die Server-Adresse konnte nicht aufgelöst werden';
+      case -106:
+        return 'Das Internet ist nicht verfügbar';
+      case -109:
+        return 'Die Serververbindung wurde abgelehnt';
+      case -201:
+        return 'Die Webseite konnte nicht sicher aufgerufen werden';
+      case -202:
+        return 'Die Verbindung ist nicht sicher';
+      default:
+        return 'Die Seite konnte nicht geladen werden';
+    }
+  };
+
   // Disable error toasts for first 15 seconds after startup
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -482,10 +510,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       addWebviewListener(webview, 'did-fail-load', (error) => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
         if (!isStartupPeriod && error.errorCode < -3) {
+          const errorMessage = getErrorMessage(error);
           setFailedWebviews(prev => ({
             ...prev,
             [id]: {
-              error: error.errorDescription || 'Die Seite konnte nicht geladen werden',
+              error: errorMessage,
               timestamp: new Date().toISOString()
             }
           }));
@@ -496,7 +525,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             title: `Fehler beim Laden von ${standardApps[id]?.title || id}`,
             description: (
               <Flex direction="column" gap={2}>
-                <Text>{error.errorDescription || 'Die Seite konnte nicht geladen werden'}</Text>
+                <Text>{errorMessage}</Text>
                 <Button 
                   size="sm" 
                   onClick={() => {
