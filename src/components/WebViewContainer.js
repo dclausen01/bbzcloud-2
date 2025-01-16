@@ -506,43 +506,75 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
       });
 
-      // Error handler
+      // Error handler with retry mechanism
+      let errorTimeouts = {};
+      
       addWebviewListener(webview, 'did-fail-load', (error) => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
+        
         if (!isStartupPeriod && error.errorCode < -3) {
-          const errorMessage = getErrorMessage(error);
-          setFailedWebviews(prev => ({
-            ...prev,
-            [id]: {
-              error: errorMessage,
-              timestamp: new Date().toISOString()
-            }
-          }));
+          // Clear any existing timeout for this webview
+          if (errorTimeouts[id]) {
+            clearTimeout(errorTimeouts[id]);
+          }
+          
+          // Set a new timeout to check if the error persists
+          errorTimeouts[id] = setTimeout(async () => {
+            try {
+              // Try to reload the webview
+              webview.reload();
+              
+              // Wait 5 seconds to see if it loads successfully
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              
+              // Check if the webview is now working
+              const isWorking = await webview.executeJavaScript('true').catch(() => false);
+              
+              if (!isWorking) {
+                // If still not working, show the error message
+                const errorMessage = getErrorMessage(error);
+                setFailedWebviews(prev => ({
+                  ...prev,
+                  [id]: {
+                    error: errorMessage,
+                    timestamp: new Date().toISOString()
+                  }
+                }));
 
-          const toastId = `error-${id}-${Date.now()}`;
-          toast({
-            id: toastId,
-            title: `Fehler beim Laden von ${standardApps[id]?.title || id}`,
-            description: (
-              <Flex direction="column" gap={2}>
-                <Text>{errorMessage}</Text>
-                <Button 
-                  size="sm" 
-                  onClick={() => {
-                    handleRetryWebview(id);
-                    toast.close(toastId);
-                  }}
-                >
-                  Erneut versuchen
-                </Button>
-              </Flex>
-            ),
-            status: 'error',
-            duration: null,
-            isClosable: true,
-          });
+                const toastId = `error-${id}-${Date.now()}`;
+                toast({
+                  id: toastId,
+                  title: `Fehler beim Laden von ${standardApps[id]?.title || id}`,
+                  description: (
+                    <Flex direction="column" gap={2}>
+                      <Text>{errorMessage}</Text>
+                      <Button 
+                        size="sm" 
+                        onClick={() => {
+                          handleRetryWebview(id);
+                          toast.close(toastId);
+                        }}
+                      >
+                        Erneut versuchen
+                      </Button>
+                    </Flex>
+                  ),
+                  status: 'error',
+                  duration: null,
+                  isClosable: true,
+                });
+              }
+            } catch (error) {
+              console.error('Error in retry mechanism:', error);
+            }
+          }, 3000); // Wait 3 seconds before attempting retry
         }
       });
+
+      // Cleanup error timeouts
+      return () => {
+        Object.values(errorTimeouts).forEach(timeout => clearTimeout(timeout));
+      };
     };
 
     // Set up listeners for existing webviews
