@@ -9,8 +9,6 @@ import {
   Image as ChakraImage,
   Text,
   Button,
-  VStack,
-  Center,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
 
@@ -133,7 +131,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
       });
     }
-  }, [settings.globalZoom, standardApps, applyZoom, isSettingsLoading]);
+  }, [settings.globalZoom, applyZoom, isSettingsLoading, standardApps]);
 
   // Listen for theme changes from main process
   useEffect(() => {
