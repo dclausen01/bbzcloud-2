@@ -376,7 +376,6 @@ function SettingsPanel({ onClose }) {
                     </FormControl>
                   ))}
                 </Box>
-                <Divider />
                 <Box display="grid" gridTemplateColumns="repeat(2, 1fr)" gap={4}>
                   {secondRow.map(([id, config]) => (
                     <FormControl key={id}>
