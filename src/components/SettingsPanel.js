@@ -354,17 +354,45 @@ function SettingsPanel({ onClose }) {
         <Text fontSize="lg" fontWeight="bold" mb={4}>
           Navigationsbuttons
         </Text>
-        {Object.entries(settings.navigationButtons).map(([id, config]) => (
-          <FormControl key={id} mb={4}>
-            <HStack justify="space-between">
-              <FormLabel mb={0}>{config.title}</FormLabel>
-              <Switch
-                isChecked={config.visible}
-                onChange={() => toggleButtonVisibility(id)}
-              />
-            </HStack>
-          </FormControl>
-        ))}
+        <VStack spacing={4} align="stretch">
+          {(() => {
+            const buttons = Object.entries(settings.navigationButtons);
+            const midpoint = Math.ceil(buttons.length / 2);
+            const firstRow = buttons.slice(0, midpoint);
+            const secondRow = buttons.slice(midpoint);
+            
+            return (
+              <>
+                <Box display="grid" gridTemplateColumns="repeat(2, 1fr)" gap={4}>
+                  {firstRow.map(([id, config]) => (
+                    <FormControl key={id}>
+                      <HStack justify="space-between">
+                        <FormLabel mb={0}>{config.title}</FormLabel>
+                        <Switch
+                          isChecked={config.visible}
+                          onChange={() => toggleButtonVisibility(id)}
+                        />
+                      </HStack>
+                    </FormControl>
+                  ))}
+                </Box>
+                <Box display="grid" gridTemplateColumns="repeat(2, 1fr)" gap={4}>
+                  {secondRow.map(([id, config]) => (
+                    <FormControl key={id}>
+                      <HStack justify="space-between">
+                        <FormLabel mb={0}>{config.title}</FormLabel>
+                        <Switch
+                          isChecked={config.visible}
+                          onChange={() => toggleButtonVisibility(id)}
+                        />
+                      </HStack>
+                    </FormControl>
+                  ))}
+                </Box>
+              </>
+            );
+          })()}
+        </VStack>
       </Box>
 
       <Divider />

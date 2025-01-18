@@ -4,6 +4,7 @@ Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht u
 
 ## 🌟 Features
 
+
 ### 📚 Integrierte Dienste
 - **Webbasierte Dienste**: Nahtlose Integration von BBZ-Cloud-Diensten in einer Desktop-Anwendung
 - **Sichere Anmeldung**: Verschlüsselte Speicherung von Anmeldeinformationen

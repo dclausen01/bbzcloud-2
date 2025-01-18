@@ -1,0 +1,152 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Prevent multiple release workflows from running simultaneously
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60  # Set maximum run time to prevent hanging builds
+
+    strategy:
+      fail-fast: false  # Continue with other platforms if one fails
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      # Cache electron-builder downloads
+      - name: Cache electron-builder
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
+
+      # macOS specific setup
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          sudo xcode-select --install || true
+          sudo xcodebuild -license accept || true
+
+      # Linux specific setup
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+
+      # Windows specific setup
+      - name: Install Windows dependencies
+        if: matrix.os == 'windows-latest'
+        run: |
+          npm install -g windows-build-tools || true
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm run postinstall
+
+      # Build and release
+      # Import Apple Developer ID certificate for macOS code signing
+      - name: Import Developer ID Certificate
+        if: matrix.os == 'macos-latest'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          echo $MACOS_CERTIFICATE | base64 --decode > certificate.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import certificate.p12 -k build.keychain -P $MACOS_CERTIFICATE_PWD -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          rm certificate.p12
+
+      # Import Windows code signing certificate
+      - name: Import Windows Certificate
+        if: matrix.os == 'windows-latest'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PWD: ${{ secrets.WINDOWS_CERTIFICATE_PWD }}
+        run: |
+          echo $env:WINDOWS_CERTIFICATE | Out-File -FilePath certificate.b64 -Encoding UTF8
+          certutil -decode certificate.b64 certificate.pfx
+          del certificate.b64
+
+      # Build and release with code signing
+      - name: Build and release Electron app
+        id: build
+        env:
+          # GitHub token for release
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing variables
+          CSC_LINK: ${{ matrix.os == 'windows-latest' && './certificate.pfx' || '' }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PWD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          ASC_PROVIDER: ${{ secrets.ASC_PROVIDER }}
+          # Debug logging
+          DEBUG: electron-builder
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            npm run release > build-log.txt 2>&1 || {
+              echo "Build failed. Check build-log.txt for details."
+              exit 1
+            }
+          else
+            npm run release 2>&1 | tee build-log.txt || {
+              echo "Build failed. Check build-log.txt for details."
+              exit 1
+            }
+          fi
+
+      # Upload build logs on failure
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-build-logs
+          path: build-log.txt
+
+      # Clean up certificates
+      - name: Clean up macOS certificates
+        if: always() && matrix.os == 'macos-latest'
+        run: security delete-keychain build.keychain
+
+      - name: Clean up Windows certificates
+        if: always() && matrix.os == 'windows-latest'
+        shell: cmd
+        run: if exist certificate.pfx del /f certificate.pfx
+
+      # Upload artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-artifacts
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.pacman
+          if-no-files-found: ignore

@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "1.9.8",
+  "version": "1.9.9",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "private": true,
@@ -64,7 +64,8 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
-    "release": "npm run build && electron-builder --publish=always"
+    "release": "npm run build && electron-builder --linux --win --publish=always",
+    "release:mac": "npm run build && electron-builder --mac --publish=always"
   },
   "build": {
     "appId": "com.bbzcloud.app",
@@ -147,8 +148,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "koyuawsmbrtn",
-      "repo": "bbz-cloud",
+      "owner": "dclausen01",
+      "repo": "bbzcloud-2",
       "private": true
     }
   },
