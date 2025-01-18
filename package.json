@@ -63,7 +63,8 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
-    "release": "npm run build && electron-builder --publish=always"
+    "release": "npm run build && electron-builder --linux --win --publish=always",
+    "release:mac": "npm run build && electron-builder --mac --publish=always"
   },
   "build": {
     "appId": "com.bbzcloud.app",
