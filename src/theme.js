@@ -258,7 +258,7 @@ const components = {
   Card: {
     baseStyle: (props) => ({
       container: {
-        bg: props.colorMode === 'dark' ? 'gray.800' : 'white',
+        bg: props.colorMode === 'dark' ? '#1F1F1F' : 'white',
         boxShadow: 'md',
         borderRadius: 'lg',
       },
@@ -273,7 +273,7 @@ const styles = {
       overflow: 'hidden',
     },
     '.navigation-bar': {
-      bg: props.colorMode === 'dark' ? 'gray.800' : 'white',
+      bg: props.colorMode === 'dark' ? '#1F1F1F' : 'white',
       borderBottomColor: props.colorMode === 'dark' ? 'gray.700' : 'gray.200',
     },
     '.nav-button': {
