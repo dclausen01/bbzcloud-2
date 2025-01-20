@@ -500,7 +500,7 @@ function App() {
             />
           </Flex>
           <Box p={4} overflowY="auto" flex="1">
-            <SecureDocuments />
+            <SecureDocuments isVisible={isSecureDocsOpen} />
           </Box>
         </Flex>
       </Box>
