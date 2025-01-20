@@ -80,8 +80,8 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
         .map(([id, config]) => (
           <ButtonGroup key={id} size="sm" isAttached variant="outline" spacing={0}>
             <Tooltip label={!showText ? config.title : undefined} placement="top">
-              <Button
-                onClick={() => onButtonClick(id)}
+                <Button
+                  onClick={(e) => onButtonClick(id, e.ctrlKey)}
                 variant={config.buttonVariant || 'solid'}
                 _hover={{
                   opacity: 0.8,

@@ -237,7 +237,12 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // App reload functionality
-  reloadApp: () => ipcRenderer.invoke('reload-app')
+  reloadApp: () => ipcRenderer.invoke('reload-app'),
+
+  // Shell functionality
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell-open-external', url)
+  }
 });
 
 // Remove this if you don't need it

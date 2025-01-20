@@ -254,16 +254,20 @@ function App() {
     }
   }, [settings.navigationButtons, activeWebView, filterNavigationButtons]);
 
-  const handleNavigationClick = (buttonId) => {
+  const handleNavigationClick = (buttonId, isCtrlPressed) => {
     const filteredButtons = filterNavigationButtons();
     const buttonConfig = filteredButtons[buttonId];
     if (buttonConfig) {
-      setActiveWebView({
-        id: buttonId,
-        url: buttonConfig.url,
-        title: buttonConfig.title,
-      });
-      setCurrentUrl(buttonConfig.url);
+      if (isCtrlPressed) {
+        window.electron.shell.openExternal(buttonConfig.url);
+      } else {
+        setActiveWebView({
+          id: buttonId,
+          url: buttonConfig.url,
+          title: buttonConfig.title,
+        });
+        setCurrentUrl(buttonConfig.url);
+      }
     }
   };
 
@@ -464,7 +468,11 @@ function App() {
             />
           </Flex>
           <Box p={4} overflowY="auto" flex="1">
-            <TodoList initialText={contextMenuText} onTextAdded={() => setContextMenuText('')} />
+            <TodoList 
+              initialText={contextMenuText} 
+              onTextAdded={() => setContextMenuText('')}
+              isVisible={isTodoOpen}
+            />
           </Box>
         </Flex>
       </Box>

@@ -176,7 +176,7 @@ const StrictModeDroppable = ({ children, ...props }) => {
   return <DroppableBase {...props}>{children}</DroppableBase>;
 };
 
-const TodoList = ({ initialText, onTextAdded }) => {
+const TodoList = ({ initialText, onTextAdded, isVisible }) => {
   const [todoState, setTodoState] = useState({
     todos: [],
     folders: ['Default'],
@@ -192,7 +192,7 @@ const TodoList = ({ initialText, onTextAdded }) => {
   const bg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
-  // Load todo state on mount
+  // Load todo state when component becomes visible
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -217,8 +217,10 @@ const TodoList = ({ initialText, onTextAdded }) => {
         setIsLoading(false);
       }
     };
-    loadData();
-  }, [toast]);
+    if (isVisible) {
+      loadData();
+    }
+  }, [toast, isVisible]);
 
   // Save todo state on changes with debounce
   useEffect(() => {

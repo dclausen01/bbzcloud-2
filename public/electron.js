@@ -546,6 +546,16 @@ ipcMain.handle('save-custom-apps', async (event, apps) => {
   }
 });
 
+ipcMain.handle('shell-open-external', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening external URL:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('reencrypt-data', async (event, { oldPassword, newPassword }) => {
   try {
     await db.reencryptData(oldPassword, newPassword);
