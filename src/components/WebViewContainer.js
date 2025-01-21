@@ -161,6 +161,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       webviewsToReload.forEach(id => {
         const webview = webviewRefs.current[id]?.current;
         if (webview) {
+          // For Outlook, clear credentials state to force re-injection after reload
+          if (id === 'outlook') {
+            setCredsAreSet(prev => ({ ...prev, [id]: false }));
+          }
           webview.reload();
           console.log(`Reloading webview: ${id}`);
         }
