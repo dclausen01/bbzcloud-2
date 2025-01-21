@@ -120,7 +120,7 @@ Dieses Projekt ist unter der MIT-Lizenz lizenziert - siehe die [LICENSE](LICENSE
 
 ## 🙏 Danksagung
 
-- [Leonie](https://koyu.space/) für die BBZ Cloud 1, die Zusammenarbeit und gemeinsames Herumnerden
+- [Leonie](https://koyu.space/) für die BBZ Cloud 1, viele Ideen und Problemlösungen, die Zusammenarbeit und gemeinsames Herumnerden
 - Alle sonstigen Mitwirkenden und Unterstützer des Projekts
 - Das BBZ-Kollegium
 - Alle verwendeten Open-Source-Projekte

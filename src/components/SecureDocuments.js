@@ -26,7 +26,7 @@ import {
 } from '@chakra-ui/react';
 import { DeleteIcon, SearchIcon } from '@chakra-ui/icons';
 
-function SecureDocuments() {
+function SecureDocuments({ isVisible }) {
   const [files, setFiles] = useState([]);
   const [isReady, setIsReady] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -187,8 +187,10 @@ function SecureDocuments() {
   }, [checkAccess, retryCount]);
 
   useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
+    if (isVisible) {
+      loadFiles();
+    }
+  }, [loadFiles, isVisible]);
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
