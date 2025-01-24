@@ -161,12 +161,17 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       webviewsToReload.forEach(id => {
         const webview = webviewRefs.current[id]?.current;
         if (webview) {
-          // For Outlook, clear credentials state to force re-injection after reload
           if (id === 'outlook') {
+            // For Outlook, clear credentials state and force complete reload
             setCredsAreSet(prev => ({ ...prev, [id]: false }));
+            webview.clearHistory();
+            // Force navigation to base OWA URL
+            webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+            console.log('Forcing complete Outlook reload');
+          } else {
+            webview.reload();
+            console.log(`Reloading webview: ${id}`);
           }
-          webview.reload();
-          console.log(`Reloading webview: ${id}`);
         }
       });
     });

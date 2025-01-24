@@ -1212,7 +1212,7 @@ app.on('ready', async () => {
   }
 
   // Handle system resume and display change events
-  powerMonitor.on('resume', () => {
+  powerMonitor.on('resume', async () => {
     // Check and adjust main window position
     if (mainWindow) {
       const bounds = mainWindow.getBounds();
@@ -1220,6 +1220,26 @@ app.on('ready', async () => {
       if (newBounds !== bounds) {
         mainWindow.setBounds(newBounds);
       }
+
+      // For Outlook, we need to clear session and force a complete reload
+      const webviews = BrowserWindow.getAllWindows()
+        .map(win => win.webContents)
+        .concat(webContents.getAllWebContents())
+        .filter(contents => contents.getURL().includes('exchange.bbz-rd-eck.de/owa'));
+
+      for (const webview of webviews) {
+        try {
+          // Clear session storage and cache
+          await webview.session.clearStorageData({
+            storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+          });
+          // Force navigation to login page
+          await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+        } catch (error) {
+          console.error('Error clearing Outlook session:', error);
+        }
+      }
+
       mainWindow.webContents.send('system-resumed', webviewsToReload);
     }
 
