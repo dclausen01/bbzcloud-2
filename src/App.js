@@ -211,7 +211,30 @@ function App() {
   const webViewRef = useRef(null);
   const [appIconPath, setAppIconPath] = useState('');
   const [currentUrl, setCurrentUrl] = useState('');
+  const [hasUpdate, setHasUpdate] = useState(false);
   const toast = useToast();
+
+  // Listen for update status
+  useEffect(() => {
+    const unsubscribe = window.electron.onUpdateStatus((status) => {
+      const isUpdateAvailable = status.includes('verfügbar') || status.includes('heruntergeladen');
+      setHasUpdate(isUpdateAvailable);
+      
+      // Show toast notification when update is first detected
+      if (isUpdateAvailable && !status.includes('heruntergeladen')) {
+        toast({
+          title: 'Update verfügbar',
+          description: 'Ein neues Update ist verfügbar. Öffnen Sie die Einstellungen zum Installieren.',
+          status: 'info',
+          duration: 10000,
+          isClosable: true,
+          position: 'top-right',
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [toast]);
 
   useEffect(() => {
     const loadAppIcon = async () => {
@@ -400,7 +423,7 @@ function App() {
               }} 
             />
 
-            <ButtonGroup size="sm">
+            <ButtonGroup size="sm" position="relative">
               <Tooltip label="Einstellungen" placement="top">
                 <IconButton
                   aria-label="Einstellungen öffnen"
@@ -410,6 +433,18 @@ function App() {
                   height="28px"
                 />
               </Tooltip>
+              <Box
+                position="absolute"
+                top="-2px"
+                right="-2px"
+                width="10px"
+                height="10px"
+                borderRadius="full"
+                bg="red.500"
+                border="2px solid"
+                borderColor={useColorModeValue('white', 'gray.800')}
+                display={hasUpdate ? 'block' : 'none'}
+              />
             </ButtonGroup>
           </Flex>
         </Box>

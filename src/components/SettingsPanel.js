@@ -291,37 +291,48 @@ function SettingsPanel({ onClose }) {
   return (
     <VStack spacing={6} align="stretch">
       {version && (
-        <Box fontSize="sm" color="gray.500" mb={-4}>
+        <Box fontSize="sm" color="gray.500" mb={2}>
           <HStack justify="space-between">
-            <HStack spacing={4}>
-              <Text>
-                <a href="https://wiki.bbz-rd-eck.com/doku.php?id=anleitungen_allgemein:bbzcloudapp" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
-                  ❓ Hilfe
-                </a>
-              </Text>
-            </HStack>
             <Text>
-              Version {version} • <a href="https://github.com/dclausen01/bbzcloud-2/" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>GitHub</a>
-              {updateStatus && (
-                <Text as="span" ml={2}>
-                  • {updateStatus}
-                  {updateStatus.includes('heruntergeladen') && (
-                    <Button
-                      size="sm"
-                      colorScheme="green"
-                      ml={2}
-                      onClick={() => window.electron.installUpdate()}
-                    >
-                      Update
-                    </Button>
-                  )}
-                </Text>
-              )}
+              <a href="https://wiki.bbz-rd-eck.com/doku.php?id=anleitungen_allgemein:bbzcloudapp" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
+                ❓ Hilfe
+              </a>
             </Text>
             <Button size="sm" onClick={() => window.electron.reloadApp()} colorScheme="gray">
-                🔃 App neu laden
+              🔃 App neu laden
             </Button>
           </HStack>
+        </Box>
+      )}
+
+      {version && (
+        <Box mb={4}>
+          <Text fontSize="lg" fontWeight="bold" mb={4}>
+            Updates
+          </Text>
+          <VStack align="stretch" spacing={2}>
+            <HStack justify="space-between">
+              <Text>Version {version}</Text>
+              <a href="https://github.com/dclausen01/bbzcloud-2/" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
+                GitHub
+              </a>
+            </HStack>
+            {updateStatus && (
+              <Box>
+                <Text>{updateStatus}</Text>
+                {updateStatus.includes('heruntergeladen') && (
+                  <Button
+                    size="sm"
+                    colorScheme="green"
+                    mt={2}
+                    onClick={() => window.electron.installUpdate()}
+                  >
+                    Update installieren
+                  </Button>
+                )}
+              </Box>
+            )}
+          </VStack>
         </Box>
       )}
       <Box>
