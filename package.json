@@ -3,7 +3,6 @@
   "version": "2.0.0",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
-  "private": true,
   "homepage": "./",
   "bugs": {
     "url": "https://github.com/dclausen01/bbzcloud-2/issues"
@@ -149,8 +148,7 @@
     "publish": {
       "provider": "github",
       "owner": "dclausen01",
-      "repo": "bbzcloud-2",
-      "private": true
+      "repo": "bbzcloud-2"
     }
   },
   "eslintConfig": {
