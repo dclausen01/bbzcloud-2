@@ -41,7 +41,7 @@ jobs:
           npm run build
           electron-builder --mac --x64 --arm64 --publish=always
 
-  build-linux-windows:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Git repository
@@ -73,11 +73,45 @@ jobs:
           sudo npm install -g electron@32.0.0 electron-builder
           npm rebuild sqlite3 --build-from-source
 
-      - name: Build and release Linux/Windows
+      - name: Build and release Linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
           npm run build
           electron-builder --linux --x64 --publish=always
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -g electron@32.0.0 electron-builder
+          npm rebuild sqlite3 --build-from-source
+
+      - name: Build and release Windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: false
+        run: |
+          npm run build
           electron-builder --win --x64 --publish=always
