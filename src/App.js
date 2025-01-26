@@ -212,6 +212,7 @@ function App() {
   const [appIconPath, setAppIconPath] = useState('');
   const [currentUrl, setCurrentUrl] = useState('');
   const [hasUpdate, setHasUpdate] = useState(false);
+  const [reminderCount, setReminderCount] = useState(0);
   const toast = useToast();
 
   // Listen for update status
@@ -414,6 +415,7 @@ function App() {
             )}
 
             <DocumentsMenu 
+              reminderCount={reminderCount}
               onNavigate={(view) => {
                 if (view === 'todo') {
                   onTodoOpen();
@@ -507,6 +509,7 @@ function App() {
               initialText={contextMenuText} 
               onTextAdded={() => setContextMenuText('')}
               isVisible={isTodoOpen}
+              onReminderCountChange={setReminderCount}
             />
           </Box>
         </Flex>

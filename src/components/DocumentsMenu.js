@@ -8,9 +8,11 @@ import {
   Text,
   HStack,
   useColorMode,
+  Box,
+  Badge,
 } from '@chakra-ui/react';
 
-function DocumentsMenu({ onNavigate }) {
+function DocumentsMenu({ onNavigate, reminderCount = 0 }) {
   const { colorMode } = useColorMode();
 
   return (
@@ -25,7 +27,21 @@ function DocumentsMenu({ onNavigate }) {
         px={3}
         fontSize="xs"
       >
-        📝
+        <HStack spacing={1}>
+          <span>📝</span>
+          {reminderCount > 0 && (
+            <Badge
+              colorScheme="purple"
+              variant="solid"
+              borderRadius="full"
+              fontSize="0.6em"
+              minW="1.6em"
+              textAlign="center"
+            >
+              {reminderCount}
+            </Badge>
+          )}
+        </HStack>
       </MenuButton>
       <MenuList
         bg={colorMode === 'light' ? 'white' : 'gray.800'}

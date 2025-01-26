@@ -176,7 +176,7 @@ const StrictModeDroppable = ({ children, ...props }) => {
   return <DroppableBase {...props}>{children}</DroppableBase>;
 };
 
-const TodoList = ({ initialText, onTextAdded, isVisible }) => {
+const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }) => {
   const [todoState, setTodoState] = useState({
     todos: [],
     folders: ['Default'],
@@ -248,6 +248,17 @@ const TodoList = ({ initialText, onTextAdded, isVisible }) => {
       return () => clearTimeout(timeoutId);
     }
   }, [todoState, isLoading, toast]);
+
+  // Calculate and notify parent of active reminders count
+  useEffect(() => {
+    if (!isLoading) {
+      const now = new Date().getTime();
+      const activeReminders = todoState.todos.filter(todo => 
+        todo.reminder && new Date(todo.reminder).getTime() > now
+      ).length;
+      onReminderCountChange?.(activeReminders);
+    }
+  }, [todoState.todos, isLoading, onReminderCountChange]);
 
   const handleAddTodo = useCallback((text = inputValue) => {
     const trimmedText = text.trim();
