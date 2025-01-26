@@ -43,6 +43,15 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
+    env:
+      NODE_GYP_FORCE_PYTHON: "python3"
+      npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
+      npm_config_target: "32.0.0"
+      npm_config_runtime: "electron"
+      npm_config_arch: "x64"
+      npm_config_target_arch: "x64"
+      npm_config_disturl: "https://electronjs.org/headers"
+      npm_config_python: "python3"
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
@@ -65,18 +74,9 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsecret-1-dev
+          sudo apt-get install -y libsecret-1-dev gcc g++ make
 
       - name: Install dependencies
-        env:
-          NODE_GYP_FORCE_PYTHON: "python3"
-          npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
-          npm_config_target: "32.0.0"
-          npm_config_runtime: "electron"
-          npm_config_arch: "x64"
-          npm_config_target_arch: "x64"
-          npm_config_disturl: "https://electronjs.org/headers"
-          npm_config_python: "python3"
         run: |
           sudo npm install -g node-gyp@9.4.0
           npm install
