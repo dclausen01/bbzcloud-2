@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'package.json'  # Only trigger on package.json changes
+      - "package.json"
 
 jobs:
   release:
@@ -23,5 +23,9 @@ jobs:
       - name: Build and release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CI: false  # Prevent warnings from being treated as errors
-        run: npm run release && npm run release:mac
+          CI: false
+        run: |
+          npm run build
+          electron-builder --linux --x64 --publish=always
+          electron-builder --win --x64 --publish=always
+          electron-builder --mac --x64 --arm64 --publish=always
