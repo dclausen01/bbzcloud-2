@@ -12,6 +12,16 @@ jobs:
       - name: Check out Git repository
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -21,6 +31,7 @@ jobs:
         run: |
           npm install
           sudo npm install -g electron-builder
+          npm rebuild sqlite3 --build-from-source --target=$(electron -v | sed 's/v//') --dist-url=https://electronjs.org/headers
 
       - name: Build and release Mac
         env:
@@ -36,15 +47,31 @@ jobs:
       - name: Check out Git repository
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev
+
       - name: Install dependencies
         run: |
           npm install
           sudo npm install -g electron-builder
+          npm rebuild sqlite3 --build-from-source --target=$(electron -v | sed 's/v//') --dist-url=https://electronjs.org/headers
 
       - name: Build and release Linux/Windows
         env:
