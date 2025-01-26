@@ -6,7 +6,7 @@ on:
       - "package.json"
 
 jobs:
-  release:
+  build-mac:
     runs-on: macos-latest
     steps:
       - name: Check out Git repository
@@ -22,7 +22,31 @@ jobs:
           npm install
           sudo npm install -g electron-builder
 
-      - name: Build and release
+      - name: Build and release Mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: false
+        run: |
+          npm run build
+          electron-builder --mac --x64 --arm64 --publish=always
+
+  build-linux-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          npm install
+          sudo npm install -g electron-builder
+
+      - name: Build and release Linux/Windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
@@ -30,4 +54,3 @@ jobs:
           npm run build
           electron-builder --linux --x64 --publish=always
           electron-builder --win --x64 --publish=always
-          electron-builder --mac --x64 --arm64 --publish=always

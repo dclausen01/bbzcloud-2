@@ -49,6 +49,7 @@
     "electron": "^32.0.0",
     "electron-builder": "^24.9.1",
     "electron-devtools-installer": "^3.2.0",
+    "electron-rebuild": "^3.2.9",
     "wait-on": "^7.0.1"
   },
   "scripts": {
@@ -57,7 +58,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "electron-dev": "concurrently --kill-others \"cross-env BROWSER=none npm start\" \"wait-on -t 30000 http://localhost:3000 && electron .\"",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps && electron-rebuild",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder -mwl",
     "dist:win": "npm run build && electron-builder --win",
