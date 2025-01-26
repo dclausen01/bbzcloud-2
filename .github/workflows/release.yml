@@ -18,7 +18,9 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          sudo npm install -g electron-builder
 
       - name: Build and release
         env:
