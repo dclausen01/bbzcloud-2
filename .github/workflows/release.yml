@@ -43,9 +43,6 @@ jobs:
 
   build-linux-windows:
     runs-on: ubuntu-latest
-    env:
-      CFLAGS: "-Wno-implicit-fallthrough -Wno-maybe-uninitialized"
-      CXXFLAGS: "-Wno-implicit-fallthrough -Wno-maybe-uninitialized"
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
@@ -72,7 +69,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install node-addon-api@4.3.0
           npm install
           sudo npm install -g electron@32.0.0 electron-builder
           npm rebuild sqlite3 --build-from-source
