@@ -31,7 +31,7 @@ jobs:
         run: |
           npm install
           sudo npm install -g electron@32.0.0 electron-builder
-          npm rebuild sqlite3 --build-from-source --target=32.0.0 --dist-url=https://electronjs.org/headers
+          npm rebuild sqlite3 --build-from-source
 
       - name: Build and release Mac
         env:
@@ -71,7 +71,7 @@ jobs:
         run: |
           npm install
           sudo npm install -g electron@32.0.0 electron-builder
-          npm rebuild sqlite3 --build-from-source --target=32.0.0 --dist-url=https://electronjs.org/headers
+          npm rebuild sqlite3 --build-from-source
 
       - name: Build and release Linux/Windows
         env:
