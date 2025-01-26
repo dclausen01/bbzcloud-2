@@ -68,10 +68,11 @@ jobs:
           sudo apt-get install -y libsecret-1-dev
 
       - name: Install dependencies
+        env:
+          npm_config_build_from_source: false
         run: |
           npm install
           sudo npm install -g electron@32.0.0 electron-builder
-          npm rebuild sqlite3 --build-from-source
 
       - name: Build and release Linux
         env:
@@ -103,10 +104,11 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
+        env:
+          npm_config_build_from_source: false
         run: |
           npm install
           npm install -g electron@32.0.0 electron-builder
-          npm rebuild sqlite3 --build-from-source
 
       - name: Build and release Windows
         env:
