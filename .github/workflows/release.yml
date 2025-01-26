@@ -30,8 +30,8 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
-          sudo npm install -g electron-builder
-          npm rebuild sqlite3 --build-from-source --target=$(electron -v | sed 's/v//') --dist-url=https://electronjs.org/headers
+          sudo npm install -g electron@32.0.0 electron-builder
+          npm rebuild sqlite3 --build-from-source --target=32.0.0 --dist-url=https://electronjs.org/headers
 
       - name: Build and release Mac
         env:
@@ -70,8 +70,8 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
-          sudo npm install -g electron-builder
-          npm rebuild sqlite3 --build-from-source --target=$(electron -v | sed 's/v//') --dist-url=https://electronjs.org/headers
+          sudo npm install -g electron@32.0.0 electron-builder
+          npm rebuild sqlite3 --build-from-source --target=32.0.0 --dist-url=https://electronjs.org/headers
 
       - name: Build and release Linux/Windows
         env:
