@@ -898,7 +898,7 @@ autoUpdater.on('error', (err) => {
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  mainWindow.webContents.send('update-status', `Download läuft... ${Math.round(progressObj.percent)}%`);
+  mainWindow.webContents.send('update-status', `Download läuft... ${Math.floor(progressObj.percent)}%`);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
