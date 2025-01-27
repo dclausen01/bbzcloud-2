@@ -882,11 +882,15 @@ autoUpdater.on('checking-for-update', () => {
 });
 
 autoUpdater.on('update-available', (info) => {
-  mainWindow.webContents.send('update-status', 'Update verfügbar.');
+  const currentVersion = app.getVersion();
+  if (info.version !== currentVersion) {
+    mainWindow.webContents.send('update-status', `Update verfügbar: Version ${info.version}`);
+  }
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  mainWindow.webContents.send('update-status', 'Keine Updates verfügbar.');
+  // Don't send any status message when no update is available
+  mainWindow.webContents.send('update-status', '');
 });
 
 autoUpdater.on('error', (err) => {
@@ -894,7 +898,7 @@ autoUpdater.on('error', (err) => {
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  mainWindow.webContents.send('update-status', `Download läuft... ${progressObj.percent}%`);
+  mainWindow.webContents.send('update-status', `Download läuft... ${Math.round(progressObj.percent)}%`);
 });
 
 autoUpdater.on('update-downloaded', (info) => {

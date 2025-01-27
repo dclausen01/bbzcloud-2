@@ -320,7 +320,7 @@ function SettingsPanel({ onClose }) {
             {updateStatus && (
               <Box>
                 <Text>{updateStatus}</Text>
-                {updateStatus.includes('heruntergeladen') && (
+                {(updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar')) && (
                   <Button
                     size="sm"
                     colorScheme="green"
