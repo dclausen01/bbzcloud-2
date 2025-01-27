@@ -696,11 +696,12 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
             placeholder="Neue Aufgabe hinzufügen..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
+            onKeyPress={(e) => {
               if (e.key === 'Enter') {
                 handleAddTodo();
               }
             }}
+            autoFocus
           />
           <IconButton
             icon={<AddIcon />}
