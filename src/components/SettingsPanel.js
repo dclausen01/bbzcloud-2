@@ -310,26 +310,41 @@ function SettingsPanel({ onClose }) {
           <Text fontSize="lg" fontWeight="bold" mb={4}>
             Updates
           </Text>
-          <VStack align="stretch" spacing={2}>
+          <VStack align="stretch" spacing={3} p={4} borderWidth="1px" borderRadius="md">
             <HStack justify="space-between">
-              <Text>Version {version}</Text>
+              <HStack spacing={2}>
+                <Text fontWeight="medium">Version {version}</Text>
+                {updateStatus && (updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar')) && (
+                  <Text color="green.500" fontSize="sm">• Update verfügbar</Text>
+                )}
+              </HStack>
               <a href="https://github.com/dclausen01/bbzcloud-2/" target="_blank" rel="noopener noreferrer" style={{textDecoration: 'underline'}}>
                 GitHub
               </a>
             </HStack>
+            
             {updateStatus && (
-              <Box>
-                <Text>{updateStatus}</Text>
-                {(updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar')) && (
-                  <Button
-                    size="sm"
-                    colorScheme="green"
-                    mt={2}
-                    onClick={() => window.electron.installUpdate()}
-                  >
-                    Update installieren
-                  </Button>
-                )}
+              <Box 
+                p={3} 
+                bg={updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar') ? 'green.50' : 'gray.50'} 
+                borderRadius="md"
+              >
+                <VStack align="stretch" spacing={3}>
+                  <Text color={updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar') ? 'green.600' : 'gray.600'}>
+                    {updateStatus}
+                  </Text>
+                  {updateStatus && (
+                    <Button
+                      colorScheme="green"
+                      size="md"
+                      width="100%"
+                      onClick={() => window.electron.installUpdate()}
+                      leftIcon={<span role="img" aria-label="update">🔄</span>}
+                    >
+                      Update installieren
+                    </Button>
+                  )}
+                </VStack>
               </Box>
             )}
           </VStack>
