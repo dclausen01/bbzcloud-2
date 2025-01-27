@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AppIcon from './AppIcon';
 import {
   Flex,
   Button,
@@ -43,22 +44,6 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const getSymbol = (id) => {
-    const symbols = {
-      schulcloud: '💬',
-      moodle: '📚',
-      bbb: '🎥',
-      outlook: '📧',
-      office: '💼',
-      cryptpad: '📝',
-      taskcards: '🗺️',
-      webuntis: '📅',
-      wiki: '📖',
-      handbook: '📔',
-    };
-    return symbols[id] || '🔗';
-  };
-
   return (
     <Flex 
       as="nav" 
@@ -95,7 +80,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
                 justifyContent="center"
                 gap={2}
               >
-                {!showText && <span>{getSymbol(id)}</span>}
+                {!showText && <AppIcon id={id} size="20px" />}
                 {showText && config.title}
               </Button>
             </Tooltip>
