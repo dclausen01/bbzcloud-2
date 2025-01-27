@@ -220,22 +220,10 @@ function App() {
     const unsubscribe = window.electron.onUpdateStatus((status) => {
       const isUpdateAvailable = status.includes('verfügbar') || status.includes('heruntergeladen');
       setHasUpdate(isUpdateAvailable);
-      
-      // Show toast notification when update is first detected
-      if (isUpdateAvailable && !status.includes('heruntergeladen')) {
-        toast({
-          title: 'Update verfügbar',
-          description: 'Ein neues Update ist verfügbar. Öffnen Sie die Einstellungen zum Installieren.',
-          status: 'info',
-          duration: 10000,
-          isClosable: true,
-          position: 'top-right',
-        });
-      }
     });
 
     return () => unsubscribe();
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     const loadAppIcon = async () => {
