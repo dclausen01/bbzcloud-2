@@ -175,10 +175,17 @@ async function updateAutostart() {
 }
 
 const getAssetPath = (asset) => {
-  if (isDev) {
-    return path.resolve(app.getAppPath(), 'assets', 'images', asset);
+  const assetPath = isDev
+    ? path.resolve(app.getAppPath(), 'assets')
+    : path.resolve(process.resourcesPath, 'assets');
+
+  // If the asset path includes a subdirectory (like icons/file.svg), use it directly
+  if (asset.includes('/')) {
+    return path.resolve(assetPath, asset);
   }
-  return path.resolve(process.resourcesPath, 'assets', 'images', asset);
+  
+  // Otherwise, assume it's in the images directory
+  return path.resolve(assetPath, 'images', asset);
 };
 
 function saveWindowState() {
@@ -246,8 +253,24 @@ const copyAssetsIfNeeded = async () => {
     try {
       const sourceDir = path.join(app.getAppPath(), 'assets');
       const targetDir = path.join(process.resourcesPath, 'assets');
-      await fs.ensureDir(targetDir);
-      await fs.copy(sourceDir, targetDir, { overwrite: true });
+      
+      // Ensure target directories exist
+      await fs.ensureDir(path.join(targetDir, 'images'));
+      await fs.ensureDir(path.join(targetDir, 'icons'));
+      
+      // Copy images directory
+      await fs.copy(
+        path.join(sourceDir, 'images'),
+        path.join(targetDir, 'images'),
+        { overwrite: true }
+      );
+      
+      // Copy icons directory
+      await fs.copy(
+        path.join(sourceDir, 'icons'),
+        path.join(targetDir, 'icons'),
+        { overwrite: true }
+      );
     } catch (error) {
       console.error('Error copying assets:', error);
     }

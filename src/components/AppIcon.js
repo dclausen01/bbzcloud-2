@@ -19,13 +19,13 @@ function AppIcon({ id, size = "28px" }) {
       handbook: 'handbook.svg'
     };
 
-    return iconMap[id] || 'link.svg';
+    return `icons/${iconMap[id] || 'link.svg'}`;
   };
 
   useEffect(() => {
     const loadIcon = async () => {
       try {
-        const path = await window.electron.getAssetPath(`icons/${getIconPath(id)}`);
+        const path = await window.electron.getAssetPath(getIconPath(id));
         setIconPath(path);
       } catch (error) {
         console.error('Error loading icon:', error);
