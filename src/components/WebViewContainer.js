@@ -479,26 +479,26 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         
         await injectCredentials(webview, id);
 
-        // Override popup detection for CryptPad
-        if (id === 'cryptpad') {
+        // Override CryptPad's popup detection for cryptpad URLs
+        if (webview.getURL().includes('cryptpad')) {
           await webview.executeJavaScript(`
             // Override popup detection
-            Object.defineProperty(window, 'open', {
-              value: function() {
-                return window.originalOpen.apply(this, arguments);
-              },
-              writable: false
-            });
-            // Store original window.open
-            if (!window.originalOpen) {
-              window.originalOpen = window.open;
-            }
-            // Override popup blocker detection
-            Object.defineProperty(window.navigator, 'plugins', {
-              get: function() {
-                return { length: 0 };
+            window.open = new Proxy(window.open, {
+              apply: function(target, thisArg, args) {
+                // Call original window.open
+                const result = Reflect.apply(target, thisArg, args);
+                // Force CryptPad to think popups are allowed
+                if (!result) {
+                  return { closed: false };
+                }
+                return result;
               }
             });
+            // Clear any existing popup warning messages
+            const popupWarning = document.querySelector('.cp-popup-warning');
+            if (popupWarning) {
+              popupWarning.remove();
+            }
           `);
         }
 
@@ -736,7 +736,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               }}
               allowpopups="true"
               partition="persist:main"
-              webpreferences="nativeWindowOpen=yes"
+              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no"
+              useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             />
           </Box>
         );
@@ -772,9 +773,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               height: '100%',
               display: 'flex',
             }}
-            allowpopups="true"
-            partition="persist:main"
-            webpreferences="nativeWindowOpen=yes"
+              allowpopups="true"
+              partition="persist:main"
+              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no"
+              useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           />
         </Box>
       )}
