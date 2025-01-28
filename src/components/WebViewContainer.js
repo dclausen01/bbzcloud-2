@@ -479,6 +479,29 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         
         await injectCredentials(webview, id);
 
+        // Override popup detection for CryptPad
+        if (id === 'cryptpad') {
+          await webview.executeJavaScript(`
+            // Override popup detection
+            Object.defineProperty(window, 'open', {
+              value: function() {
+                return window.originalOpen.apply(this, arguments);
+              },
+              writable: false
+            });
+            // Store original window.open
+            if (!window.originalOpen) {
+              window.originalOpen = window.open;
+            }
+            // Override popup blocker detection
+            Object.defineProperty(window.navigator, 'plugins', {
+              get: function() {
+                return { length: 0 };
+              }
+            });
+          `);
+        }
+
         // Context menu setup (only add once)
         const url = webview.getURL();
         if (
