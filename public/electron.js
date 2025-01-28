@@ -939,10 +939,29 @@ ipcMain.on('showContextMenu', (event, data) => {
   menu.popup();
 });
 
+// Handle webview messages
+ipcMain.on('webview-message', (event, message) => {
+  console.log('[WebView Debug]', message);
+});
+
 // Global dialog state
 let isShowingDialog = false;
 
 app.on('web-contents-created', (event, contents) => {
+  // Enable dev tools for webviews
+  if (contents.getType() === 'webview') {
+    contents.on('dom-ready', () => {
+      contents.openDevTools();
+    });
+    
+    // Listen for console messages from webview
+    contents.on('console-message', (event, level, message, line, sourceId) => {
+      const url = contents.getURL();
+      const shortUrl = url.split('?')[0].split('#')[0];
+      console.log(`[WebView ${shortUrl}] ${message}`);
+    });
+  }
+
   // Set up download handler for this web contents
   contents.session.on('will-download', (event, item) => {
     item.on('updated', (event, state) => {

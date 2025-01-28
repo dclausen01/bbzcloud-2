@@ -1,5 +1,25 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Override console methods to bridge them to the main process
+const originalConsole = console;
+['log', 'error', 'warn', 'info'].forEach(method => {
+  console[method] = (...args) => {
+    // Call original console method
+    originalConsole[method](...args);
+    // Send to main process
+    ipcRenderer.send('console-message', {
+      method,
+      args: args.map(arg => {
+        try {
+          return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+        } catch (e) {
+          return String(arg);
+        }
+      })
+    });
+  };
+});
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
@@ -8,7 +28,7 @@ contextBridge.exposeInMainWorld(
     // IPC communication
     send: (channel, data) => {
       // whitelist channels
-      const validChannels = ['update-badge', 'contextMenu', 'open-external'];
+      const validChannels = ['update-badge', 'contextMenu', 'open-external', 'console-message', 'webview-message'];
       if (validChannels.includes(channel)) {
         ipcRenderer.send(channel, data);
       }

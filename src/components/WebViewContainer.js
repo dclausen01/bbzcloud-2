@@ -291,7 +291,187 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         return;
       }
 
+      // Helper functions for WebUntis login
+      const waitForElement = `
+        async (selector, timeout = 5000) => {
+          const startTime = Date.now();
+          
+          while (Date.now() - startTime < timeout) {
+            const element = document.querySelector(selector);
+            if (element) {
+              return element;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          throw new Error(\`Element \${selector} not found after \${timeout}ms\`);
+        }
+      `;
+
+      const waitForCondition = `
+        async (condition, timeout = 5000) => {
+          const startTime = Date.now();
+          
+          while (Date.now() - startTime < timeout) {
+            if (condition()) {
+              return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          throw new Error(\`Condition not met after \${timeout}ms\`);
+        }
+      `;
+
+      const fillLoginForm = `
+        async (username, password) => {
+          try {
+            console.log('Starting WebUntis login automation...');
+            
+            // Log the current page URL
+            console.log('Current page URL:', window.location.href);
+            
+            // Wait for elements using the consistent class names
+            console.log('Waiting for username field...');
+            const usernameField = await (${waitForElement})('input.un-input-group__input[type="text"]');
+            console.log('Username field found:', usernameField);
+            
+            console.log('Waiting for password field...');
+            const passwordField = await (${waitForElement})('input.un-input-group__input[type="password"]');
+            console.log('Password field found:', passwordField);
+            
+            // Fill username
+            console.log('Setting username value...');
+            usernameField.value = username;
+            console.log('Username value set, dispatching events...');
+            usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+            usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            // Fill password
+            console.log('Setting password value...');
+            passwordField.value = password;
+            console.log('Password value set, dispatching events...');
+            passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+            passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            // Find and click the submit button
+            console.log('Waiting for submit button...');
+            const submitButton = await (${waitForElement})('button[type="submit"]');
+            console.log('Submit button found:', submitButton);
+            
+            // Log button state
+            console.log('Submit button disabled state:', submitButton.disabled);
+            console.log('Submit button classes:', submitButton.className);
+            
+            // Wait for button to become enabled
+            console.log('Waiting for button to become enabled...');
+            await (${waitForCondition})(() => !submitButton.disabled);
+            console.log('Submit button is now enabled');
+            
+            // Log form state before submission
+            console.log('Form values before submission:', {
+              username: usernameField.value,
+              passwordLength: passwordField.value.length,
+              buttonEnabled: !submitButton.disabled
+            });
+            
+            console.log('Clicking submit button...');
+            submitButton.click();
+            console.log('Submit button clicked');
+            
+            return true;
+          } catch (error) {
+            console.error('Detailed error in WebUntis login:', error);
+            // Log the current DOM state
+            console.log('Current form elements:', {
+              usernameField: document.querySelector('input.un-input-group__input[type="text"]'),
+              passwordField: document.querySelector('input.un-input-group__input[type="password"]'),
+              submitButton: document.querySelector('button[type="submit"]')
+            });
+            return false;
+          }
+        }
+      `;
+
       switch (id) {
+        case 'untis':
+          try {
+            // Execute login code with keyboard simulation
+            const result = await webview.executeJavaScript(`
+              (async () => {
+                try {
+                  // Wait for form to be ready
+                  await new Promise((resolve) => {
+                    const checkForm = () => {
+                      const form = document.querySelector('.un2-login-form form');
+                      if (form) {
+                        resolve();
+                      } else {
+                        setTimeout(checkForm, 100);
+                      }
+                    };
+                    checkForm();
+                  });
+
+                  // Get form elements
+                  const form = document.querySelector('.un2-login-form form');
+                  const usernameField = form.querySelector('input[type="text"].un-input-group__input');
+                  const passwordField = form.querySelector('input[type="password"].un-input-group__input');
+                  const submitButton = form.querySelector('button[type="submit"]');
+
+                  if (!usernameField || !passwordField || !submitButton) {
+                    return false;
+                  }
+
+                  // Helper function to simulate typing
+                  const simulateTyping = async (element, text) => {
+                    element.focus();
+                    
+                    // Clear existing value
+                    element.value = '';
+                    element.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    // Type each character
+                    for (const char of text) {
+                      element.value += char;
+                      element.dispatchEvent(new Event('input', { bubbles: true }));
+                      await new Promise(resolve => setTimeout(resolve, 50));
+                    }
+                    
+                    element.dispatchEvent(new Event('change', { bubbles: true }));
+                    element.blur();
+                  };
+
+                  // Type username
+                  await simulateTyping(usernameField, ${JSON.stringify(emailAddress)});
+                  
+                  // Wait a bit before typing password
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                  
+                  // Type password
+                  await simulateTyping(passwordField, ${JSON.stringify(password)});
+                  
+                  // Wait for button to become enabled
+                  await new Promise(resolve => setTimeout(resolve, 500));
+
+                  // Click if button is enabled
+                  if (!submitButton.disabled) {
+                    submitButton.click();
+                    return true;
+                  }
+
+                  return false;
+                } catch (error) {
+                  console.error('Login error:', error);
+                  return false;
+                }
+              })();
+            `);
+            
+            console.log('Login attempt result:', result);
+          } catch (error) {
+            console.error('Error during WebUntis login:', error);
+          }
+          break;
+
         case 'outlook':
           await webview.executeJavaScript(
             `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
@@ -736,7 +916,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               }}
               allowpopups="true"
               partition="persist:main"
-              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no"
+              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no,devTools=yes"
               useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             />
           </Box>
@@ -775,7 +955,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }}
               allowpopups="true"
               partition="persist:main"
-              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no"
+              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no,devTools=yes"
               useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           />
         </Box>
