@@ -16,7 +16,8 @@ function AppIcon({ id, size = "28px" }) {
       taskcards: 'taskcards.svg',
       webuntis: 'untis.svg',
       wiki: 'wiki.svg',
-      handbook: 'handbook.svg'
+      handbook: 'handbook.svg',
+      fobizz: 'fobizztools.svg'
     };
 
     return `icons/${iconMap[id] || 'link.svg'}`;
