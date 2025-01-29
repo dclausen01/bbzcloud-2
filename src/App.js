@@ -167,7 +167,6 @@ function App() {
       ]);
       
       // Trigger a database change event to reload settings
-      window.electron.debug('Triggering database reload...');
       window.electron.emit('database-changed');
       
       // Close modal and reload the app after a delay to ensure credentials are saved
@@ -225,7 +224,6 @@ function App() {
     const unsubscribe = window.electron.onAddTodo((text) => {
       setContextMenuText(text);
       onTodoOpen(); // Open todo drawer when text is selected
-      window.electron.debug('App - Set context menu text and opened drawer');
     });
     return () => unsubscribe();
   }, [onTodoOpen]);
