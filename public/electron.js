@@ -1268,13 +1268,17 @@ app.on('ready', async () => {
         mainWindow.setBounds(newBounds);
       }
 
-      // For Outlook, we need to clear session and force a complete reload
+      // For Outlook and WebUntis, we need to clear session and force a complete reload
       const webviews = BrowserWindow.getAllWindows()
         .map(win => win.webContents)
-        .concat(webContents.getAllWebContents())
-        .filter(contents => contents.getURL().includes('exchange.bbz-rd-eck.de/owa'));
+        .concat(webContents.getAllWebContents());
 
-      for (const webview of webviews) {
+      // Handle Outlook webviews
+      const outlookWebviews = webviews.filter(contents => 
+        contents.getURL().includes('exchange.bbz-rd-eck.de/owa')
+      );
+
+      for (const webview of outlookWebviews) {
         try {
           // Clear session storage and cache
           await webview.session.clearStorageData({
@@ -1284,6 +1288,24 @@ app.on('ready', async () => {
           await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
         } catch (error) {
           console.error('Error clearing Outlook session:', error);
+        }
+      }
+
+      // Handle WebUntis webviews
+      const webuntisWebviews = webviews.filter(contents => 
+        contents.getURL().includes('webuntis.com')
+      );
+
+      for (const webview of webuntisWebviews) {
+        try {
+          // Clear session storage and cache
+          await webview.session.clearStorageData({
+            storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+          });
+          // Force navigation to login page
+          await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
+        } catch (error) {
+          console.error('Error clearing WebUntis session:', error);
         }
       }
 
