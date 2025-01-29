@@ -37,7 +37,9 @@ function SettingsPanel({ onClose }) {
   const [credentials, setCredentials] = useState({
     email: '',
     password: '',
-    bbbPassword: ''
+    bbbPassword: '',
+    webuntisEmail: '',
+    webuntisPassword: ''
   });
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState('');
@@ -87,11 +89,21 @@ function SettingsPanel({ onClose }) {
           service: 'bbzcloud', 
           account: 'bbbPassword' 
         });
+        const webuntisEmailResult = await window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisEmail'
+        });
+        const webuntisPasswordResult = await window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisPassword'
+        });
         
         setCredentials({
           email: emailResult.success ? emailResult.password : '',
           password: passwordResult.success ? passwordResult.password : '',
-          bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : ''
+          bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : '',
+          webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : '',
+          webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : ''
         });
       } catch (error) {
         console.error('Error loading credentials:', error);
@@ -170,6 +182,16 @@ function SettingsPanel({ onClose }) {
           service: 'bbzcloud',
           account: 'bbbPassword',
           password: credentials.bbbPassword
+        }) : Promise.resolve({ success: true }),
+        credentials.webuntisEmail ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisEmail',
+          password: credentials.webuntisEmail
+        }) : Promise.resolve({ success: true }),
+        credentials.webuntisPassword ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisPassword',
+          password: credentials.webuntisPassword
         }) : Promise.resolve({ success: true })
       ]);
 
@@ -540,6 +562,33 @@ function SettingsPanel({ onClose }) {
                 value={credentials.bbbPassword}
                 onChange={(e) => setCredentials(prev => ({ ...prev, bbbPassword: e.target.value }))}
                 placeholder="BBB Passwort"
+              />
+              <InputRightElement width="4.5rem">
+                <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
+                  {showBBBPassword ? 'Verbergen' : 'Zeigen'}
+                </Button>
+              </InputRightElement>
+            </InputGroup>
+          </FormControl>
+
+          <FormControl>
+            <FormLabel>WebUntis Login</FormLabel>
+            <Input
+              type="text"
+              value={credentials.webuntisEmail}
+              onChange={(e) => setCredentials(prev => ({ ...prev, webuntisEmail: e.target.value }))}
+              placeholder="WebUntis Benutzername"
+            />
+          </FormControl>
+
+          <FormControl>
+            <FormLabel>WebUntis Passwort</FormLabel>
+            <InputGroup>
+              <Input
+                type={showBBBPassword ? 'text' : 'password'}
+                value={credentials.webuntisPassword}
+                onChange={(e) => setCredentials(prev => ({ ...prev, webuntisPassword: e.target.value }))}
+                placeholder="WebUntis Passwort"
               />
               <InputRightElement width="4.5rem">
                 <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>

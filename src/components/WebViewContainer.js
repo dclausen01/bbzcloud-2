@@ -294,6 +294,27 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       switch (id.toLowerCase()) {
         case 'webuntis':
           try {
+            // Get WebUntis-specific credentials
+            const webuntisEmailResult = await window.electron.getCredentials({
+              service: 'bbzcloud',
+              account: 'webuntisEmail'
+            });
+            const webuntisPasswordResult = await window.electron.getCredentials({
+              service: 'bbzcloud',
+              account: 'webuntisPassword'
+            });
+
+            if (!webuntisEmailResult.success || !webuntisPasswordResult.success) {
+              return;
+            }
+
+            const webuntisEmail = webuntisEmailResult.password;
+            const webuntisPassword = webuntisPasswordResult.password;
+
+            if (!webuntisEmail || !webuntisPassword) {
+              return;
+            }
+
             const result = await webview.executeJavaScript(`
               (async () => {
                 try {
@@ -347,7 +368,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   // Fill username
                   const usernameProps = getReactProps(usernameField);
                   if (usernameProps?.onChange) {
-                    usernameField.value = ${JSON.stringify(emailAddress)};
+                    usernameField.value = ${JSON.stringify(webuntisEmail)};
                     usernameProps.onChange({
                       target: usernameField,
                       currentTarget: usernameField,
@@ -368,7 +389,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   // Fill password
                   const passwordProps = getReactProps(passwordField);
                   if (passwordProps?.onChange) {
-                    passwordField.value = ${JSON.stringify(password)};
+                    passwordField.value = ${JSON.stringify(webuntisPassword)};
                     passwordProps.onChange({
                       target: passwordField,
                       currentTarget: passwordField,

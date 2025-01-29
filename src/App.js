@@ -52,8 +52,11 @@ function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [bbbPassword, setBbbPassword] = useState('');
+  const [webuntisEmail, setWebuntisEmail] = useState('');
+  const [webuntisPassword, setWebuntisPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showBBBPassword, setShowBBBPassword] = useState(false);
+  const [showWebuntisPassword, setShowWebuntisPassword] = useState(false);
   const [isLoadingEmail, setIsLoadingEmail] = useState(true);
   const [dbPath, setDbPath] = useState('');
 
@@ -66,7 +69,7 @@ function App() {
       try {
         // Load credentials
         await sleep(1000); // wait a second to make loading of credentials more reliable
-        const [emailResult, passwordResult, bbbPasswordResult] = await Promise.all([
+        const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'email'
@@ -78,6 +81,14 @@ function App() {
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'bbbPassword'
+          }),
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'webuntisEmail'
+          }),
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'webuntisPassword'
           })
         ]);
 
@@ -96,6 +107,14 @@ function App() {
 
         if (bbbPasswordResult.success && bbbPasswordResult.password) {
           setBbbPassword(bbbPasswordResult.password);
+        }
+
+        if (webuntisEmailResult.success && webuntisEmailResult.password) {
+          setWebuntisEmail(webuntisEmailResult.password);
+        }
+
+        if (webuntisPasswordResult.success && webuntisPasswordResult.password) {
+          setWebuntisPassword(webuntisPasswordResult.password);
         }
 
         // Only show welcome modal if no email is saved
@@ -134,6 +153,16 @@ function App() {
           service: 'bbzcloud',
           account: 'bbbPassword',
           password: bbbPassword
+        }) : Promise.resolve(),
+        webuntisEmail ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisEmail',
+          password: webuntisEmail
+        }) : Promise.resolve(),
+        webuntisPassword ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisPassword',
+          password: webuntisPassword
         }) : Promise.resolve()
       ]);
       
@@ -578,6 +607,33 @@ function App() {
                       <InputRightElement width="4.5rem">
                         <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
                           {showBBBPassword ? 'Verbergen' : 'Zeigen'}
+                        </Button>
+                      </InputRightElement>
+                    </InputGroup>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>WebUntis Login</FormLabel>
+                    <Input
+                      type="text"
+                      value={webuntisEmail}
+                      onChange={(e) => setWebuntisEmail(e.target.value)}
+                      placeholder="WebUntis Benutzername (optional)"
+                    />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>WebUntis Passwort</FormLabel>
+                    <InputGroup>
+                      <Input
+                        type={showWebuntisPassword ? 'text' : 'password'}
+                        value={webuntisPassword}
+                        onChange={(e) => setWebuntisPassword(e.target.value)}
+                        placeholder="WebUntis Passwort (optional)"
+                      />
+                      <InputRightElement width="4.5rem">
+                        <Button h="1.75rem" size="sm" onClick={() => setShowWebuntisPassword(!showWebuntisPassword)}>
+                          {showWebuntisPassword ? 'Verbergen' : 'Zeigen'}
                         </Button>
                       </InputRightElement>
                     </InputGroup>
