@@ -344,7 +344,8 @@ function createSplashWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      devTools: isDev // Only enable DevTools in development
     },
     icon: getAssetPath('icon.ico')
   });
@@ -406,7 +407,8 @@ async function createWindow() {
       additionalArguments: [
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
       ],
-      sandbox: false
+      sandbox: false,
+      devTools: isDev // Only enable DevTools in development
     },
     icon: getAssetPath('icon.ico')
   });
@@ -481,10 +483,16 @@ async function createWebviewWindow(url, title) {
       additionalArguments: [
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
       ],
-      sandbox: false
+      sandbox: false,
+      devTools: isDev // Only enable DevTools in development
     },
     icon: getAssetPath('icon.ico')
   });
+
+  // Only open DevTools in development
+  if (isDev) {
+    win.webContents.openDevTools();
+  }
 
   // Load URL with current theme
   const urlWithTheme = isDev
@@ -948,17 +956,10 @@ ipcMain.on('webview-message', (event, message) => {
 let isShowingDialog = false;
 
 app.on('web-contents-created', (event, contents) => {
-  // Enable dev tools for webviews
-  if (contents.getType() === 'webview') {
+  // Only enable dev tools in development
+  if (contents.getType() === 'webview' && isDev) {
     contents.on('dom-ready', () => {
       contents.openDevTools();
-    });
-    
-    // Listen for console messages from webview
-    contents.on('console-message', (event, level, message, line, sourceId) => {
-      const url = contents.getURL();
-      const shortUrl = url.split('?')[0].split('#')[0];
-      console.log(`[WebView ${shortUrl}] ${message}`);
     });
   }
 

@@ -116,9 +116,6 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeListener('add-todo', subscription);
     };
   },
-  // Debug helper
-  debug: (msg) => console.log('Debug:', msg),
-
   // Secure Documents functionality
   checkSecureStoreAccess: async () => {
     try {

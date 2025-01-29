@@ -1,24 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Override console methods to bridge them to the main process
-const originalConsole = console;
-['log', 'error', 'warn', 'info'].forEach(method => {
-  console[method] = (...args) => {
-    // Call original console method
-    originalConsole[method](...args);
-    // Send to main process
-    ipcRenderer.send('console-message', {
-      method,
-      args: args.map(arg => {
-        try {
-          return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-        } catch (e) {
-          return String(arg);
-        }
-      })
-    });
-  };
-});
+// Bridge critical errors to main process
+const originalError = console.error;
+console.error = (...args) => {
+  originalError.apply(console, args);
+  ipcRenderer.send('console-message', {
+    method: 'error',
+    args: args.map(arg => String(arg))
+  });
+};
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
