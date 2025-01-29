@@ -159,6 +159,7 @@ export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(defaultSettings);
   const [customApps, setCustomApps] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [updateStatus, setUpdateStatus] = useState('');
 
   // Function to load custom apps
   const loadCustomApps = useCallback(async () => {
@@ -363,6 +364,14 @@ export function SettingsProvider({ children }) {
     }));
   };
 
+  // Listen for update status changes
+  useEffect(() => {
+    const unsubscribe = window.electron.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const value = {
     settings: { ...settings, customApps },
     updateSettings,
@@ -374,7 +383,8 @@ export function SettingsProvider({ children }) {
     toggleMinimizedStart,
     isLoading,
     toggleDarkMode,
-    updateNavbarZoom
+    updateNavbarZoom,
+    updateStatus
   };
 
   // Don't render children until settings are loaded

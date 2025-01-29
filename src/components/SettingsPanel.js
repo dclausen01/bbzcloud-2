@@ -25,7 +25,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings, updateStatus } = useSettings();
   const { setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -42,17 +42,7 @@ function SettingsPanel({ onClose }) {
     webuntisPassword: ''
   });
   const [version, setVersion] = useState('');
-  const [updateStatus, setUpdateStatus] = useState('');
   const toast = useToast();
-
-  useEffect(() => {
-    // Listen for update status
-    const unsubscribe = window.electron.onUpdateStatus((status) => {
-      setUpdateStatus(status);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   useEffect(() => {
     // Load version
