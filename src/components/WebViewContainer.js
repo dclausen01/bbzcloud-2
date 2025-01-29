@@ -167,6 +167,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             webview.clearHistory();
             // Force navigation to base OWA URL
             webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+          } else if (id === 'webuntis') {
+            // For WebUntis, check if we're on the authenticator page before reloading
+            webview.executeJavaScript(`
+              const authLabel = document.querySelector('.un-input-group__label');
+              authLabel?.textContent === 'Bestätigungscode';
+            `).then(isAuthPage => {
+              if (!isAuthPage) {
+                webview.reload();
+              }
+            });
           } else {
             webview.reload();
           }
@@ -423,9 +433,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       form.dispatchEvent(submitEvent);
                     }
 
-                    // Wait 2 seconds then reload
+                    // Wait 2 seconds then check for authenticator page
                     await new Promise(resolve => setTimeout(resolve, 2000));
-                    window.location.reload();
+                    
+                    // Only reload if we're not on the authenticator page
+                    const authLabel = document.querySelector('.un-input-group__label');
+                    if (authLabel?.textContent !== 'Bestätigungscode') {
+                      window.location.reload();
+                    }
                     return true;
                   }
 
