@@ -1268,12 +1268,11 @@ app.on('ready', async () => {
         mainWindow.setBounds(newBounds);
       }
 
-      // For Outlook and WebUntis, we need to clear session and force a complete reload
       const webviews = BrowserWindow.getAllWindows()
         .map(win => win.webContents)
         .concat(webContents.getAllWebContents());
 
-      // Handle Outlook webviews
+      // Handle Outlook webviews - clear session and reload
       const outlookWebviews = webviews.filter(contents => 
         contents.getURL().includes('exchange.bbz-rd-eck.de/owa')
       );
@@ -1291,7 +1290,7 @@ app.on('ready', async () => {
         }
       }
 
-      // Handle WebUntis webviews
+      // Handle WebUntis webviews - clear session and reload
       const webuntisWebviews = webviews.filter(contents => 
         contents.getURL().includes('webuntis.com')
       );
@@ -1309,6 +1308,25 @@ app.on('ready', async () => {
         }
       }
 
+      // Handle Moodle webviews - just reload
+      const moodleWebviews = webviews.filter(contents => 
+        contents.getURL().includes('portal.bbz-rd-eck.com')
+      );
+      moodleWebviews.forEach(webview => webview.reload());
+
+      // Handle Wiki webviews - just reload
+      const wikiWebviews = webviews.filter(contents => 
+        contents.getURL().includes('wiki.bbz-rd-eck.com')
+      );
+      wikiWebviews.forEach(webview => webview.reload());
+
+      // Handle Handbook webviews - just reload
+      const handbookWebviews = webviews.filter(contents => 
+        contents.getURL().includes('viflow.bbz-rd-eck.de')
+      );
+      handbookWebviews.forEach(webview => webview.reload());
+
+      // Notify about all reloads
       mainWindow.webContents.send('system-resumed', webviewsToReload);
     }
 
