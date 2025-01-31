@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box,
   VStack,
@@ -25,6 +25,14 @@ import {
   Spinner,
   Text,
   Center,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
 } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon, EditIcon, TimeIcon, ChevronDownIcon, DragHandleIcon } from '@chakra-ui/icons';
 import { DragDropContext, Droppable as DroppableBase, Draggable } from 'react-beautiful-dnd';
@@ -176,6 +184,31 @@ const StrictModeDroppable = ({ children, ...props }) => {
   return <DroppableBase {...props}>{children}</DroppableBase>;
 };
 
+const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, isCompleted }) => {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose}>
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>Aufgabe löschen</ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          {isCompleted 
+            ? 'Möchten Sie diese erledigte Aufgabe wirklich löschen?'
+            : 'Möchten Sie diese unerledigte Aufgabe wirklich löschen?'}
+        </ModalBody>
+        <ModalFooter>
+          <Button colorScheme="red" mr={3} onClick={onConfirm}>
+            Löschen
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            Abbrechen
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};
+
 const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }) => {
   const [todoState, setTodoState] = useState({
     todos: [],
@@ -188,6 +221,7 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
   const [editingTodo, setEditingTodo] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const inputRef = useRef(null);
   const toast = useToast();
   const bg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
@@ -443,29 +477,51 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
     });
   };
 
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    todoId: null,
+    isCompleted: false
+  });
+
   const handleDeleteTodo = (id) => {
     const todoToDelete = todoState.todos.find(todo => todo.id === id);
     if (!todoToDelete) return;
 
-    const isCompleted = todoToDelete.completed;
-    const confirmMessage = isCompleted 
-      ? 'Möchten Sie diese erledigte Aufgabe wirklich löschen?'
-      : 'Möchten Sie diese unerledigte Aufgabe wirklich löschen?';
+    setDeleteModal({
+      isOpen: true,
+      todoId: id,
+      isCompleted: todoToDelete.completed
+    });
+  };
 
-    if (window.confirm(confirmMessage)) {
-      setTodoState(prev => ({
-        ...prev,
-        todos: prev.todos.filter(todo => todo.id !== id)
-      }));
-      
-      toast({
-        title: 'Aufgabe gelöscht',
-        description: 'Die Aufgabe wurde erfolgreich gelöscht.',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
+  const handleConfirmDelete = () => {
+    setTodoState(prev => ({
+      ...prev,
+      todos: prev.todos.filter(todo => todo.id !== deleteModal.todoId)
+    }));
+    
+    toast({
+      title: 'Aufgabe gelöscht',
+      description: 'Die Aufgabe wurde erfolgreich gelöscht.',
+      status: 'success',
+      duration: 3000,
+      isClosable: true,
+    });
+
+    setDeleteModal(prev => ({ ...prev, isOpen: false }));
+
+    // Re-focus the input field after deletion
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteModal({
+      isOpen: false,
+      todoId: null,
+      isCompleted: false
+    });
   };
 
   const handleEditTodo = (todo) => {
@@ -610,6 +666,12 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
 
   return (
     <Box maxW="800px" mx="auto">
+      <DeleteConfirmationModal
+        isOpen={deleteModal.isOpen}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        isCompleted={deleteModal.isCompleted}
+      />
       <VStack spacing={4} align="stretch">
         {/* Folder Management */}
         <HStack spacing={4}>
@@ -701,6 +763,7 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
                 handleAddTodo();
               }
             }}
+            ref={inputRef}
             autoFocus
           />
           <IconButton
