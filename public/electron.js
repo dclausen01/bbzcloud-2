@@ -6,8 +6,8 @@ const crypto = require('crypto');
 const compress = util.promisify(zlib.gzip);
 const decompress = util.promisify(zlib.gunzip);
 
-// List of webviews that need to be reloaded on system resume
-const webviewsToReload = ['outlook', 'wiki', 'handbook', 'moodle', 'webuntis'];
+// List of webviews that need special handling on system resume
+const webviewsToReload = ['outlook', 'webuntis'];
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
@@ -44,23 +44,22 @@ if (!gotTheLock) {
   });
 }
 
-// Prepare for update by gracefully closing sessions
+// Prepare for update by handling Outlook and WebUntis sessions
 async function prepareForUpdate() {
   // Get all webview contents
   const webviews = webContents.getAllWebContents().filter(wc => 
     wc.getType() === 'webview'
   );
 
-  // Gracefully close each webview session
+  // Only handle Outlook and WebUntis sessions
   for (const webview of webviews) {
     try {
       const url = webview.getURL();
-      // Skip schul.cloud to preserve its session
-      if (!url.includes('schul.cloud')) {
-        // Allow webview to perform cleanup
-        await webview.session.flushStorageData();
-        // Ensure all writes are completed
-        await webview.session.clearCache();
+      // Only clear sessions for Outlook and WebUntis
+      if (url.includes('exchange.bbz-rd-eck.de/owa') || url.includes('webuntis.com')) {
+        await webview.session.clearStorageData({
+          storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+        });
       }
     } catch (error) {
       console.error('Error preparing webview for update:', error);
@@ -1300,59 +1299,27 @@ app.on('ready', async () => {
         .map(win => win.webContents)
         .concat(webContents.getAllWebContents());
 
-      // Handle Outlook webviews - clear session and reload
-      const outlookWebviews = webviews.filter(contents => 
-        contents.getURL().includes('exchange.bbz-rd-eck.de/owa')
-      );
-
-      for (const webview of outlookWebviews) {
+      // Handle Outlook and WebUntis webviews - clear session and reload
+      for (const webview of webviews) {
         try {
-          // Clear session storage and cache
-          await webview.session.clearStorageData({
-            storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
-          });
-          // Force navigation to login page
-          await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+          const url = webview.getURL();
+          if (url.includes('exchange.bbz-rd-eck.de/owa')) {
+            // Clear session storage and cache for Outlook
+            await webview.session.clearStorageData({
+              storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+            });
+            await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+          } else if (url.includes('webuntis.com')) {
+            // Clear session storage and cache for WebUntis
+            await webview.session.clearStorageData({
+              storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
+            });
+            await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
+          }
         } catch (error) {
-          console.error('Error clearing Outlook session:', error);
+          console.error('Error handling webview session:', error);
         }
       }
-
-      // Handle WebUntis webviews - clear session and reload
-      const webuntisWebviews = webviews.filter(contents => 
-        contents.getURL().includes('webuntis.com')
-      );
-
-      for (const webview of webuntisWebviews) {
-        try {
-          // Clear session storage and cache
-          await webview.session.clearStorageData({
-            storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
-          });
-          // Force navigation to login page
-          await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
-        } catch (error) {
-          console.error('Error clearing WebUntis session:', error);
-        }
-      }
-
-      // Handle Moodle webviews - just reload
-      const moodleWebviews = webviews.filter(contents => 
-        contents.getURL().includes('portal.bbz-rd-eck.com')
-      );
-      moodleWebviews.forEach(webview => webview.reload());
-
-      // Handle Wiki webviews - just reload
-      const wikiWebviews = webviews.filter(contents => 
-        contents.getURL().includes('wiki.bbz-rd-eck.com')
-      );
-      wikiWebviews.forEach(webview => webview.reload());
-
-      // Handle Handbook webviews - just reload
-      const handbookWebviews = webviews.filter(contents => 
-        contents.getURL().includes('viflow.bbz-rd-eck.de')
-      );
-      handbookWebviews.forEach(webview => webview.reload());
 
       // Notify about all reloads
       mainWindow.webContents.send('system-resumed', webviewsToReload);
