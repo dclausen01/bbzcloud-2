@@ -44,6 +44,30 @@ if (!gotTheLock) {
   });
 }
 
+// Prepare for update by gracefully closing sessions
+async function prepareForUpdate() {
+  // Get all webview contents
+  const webviews = webContents.getAllWebContents().filter(wc => 
+    wc.getType() === 'webview'
+  );
+
+  // Gracefully close each webview session
+  for (const webview of webviews) {
+    try {
+      const url = webview.getURL();
+      // Skip schul.cloud to preserve its session
+      if (!url.includes('schul.cloud')) {
+        // Allow webview to perform cleanup
+        await webview.session.flushStorageData();
+        // Ensure all writes are completed
+        await webview.session.clearCache();
+      }
+    } catch (error) {
+      console.error('Error preparing webview for update:', error);
+    }
+  }
+}
+
 // Feedback handler
 ipcMain.handle('create-github-issue', async (event, { title, body }) => {
   try {
@@ -937,8 +961,11 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 // Handle update installation
-ipcMain.handle('install-update', () => {
-  autoUpdater.quitAndInstall();
+ipcMain.handle('install-update', async () => {
+  await prepareForUpdate();
+  // isSilent = false (show installation progress)
+  // isForceRunAfter = true (ensure app restarts after update)
+  autoUpdater.quitAndInstall(false, true);
 });
 
 // Handle context menu events from webviews
@@ -1084,7 +1111,8 @@ app.on('before-quit', async () => {
   
   // Check if we have a downloaded update and install it
   if (autoUpdater.getFeedURL() && autoUpdater.updateDownloaded) {
-    autoUpdater.quitAndInstall(false);
+    await prepareForUpdate();
+    autoUpdater.quitAndInstall(false, true);
   }
 });
 
