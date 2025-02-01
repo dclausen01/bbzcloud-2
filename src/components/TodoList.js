@@ -209,6 +209,31 @@ const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, isCompleted }) =>
   );
 };
 
+const DeleteFolderModal = ({ isOpen, onClose, onConfirm, folderName, todoCount }) => {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose}>
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>Ordner löschen</ModalHeader>
+        <ModalCloseButton />
+        <ModalBody>
+          {todoCount > 0 
+            ? `Möchten Sie den Ordner "${folderName}" wirklich löschen? ${todoCount} Aufgabe${todoCount === 1 ? '' : 'n'} werden in den Standardordner verschoben.`
+            : `Möchten Sie den leeren Ordner "${folderName}" wirklich löschen?`}
+        </ModalBody>
+        <ModalFooter>
+          <Button colorScheme="red" mr={3} onClick={onConfirm}>
+            Löschen
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            Abbrechen
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};
+
 const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }) => {
   const [todoState, setTodoState] = useState({
     todos: [],
@@ -415,6 +440,12 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
     });
   };
 
+  const [deleteFolderModal, setDeleteFolderModal] = useState({
+    isOpen: false,
+    folderName: null,
+    todoCount: 0
+  });
+
   const handleDeleteFolder = (folder) => {
     if (folder === 'Default') {
       toast({
@@ -428,30 +459,49 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
     }
 
     const todosInFolder = todoState.todos.filter(todo => todo.folder === folder).length;
-    const confirmMessage = todosInFolder > 0
-      ? `Möchten Sie den Ordner "${folder}" wirklich löschen? ${todosInFolder} Aufgabe${todosInFolder === 1 ? '' : 'n'} werden in den Standardordner verschoben.`
-      : `Möchten Sie den leeren Ordner "${folder}" wirklich löschen?`;
+    setDeleteFolderModal({
+      isOpen: true,
+      folderName: folder,
+      todoCount: todosInFolder
+    });
+  };
 
-    if (window.confirm(confirmMessage)) {
-      setTodoState(prev => ({
-        ...prev,
-        todos: prev.todos.map(todo => 
-          todo.folder === folder ? { ...todo, folder: 'Default' } : todo
-        ),
-        folders: prev.folders.filter(f => f !== folder),
-        selectedFolder: prev.selectedFolder === folder ? 'Default' : prev.selectedFolder
-      }));
+  const handleConfirmFolderDelete = () => {
+    const folder = deleteFolderModal.folderName;
+    const todosInFolder = deleteFolderModal.todoCount;
 
-      toast({
-        title: 'Ordner gelöscht',
-        description: todosInFolder > 0
-          ? `Ordner "${folder}" wurde gelöscht. ${todosInFolder} Aufgabe${todosInFolder === 1 ? '' : 'n'} wurden in den Standardordner verschoben.`
-          : `Ordner "${folder}" wurde gelöscht.`,
-        status: 'info',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
+    setTodoState(prev => ({
+      ...prev,
+      todos: prev.todos.map(todo => 
+        todo.folder === folder ? { ...todo, folder: 'Default' } : todo
+      ),
+      folders: prev.folders.filter(f => f !== folder),
+      selectedFolder: prev.selectedFolder === folder ? 'Default' : prev.selectedFolder
+    }));
+
+    toast({
+      title: 'Ordner gelöscht',
+      description: todosInFolder > 0
+        ? `Ordner "${folder}" wurde gelöscht. ${todosInFolder} Aufgabe${todosInFolder === 1 ? '' : 'n'} wurden in den Standardordner verschoben.`
+        : `Ordner "${folder}" wurde gelöscht.`,
+      status: 'info',
+      duration: 3000,
+      isClosable: true,
+    });
+
+    setDeleteFolderModal({
+      isOpen: false,
+      folderName: null,
+      todoCount: 0
+    });
+  };
+
+  const handleCancelFolderDelete = () => {
+    setDeleteFolderModal({
+      isOpen: false,
+      folderName: null,
+      todoCount: 0
+    });
   };
 
   const handleToggleTodo = (id) => {
@@ -671,6 +721,13 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
         onClose={handleCancelDelete}
         onConfirm={handleConfirmDelete}
         isCompleted={deleteModal.isCompleted}
+      />
+      <DeleteFolderModal
+        isOpen={deleteFolderModal.isOpen}
+        onClose={handleCancelFolderDelete}
+        onConfirm={handleConfirmFolderDelete}
+        folderName={deleteFolderModal.folderName}
+        todoCount={deleteFolderModal.todoCount}
       />
       <VStack spacing={4} align="stretch">
         {/* Folder Management */}
