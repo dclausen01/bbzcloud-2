@@ -18,6 +18,10 @@ const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 const DatabaseService = require('./services/DatabaseService');
 
+// Update check interval (15 minutes)
+const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
+let updateCheckTimer;
+
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 let shouldStartMinimized = false;
@@ -1108,6 +1112,11 @@ app.on('before-quit', async () => {
     saveWindowState();
   }
   
+  // Clear update check interval
+  if (updateCheckTimer) {
+    clearInterval(updateCheckTimer);
+  }
+  
   // Check if we have a downloaded update and install it
   if (autoUpdater.getFeedURL() && autoUpdater.updateDownloaded) {
     await prepareForUpdate();
@@ -1274,7 +1283,14 @@ app.on('ready', async () => {
     createSplashWindow();
     await createWindow();
     // await setupFileWatcher();
+    
+    // Initial update check
     autoUpdater.checkForUpdatesAndNotify();
+    
+    // Set up periodic update check (every 15 minutes)
+    updateCheckTimer = setInterval(() => {
+      autoUpdater.checkForUpdatesAndNotify();
+    }, UPDATE_CHECK_INTERVAL);
 
     // Handle startup arguments
     const startMinimized = process.argv.includes('--minimized');
