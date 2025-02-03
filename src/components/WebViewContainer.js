@@ -692,10 +692,32 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
       });
 
-      // Navigation handler
-      addWebviewListener(webview, 'did-navigate', () => {
-        // Reset creds state on navigation for all webviews
-        setCredsAreSet(prev => ({ ...prev, [id]: false }));
+      // Navigation handler with smarter session detection
+      addWebviewListener(webview, 'did-navigate', async () => {
+        const url = webview.getURL();
+        
+        // Only reset creds if we detect we're on a login page
+        const isLoginPage = await webview.executeJavaScript(`
+          (function() {
+            const url = window.location.href;
+            return (
+              // schul.cloud login page
+              url.includes('/login') ||
+              // Office/Outlook login page
+              document.querySelector('#userNameInput') !== null ||
+              // Cryptpad login page
+              url.includes('/login.html') ||
+              // Fobizz login page
+              url.includes('/auth/login') ||
+              // WebUntis login page
+              document.querySelector('.un2-login-form') !== null
+            );
+          })()
+        `).catch(() => false);
+
+        if (isLoginPage) {
+          setCredsAreSet(prev => ({ ...prev, [id]: false }));
+        }
       });
 
       // Error handler with retry mechanism
@@ -895,28 +917,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 width: '100%',
                 height: '100%',
                 display: 'flex',
-              }}
-              allowpopups="true"
-              partition="persist:main"
-              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no,devTools=yes"
-              useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            />
-          </Box>
-        );
-      })}
-
-      {/* Custom apps webview */}
-      {activeWebView && !standardApps[activeWebView.id] && (
-        <Box 
-          position="absolute"
-          top="0"
-          left="0"
-          right="0"
-          bottom="0"
-          zIndex={2}
-        >
-          {isLoading[activeWebView.id] && (
-            <Progress
               size="xs"
               isIndeterminate
               position="absolute"

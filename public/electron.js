@@ -48,22 +48,22 @@ if (!gotTheLock) {
   });
 }
 
-// Prepare for update by handling Outlook and WebUntis sessions
+// Prepare for update by handling specific webview sessions
 async function prepareForUpdate() {
-  // Get all webview contents
+  // Only get webviews that need special handling
   const webviews = webContents.getAllWebContents().filter(wc => 
-    wc.getType() === 'webview'
+    wc.getType() === 'webview' && 
+    (wc.getURL().includes('exchange.bbz-rd-eck.de/owa') || wc.getURL().includes('webuntis.com'))
   );
 
-  // Only handle Outlook and WebUntis sessions
+  // Handle specific webviews
   for (const webview of webviews) {
     try {
       const url = webview.getURL();
-      // Only clear sessions for Outlook and WebUntis
-      if (url.includes('exchange.bbz-rd-eck.de/owa') || url.includes('webuntis.com')) {
-        await webview.session.clearStorageData({
-          storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
-        });
+      if (url.includes('exchange.bbz-rd-eck.de/owa')) {
+        await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+      } else if (url.includes('webuntis.com')) {
+        await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
       }
     } catch (error) {
       console.error('Error preparing webview for update:', error);
@@ -494,7 +494,7 @@ async function createWebviewWindow(url, title) {
   const theme = settings?.theme || globalTheme;
   globalTheme = theme; // Update global theme to ensure consistency
   
-  // Create the window with the current theme
+  // Create the window with the current theme and ensure session persistence
   const win = new BrowserWindow({
     width: 1000,
     height: 800,
@@ -506,7 +506,7 @@ async function createWebviewWindow(url, title) {
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true,
       webSecurity: true,
-      partition: 'persist:main',
+      partition: 'persist:main', // Main window partition
       additionalArguments: [
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
       ],
@@ -1093,11 +1093,14 @@ app.on('web-contents-created', (event, contents) => {
       return { action: 'deny' };
     }
 
-    // Handle all new windows with our webview wrapper
-    if (!url.includes('about:blank')) {
-      createWebviewWindow(url, 'BBZCloud');
-      return { action: 'deny' };
-    }
+  // Handle all new windows with our webview wrapper
+  if (!url.includes('about:blank')) {
+    // Ensure we're using the same session for new windows
+    const win = createWebviewWindow(url, 'BBZCloud');
+    // Set the same session partition for the webview
+    win.webContents.session = contents.session;
+    return { action: 'deny' };
+  }
 
     return { action: 'allow' };
   });
@@ -1311,25 +1314,19 @@ app.on('ready', async () => {
         mainWindow.setBounds(newBounds);
       }
 
-      const webviews = BrowserWindow.getAllWindows()
-        .map(win => win.webContents)
-        .concat(webContents.getAllWebContents());
+      // Only handle specific webviews that need session clearing
+      const webviews = webContents.getAllWebContents().filter(wc => 
+        wc.getType() === 'webview' && 
+        (wc.getURL().includes('exchange.bbz-rd-eck.de/owa') || wc.getURL().includes('webuntis.com'))
+      );
 
-      // Handle Outlook and WebUntis webviews - clear session and reload
+      // Clear sessions only for Outlook and WebUntis
       for (const webview of webviews) {
         try {
           const url = webview.getURL();
           if (url.includes('exchange.bbz-rd-eck.de/owa')) {
-            // Clear session storage and cache for Outlook
-            await webview.session.clearStorageData({
-              storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
-            });
             await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
           } else if (url.includes('webuntis.com')) {
-            // Clear session storage and cache for WebUntis
-            await webview.session.clearStorageData({
-              storages: ['cookies', 'localStorage', 'sessionStorage', 'cache']
-            });
             await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
           }
         } catch (error) {
