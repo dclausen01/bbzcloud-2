@@ -917,6 +917,30 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 width: '100%',
                 height: '100%',
                 display: 'flex',
+              }}
+              allowpopups="true"
+              partition="persist:main"
+              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no,devTools=yes"
+              useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          />
+          </Box>
+        );
+      })}
+      {/* Active webview */}
+      {activeWebView && (
+        <Box
+          key={activeWebView.id}
+          position="absolute"
+          top="0"
+          left="0"
+          right="0"
+          bottom="0"
+          display="block"
+          visibility="visible"
+          zIndex="1"
+        >
+          {isLoading[activeWebView.id] && (
+            <Progress
               size="xs"
               isIndeterminate
               position="absolute"
