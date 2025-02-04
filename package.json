@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.19",
+  "version": "2.0.20",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -32,7 +32,6 @@
     "keytar": "^7.9.0",
     "playwright": "^1.50.0",
     "react": "^18.2.0",
-    "react-beautiful-dnd": "^13.1.1",
     "react-datepicker": "^7.5.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
