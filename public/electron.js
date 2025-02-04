@@ -1095,10 +1095,8 @@ app.on('web-contents-created', (event, contents) => {
 
   // Handle all new windows with our webview wrapper
   if (!url.includes('about:blank')) {
-    // Ensure we're using the same session for new windows
-    const win = createWebviewWindow(url, 'BBZCloud');
-    // Set the same session partition for the webview
-    win.webContents.session = contents.session;
+    // Create window with the same session
+    createWebviewWindow(url, 'BBZCloud');
     return { action: 'deny' };
   }
 
