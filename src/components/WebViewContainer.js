@@ -50,7 +50,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [imageError, setImageError] = useState(false);
   const [credsAreSet, setCredsAreSet] = useState({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
-  const [failedWebviews, setFailedWebviews] = useState({});
+  const [failedWebviews, setFailedWebviews] = useState({}); // eslint-disable-line no-unused-vars
 
   // Translate error codes to user-friendly German messages
   const getErrorMessage = (error) => {
@@ -155,115 +155,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     return () => unsubscribe();
   }, []);
 
-  // Listen for system resume events
-  useEffect(() => {
-    const unsubscribe = window.electron.onSystemResumed((webviewsToReload) => {
-      webviewsToReload.forEach(id => {
-        const webview = webviewRefs.current[id]?.current;
-        if (webview) {
-          if (id === 'outlook') {
-            // For Outlook, clear credentials state and force complete reload
-            setCredsAreSet(prev => ({ ...prev, [id]: false }));
-            webview.clearHistory();
-            // Force navigation to base OWA URL
-            webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
-          } else if (id === 'webuntis') {
-            // For WebUntis, check if we're on the authenticator page before reloading
-            webview.executeJavaScript(`
-              const authLabel = document.querySelector('.un-input-group__label');
-              authLabel?.textContent === 'Bestätigungscode';
-            `).then(isAuthPage => {
-              if (!isAuthPage) {
-                webview.reload();
-              }
-            });
-          } else {
-            webview.reload();
-          }
-        }
-      });
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const loadOverviewImage = async () => {
-      try {
-        const imagePath = await window.electron.resolveAssetPath('uebersicht.png');
-        setOverviewImagePath(imagePath);
-        setImageError(false);
-      } catch (error) {
-        setImageError(true);
-      }
-    };
-
-    loadOverviewImage();
-  }, []);
-
-  useEffect(() => {
-    // Initialize webviews for all standard apps
-    Object.entries(standardApps).forEach(([id, config]) => {
-      if (config.visible && !webviewRefs.current[id]) {
-        webviewRefs.current[id] = React.createRef();
-      }
-    });
-  }, [standardApps]);
-
-  // Helper function to check if favicon indicates new messages
-  const checkForNotifications = (base64Image) => {
-    return new Promise((resolve, reject) => {
-      const img = new window.Image();
-      img.onload = function () {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-        
-        // Get lower right quadrant
-        const imageData = ctx.getImageData(
-          Math.floor(img.width * 0.5),  // Start at 60% of width
-          Math.floor(img.height * 0.5), // Start at 60% of height
-          Math.floor(img.width * 0.5),  // Check remaining 40%
-          Math.floor(img.height * 0.5)  // Check remaining 40%
-        ).data;
-        
-        let redPixelCount = 0;
-        let totalPixels = 0;
-        
-        // Check each pixel in the lower right quadrant
-        for (let i = 0; i < imageData.length; i += 4) {
-          const red = imageData[i];
-          const green = imageData[i + 1];
-          const blue = imageData[i + 2];
-          const alpha = imageData[i + 3];
-          
-          // Only count non-transparent pixels
-          if (alpha > 200) { // More strict alpha threshold
-            totalPixels++;
-            // Check if pixel is in the red range (more lenient)
-            // Original color is rgb(234, 109, 132)
-            if (red > 200 && // High red value
-                green > 80 && green < 190 && // Medium green value
-                blue > 100 && blue < 190) { // Medium blue value
-              redPixelCount++;
-            }
-          }
-        }
-        
-        // Calculate percentage of matching pixels
-        const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
-        resolve(redPercentage > 0.4); // More lenient threshold (40% instead of 50%)
-      };
-      
-      img.onerror = function (error) {
-        reject(new Error('Failed to load favicon'));
-      };
-      
-      img.src = base64Image;
-    });
-  };
-
   // Function to inject credentials based on webview ID
   const injectCredentials = useCallback(async (webview, id) => {
     if (!webview || credsAreSet[id]) {
@@ -325,7 +216,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               return;
             }
 
-            const result = await webview.executeJavaScript(`
+            await webview.executeJavaScript(`
               (async () => {
                 try {
                   // Wait for form to be ready
@@ -534,6 +425,134 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     }
   }, [credsAreSet]);
 
+  // Listen for webview messages
+  useEffect(() => {
+    const messageHandler = (message) => {
+      if (message.type === 'webuntis-needs-login') {
+        const webview = document.querySelector('#wv-webuntis');
+        if (webview) {
+          setCredsAreSet(prev => ({ ...prev, webuntis: false }));
+          injectCredentials(webview, 'webuntis');
+        }
+      }
+    };
+
+    window.electron.onMessage(messageHandler);
+
+    return () => {
+      window.electron.offMessage(messageHandler);
+    };
+  }, [injectCredentials]);
+
+  // Listen for system resume events
+  useEffect(() => {
+    const unsubscribe = window.electron.onSystemResumed((webviewsToReload) => {
+      webviewsToReload.forEach(id => {
+        const webview = webviewRefs.current[id]?.current;
+        if (webview) {
+          if (id === 'outlook') {
+            // For Outlook, clear credentials state and force complete reload
+            setCredsAreSet(prev => ({ ...prev, [id]: false }));
+            webview.clearHistory();
+            // Force navigation to base OWA URL
+            webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+          } else if (id === 'webuntis') {
+            // For WebUntis, check if we're on the authenticator page before reloading
+            webview.executeJavaScript(`
+              const authLabel = document.querySelector('.un-input-group__label');
+              authLabel?.textContent === 'Bestätigungscode';
+            `).then(isAuthPage => {
+              if (!isAuthPage) {
+                webview.reload();
+              }
+            });
+          } else {
+            webview.reload();
+          }
+        }
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const loadOverviewImage = async () => {
+      try {
+        const imagePath = await window.electron.resolveAssetPath('uebersicht.png');
+        setOverviewImagePath(imagePath);
+        setImageError(false);
+      } catch (error) {
+        setImageError(true);
+      }
+    };
+
+    loadOverviewImage();
+  }, []);
+
+  useEffect(() => {
+    // Initialize webviews for all standard apps
+    Object.entries(standardApps).forEach(([id, config]) => {
+      if (config.visible && !webviewRefs.current[id]) {
+        webviewRefs.current[id] = React.createRef();
+      }
+    });
+  }, [standardApps]);
+
+  // Helper function to check if favicon indicates new messages
+  const checkForNotifications = (base64Image) => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = function () {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+        
+        // Get lower right quadrant
+        const imageData = ctx.getImageData(
+          Math.floor(img.width * 0.5),  // Start at 60% of width
+          Math.floor(img.height * 0.5), // Start at 60% of height
+          Math.floor(img.width * 0.5),  // Check remaining 40%
+          Math.floor(img.height * 0.5)  // Check remaining 40%
+        ).data;
+        
+        let redPixelCount = 0;
+        let totalPixels = 0;
+        
+        // Check each pixel in the lower right quadrant
+        for (let i = 0; i < imageData.length; i += 4) {
+          const red = imageData[i];
+          const green = imageData[i + 1];
+          const blue = imageData[i + 2];
+          const alpha = imageData[i + 3];
+          
+          // Only count non-transparent pixels
+          if (alpha > 200) { // More strict alpha threshold
+            totalPixels++;
+            // Check if pixel is in the red range (more lenient)
+            // Original color is rgb(234, 109, 132)
+            if (red > 200 && // High red value
+                green > 80 && green < 190 && // Medium green value
+                blue > 100 && blue < 190) { // Medium blue value
+              redPixelCount++;
+            }
+          }
+        }
+        
+        // Calculate percentage of matching pixels
+        const redPercentage = totalPixels > 0 ? redPixelCount / totalPixels : 0;
+        resolve(redPercentage > 0.4); // More lenient threshold (40% instead of 50%)
+      };
+      
+      img.onerror = function (error) {
+        reject(new Error('Failed to load favicon'));
+      };
+      
+      img.src = base64Image;
+    });
+  };
+
   // Set up SchulCloud notification checking with MutationObserver
   useEffect(() => {
     let observer = null;
@@ -625,8 +644,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         setIsLoading(prev => ({ ...prev, [id]: true }));
       });
 
-      addWebviewListener(webview, 'did-stop-loading', () => {
+      addWebviewListener(webview, 'did-stop-loading', async () => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
+
+        // For WebUntis, check for login form after loading finishes
+        if (id === 'webuntis') {
+          const isLoginPage = await webview.executeJavaScript(`
+            (function() {
+              const form = document.querySelector('.un2-login-form form');
+              const authLabel = document.querySelector('.un-input-group__label');
+              return form && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+            })()
+          `);
+          
+          if (isLoginPage) {
+            setCredsAreSet(prev => ({ ...prev, [id]: false }));
+            await injectCredentials(webview, id);
+          }
+        }
       });
 
       // Load completion handler
@@ -640,7 +675,32 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           await applyZoom(webview, id);
         }, 1000);
         
-        await injectCredentials(webview, id);
+        // For WebUntis, check for login form initially and set up periodic check
+        if (id === 'webuntis') {
+          const checkLoginForm = async () => {
+            const isLoginPage = await webview.executeJavaScript(`
+              (function() {
+                const form = document.querySelector('.un2-login-form form');
+                const authLabel = document.querySelector('.un-input-group__label');
+                return form && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+              })()
+            `);
+            
+            if (isLoginPage) {
+              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              await injectCredentials(webview, id);
+            }
+          };
+
+          // Initial check
+          await checkLoginForm();
+          
+          // Set up periodic check
+          const interval = setInterval(checkLoginForm, 2000);
+          eventCleanups.get(webview)?.push(() => clearInterval(interval));
+        } else {
+          await injectCredentials(webview, id);
+        }
 
         // Override CryptPad's popup detection for cryptpad URLs
         if (webview.getURL().includes('cryptpad')) {
@@ -666,12 +726,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
 
         // Context menu setup (only add once)
-        const url = webview.getURL();
         if (
-          url.includes('schul.cloud') ||
-          url.includes('portal.bbz-rd-eck.com') ||
-          url.includes('taskcards.app') ||
-          url.includes('wiki.bbz-rd-eck.com')
+          webview.getURL().includes('schul.cloud') ||
+          webview.getURL().includes('portal.bbz-rd-eck.com') ||
+          webview.getURL().includes('taskcards.app') ||
+          webview.getURL().includes('wiki.bbz-rd-eck.com')
         ) {
           const contextMenuHandler = async (e) => {
             e.preventDefault();
@@ -694,29 +753,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
       // Navigation handler with smarter session detection
       addWebviewListener(webview, 'did-navigate', async () => {
-        const url = webview.getURL();
-        
-        // Only reset creds if we detect we're on a login page
-        const isLoginPage = await webview.executeJavaScript(`
-          (function() {
-            const url = window.location.href;
-            return (
-              // schul.cloud login page
-              url.includes('/login') ||
-              // Office/Outlook login page
-              document.querySelector('#userNameInput') !== null ||
-              // Cryptpad login page
-              url.includes('/login.html') ||
-              // Fobizz login page
-              url.includes('/auth/login') ||
-              // WebUntis login page
-              document.querySelector('.un2-login-form') !== null
-            );
-          })()
-        `).catch(() => false);
-
-        if (isLoginPage) {
-          setCredsAreSet(prev => ({ ...prev, [id]: false }));
+        // For WebUntis, check for login form after each navigation
+        if (id === 'webuntis') {
+          const isLoginPage = await webview.executeJavaScript(`
+            (function() {
+              const form = document.querySelector('.un2-login-form form');
+              const authLabel = document.querySelector('.un-input-group__label');
+              return form && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+            })()
+          `);
+          
+          if (isLoginPage) {
+            setCredsAreSet(prev => ({ ...prev, [id]: false }));
+            await injectCredentials(webview, id);
+          }
         }
       });
 
@@ -802,7 +852,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       });
       eventCleanups.clear();
     };
-  }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast, isStartupPeriod]);
+  }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast, isStartupPeriod, standardApps]);
 
   if (!activeWebView && !Object.keys(standardApps).length) {
     return (

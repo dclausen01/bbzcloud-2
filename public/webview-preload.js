@@ -74,6 +74,13 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on('theme-changed', (_, theme) => callback(theme));
       // Listen for theme changes from parent window
       ipcRenderer.on('theme-changed-frame', (_, theme) => callback(theme));
+    },
+    // Message handling
+    onMessage: (callback) => {
+      ipcRenderer.on('webview-message', (_, message) => callback(message));
+    },
+    offMessage: (callback) => {
+      ipcRenderer.removeListener('webview-message', callback);
     }
   }
 );

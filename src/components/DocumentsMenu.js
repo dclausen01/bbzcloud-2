@@ -8,7 +8,6 @@ import {
   Text,
   HStack,
   useColorMode,
-  Box,
   Badge,
 } from '@chakra-ui/react';
 

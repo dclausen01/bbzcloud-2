@@ -239,6 +239,18 @@ contextBridge.exposeInMainWorld('electron', {
   // Shell functionality
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell-open-external', url)
+  },
+
+  // Webview message handling
+  onMessage: (callback) => {
+    const subscription = (event, message) => callback(message);
+    ipcRenderer.on('webview-message', subscription);
+    return () => {
+      ipcRenderer.removeListener('webview-message', subscription);
+    };
+  },
+  offMessage: (callback) => {
+    ipcRenderer.removeListener('webview-message', callback);
   }
 });
 
