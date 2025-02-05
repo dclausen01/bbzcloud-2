@@ -183,7 +183,163 @@ const datePickerStyles = css`
 
 registerLocale('de', de);
 
+// Drag Handle Component
+const DragHandle = React.forwardRef(({ listeners, attributes }, ref) => (
+  <IconButton
+    icon={<DragHandleIcon />}
+    variant="ghost"
+    size="sm"
+    aria-label="Verschieben"
+    cursor="grab"
+    _active={{ cursor: "grabbing" }}
+    {...listeners}
+    {...attributes}
+    ref={ref}
+  />
+));
+
 // Sortable todo item component
+const TodoItem = ({ todo, todoState, onEdit, onToggle, onDelete, onSetReminder, onMove, editingTodo, handleUpdateTodo, setEditingTodo, dragHandle }) => {
+  return (
+    <Box
+      p={2}
+      borderWidth="1px"
+      borderRadius="md"
+      borderColor="gray.200"
+      bg="white"
+      _dark={{
+        borderColor: "gray.600",
+        bg: "gray.800"
+      }}
+    >
+      {editingTodo?.id === todo.id ? (
+        <Textarea
+          value={editingTodo.text}
+          onChange={(e) => setEditingTodo({ ...editingTodo, text: e.target.value })}
+          onBlur={() => handleUpdateTodo(todo.id, editingTodo.text)}
+          onKeyPress={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleUpdateTodo(todo.id, editingTodo.text);
+            }
+          }}
+          autoFocus
+        />
+      ) : (
+        <HStack justify="space-between" align="center" width="100%" spacing={4}>
+          <HStack align="start" flex={1} spacing={3}>
+            {todoState.sortType === 'manual' && dragHandle}
+            <Checkbox
+              isChecked={todo.completed}
+              onChange={() => onToggle(todo.id)}
+              mt={1}
+            />
+            <Box wordBreak="break-word" maxW="100%">
+              <ReactMarkdown>{todo.text}</ReactMarkdown>
+              {todo.reminder && (
+                <Badge colorScheme="purple" mt={1}>
+                  Erinnerung: {new Date(todo.reminder).toLocaleString('de-DE', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </Badge>
+              )}
+            </Box>
+          </HStack>
+          <HStack spacing={2}>
+            <Menu>
+              <MenuButton
+                as={IconButton}
+                icon={<ChevronDownIcon />}
+                size="xs"
+                aria-label="Ordner wechseln"
+              />
+              <MenuList>
+                {todoState.folders.map(targetFolder => (
+                  <MenuItem
+                    key={targetFolder}
+                    onClick={() => onMove(todo, targetFolder)}
+                    isDisabled={targetFolder === todo.folder}
+                  >
+                    {targetFolder === 'Default' ? 'Standard' : targetFolder}
+                  </MenuItem>
+                ))}
+              </MenuList>
+            </Menu>
+            <Popover>
+              <PopoverTrigger>
+                <IconButton
+                  icon={<TimeIcon />}
+                  size="xs"
+                  aria-label="Erinnerung setzen"
+                />
+              </PopoverTrigger>
+              <PopoverContent p={4} width="360px" position="relative" right="45px">
+                <PopoverBody>
+                  <FormControl>
+                    <FormLabel>Erinnerung setzen</FormLabel>
+                    <Box css={datePickerStyles}>
+                      <HStack spacing={2}>
+                        <Box flex="1">
+                          <DatePicker
+                            selected={todo.reminder ? new Date(todo.reminder) : null}
+                            onChange={(date) => onSetReminder(todo, date)}
+                            showTimeSelect
+                            dateFormat="dd.MM.yyyy HH:mm"
+                            locale="de"
+                            timeFormat="HH:mm"
+                            timeIntervals={15}
+                            customInput={<Input />}
+                            popperModifiers={[
+                              {
+                                name: "offset",
+                                options: {
+                                  offset: [-60, 10]
+                                }
+                              },
+                              {
+                                name: "preventOverflow",
+                                options: {
+                                  padding: 16
+                                }
+                              }
+                            ]}
+                            popperPlacement="bottom-end"
+                            inline
+                            timeCaption="Zeit"
+                            shouldCloseOnSelect={false}
+                            calendarClassName="side-by-side-calendar"
+                          />
+                        </Box>
+                      </HStack>
+                    </Box>
+                  </FormControl>
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+            <IconButton
+              icon={<EditIcon />}
+              onClick={() => onEdit(todo)}
+              size="xs"
+              aria-label="Bearbeiten"
+            />
+            <IconButton
+              icon={<DeleteIcon />}
+              onClick={() => onDelete(todo.id)}
+              size="xs"
+              aria-label="Löschen"
+            />
+          </HStack>
+        </HStack>
+      )}
+    </Box>
+  );
+};
+
+// Sortable wrapper component
 const SortableItem = ({ id, children }) => {
   const {
     attributes,
@@ -191,17 +347,36 @@ const SortableItem = ({ id, children }) => {
     setNodeRef,
     transform,
     transition,
-  } = useSortable({ id: String(id) });
+  } = useSortable({ 
+    id: String(id),
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
   };
 
+  const dragHandle = useMemo(
+    () => (
+      <IconButton
+        icon={<DragHandleIcon />}
+        variant="ghost"
+        size="sm"
+        aria-label="Verschieben"
+        cursor="grab"
+        _active={{ cursor: "grabbing" }}
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+      />
+    ),
+    [setNodeRef, listeners, attributes]
+  );
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      {children}
-    </div>
+    <Box style={style}>
+      {children({ dragHandle })}
+    </Box>
   );
 };
 
@@ -269,8 +444,6 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
   const [error, setError] = useState(null);
   const inputRef = useRef(null);
   const toast = useToast();
-  const bg = useColorModeValue('white', 'gray.800');
-  const borderColor = useColorModeValue('gray.200', 'gray.600');
 
   // Load todo state when component becomes visible
   useEffect(() => {
@@ -877,162 +1050,37 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
             <VStack spacing={2} align="stretch">
               {visibleTodos.map((todo) => (
                 <SortableItem key={todo.id} id={todo.id}>
-                  <Box
-                    p={2}
-                    borderWidth="1px"
-                    borderRadius="md"
-                    borderColor={borderColor}
-                    bg={bg}
-                  >
-                    {editingTodo?.id === todo.id ? (
-                      <Textarea
-                        value={editingTodo.text}
-                        onChange={(e) => setEditingTodo({ ...editingTodo, text: e.target.value })}
-                        onBlur={() => handleUpdateTodo(todo.id, editingTodo.text)}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleUpdateTodo(todo.id, editingTodo.text);
-                          }
-                        }}
-                        autoFocus
-                      />
-                    ) : (
-                      <HStack justify="space-between" align="center" width="100%" spacing={4}>
-                        <HStack align="start" flex={1} spacing={3}>
-                          {todoState.sortType === 'manual' && (
-                            <IconButton
-                              icon={<DragHandleIcon />}
-                              variant="ghost"
-                              size="sm"
-                              aria-label="Verschieben"
-                              cursor="grab"
-                              _active={{ cursor: "grabbing" }}
-                            />
-                          )}
-                          <Checkbox
-                            isChecked={todo.completed}
-                            onChange={() => handleToggleTodo(todo.id)}
-                            mt={1}
-                          />
-                          <Box wordBreak="break-word" maxW="100%">
-                            <ReactMarkdown>{todo.text}</ReactMarkdown>
-                            {todo.reminder && (
-                              <Badge colorScheme="purple" mt={1}>
-                                Erinnerung: {new Date(todo.reminder).toLocaleString('de-DE', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </Badge>
-                            )}
-                          </Box>
-                        </HStack>
-                        <HStack spacing={2}>
-                          <Menu>
-                            <MenuButton
-                              as={IconButton}
-                              icon={<ChevronDownIcon />}
-                              size="xs"
-                              aria-label="Ordner wechseln"
-                            />
-                            <MenuList>
-                              {todoState.folders.map(targetFolder => (
-                                <MenuItem
-                                  key={targetFolder}
-                                  onClick={() => {
-                                    if (targetFolder !== todo.folder) {
-                                      setTodoState(prev => ({
-                                        ...prev,
-                                        todos: prev.todos.map(t =>
-                                          t.id === todo.id ? { ...t, folder: targetFolder } : t
-                                        )
-                                      }));
-                                      toast({
-                                        title: 'Aufgabe verschoben',
-                                        description: `Aufgabe wurde in den Ordner "${targetFolder === 'Default' ? 'Standard' : targetFolder}" verschoben.`,
-                                        status: 'success',
-                                        duration: 3000,
-                                        isClosable: true,
-                                      });
-                                    }
-                                  }}
-                                  isDisabled={targetFolder === todo.folder}
-                                >
-                                  {targetFolder === 'Default' ? 'Standard' : targetFolder}
-                                </MenuItem>
-                              ))}
-                            </MenuList>
-                          </Menu>
-                          <Popover>
-                            <PopoverTrigger>
-                              <IconButton
-                                icon={<TimeIcon />}
-                                size="xs"
-                                aria-label="Erinnerung setzen"
-                              />
-                            </PopoverTrigger>
-                            <PopoverContent p={4} width="360px" position="relative" right="45px">
-                              <PopoverBody>
-                                <FormControl>
-                                  <FormLabel>Erinnerung setzen</FormLabel>
-                                  <Box css={datePickerStyles}>
-                                    <HStack spacing={2}>
-                                      <Box flex="1">
-                                        <DatePicker
-                                          selected={todo.reminder ? new Date(todo.reminder) : null}
-                                          onChange={(date) => handleSetReminder(todo, date)}
-                                          showTimeSelect
-                                          dateFormat="dd.MM.yyyy HH:mm"
-                                          locale="de"
-                                          timeFormat="HH:mm"
-                                          timeIntervals={15}
-                                          customInput={<Input />}
-                                          popperModifiers={[
-                                            {
-                                              name: "offset",
-                                              options: {
-                                                offset: [-60, 10]
-                                              }
-                                            },
-                                            {
-                                              name: "preventOverflow",
-                                              options: {
-                                                padding: 16
-                                              }
-                                            }
-                                          ]}
-                                          popperPlacement="bottom-end"
-                                          inline
-                                          timeCaption="Zeit"
-                                          shouldCloseOnSelect={false}
-                                          calendarClassName="side-by-side-calendar"
-                                        />
-                                      </Box>
-                                    </HStack>
-                                  </Box>
-                                </FormControl>
-                              </PopoverBody>
-                            </PopoverContent>
-                          </Popover>
-                          <IconButton
-                            icon={<EditIcon />}
-                            onClick={() => handleEditTodo(todo)}
-                            size="xs"
-                            aria-label="Bearbeiten"
-                          />
-                          <IconButton
-                            icon={<DeleteIcon />}
-                            onClick={() => handleDeleteTodo(todo.id)}
-                            size="xs"
-                            aria-label="Löschen"
-                          />
-                        </HStack>
-                      </HStack>
-                    )}
-                  </Box>
+                  {({ dragHandle }) => (
+                    <TodoItem
+                      todo={todo}
+                      todoState={todoState}
+                      onEdit={handleEditTodo}
+                      onToggle={handleToggleTodo}
+                      onDelete={handleDeleteTodo}
+                      onSetReminder={handleSetReminder}
+                      onMove={(todo, targetFolder) => {
+                        if (targetFolder !== todo.folder) {
+                          setTodoState(prev => ({
+                            ...prev,
+                            todos: prev.todos.map(t =>
+                              t.id === todo.id ? { ...t, folder: targetFolder } : t
+                            )
+                          }));
+                          toast({
+                            title: 'Aufgabe verschoben',
+                            description: `Aufgabe wurde in den Ordner "${targetFolder === 'Default' ? 'Standard' : targetFolder}" verschoben.`,
+                            status: 'success',
+                            duration: 3000,
+                            isClosable: true,
+                          });
+                        }
+                      }}
+                      editingTodo={editingTodo}
+                      handleUpdateTodo={handleUpdateTodo}
+                      setEditingTodo={setEditingTodo}
+                      dragHandle={dragHandle}
+                    />
+                  )}
                 </SortableItem>
               ))}
             </VStack>

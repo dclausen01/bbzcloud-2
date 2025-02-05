@@ -932,7 +932,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       {/* Webviews */}
       {Object.entries(standardApps).map(([id, config]) => {
         if (!config.visible) return null;
-
+ele
         const isActive = activeWebView?.id === id;
         const ref = webviewRefs.current[id] = webviewRefs.current[id] || React.createRef();
 
