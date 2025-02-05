@@ -283,8 +283,10 @@ function App() {
       
       if (firstVisibleApp) {
         const [id, config] = firstVisibleApp;
+        // Ensure consistent case with webview IDs
+        const webviewId = id.toLowerCase();
         setActiveWebView({
-          id,
+          id: webviewId,
           url: config.url,
           title: config.title,
         });
@@ -295,13 +297,16 @@ function App() {
 
   const handleNavigationClick = (buttonId, isCtrlPressed) => {
     const filteredButtons = filterNavigationButtons();
-    const buttonConfig = filteredButtons[buttonId];
+    // Convert buttonId to lowercase for lookup since keys in filteredButtons are lowercase
+    const buttonConfig = filteredButtons[buttonId.toLowerCase()];
     if (buttonConfig) {
       if (isCtrlPressed) {
         window.electron.shell.openExternal(buttonConfig.url);
       } else {
+        // Ensure we're setting the correct ID that matches the webview ID
+        const webviewId = buttonId.toLowerCase(); // WebView IDs are lowercase
         setActiveWebView({
-          id: buttonId,
+          id: webviewId,
           url: buttonConfig.url,
           title: buttonConfig.title,
         });
@@ -311,8 +316,10 @@ function App() {
   };
 
   const handleCustomAppClick = (app) => {
+    // Ensure consistent case with webview IDs
+    const webviewId = app.id.toLowerCase();
     setActiveWebView({
-      id: app.id,
+      id: webviewId,
       url: app.url,
       title: app.title,
     });

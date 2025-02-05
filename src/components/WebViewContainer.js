@@ -496,7 +496,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         webviewRefs.current[id] = React.createRef();
       }
     });
-  }, [standardApps]);
+
+    // Cleanup old dynamic webview refs when switching apps
+    if (activeWebView && isDropdownApp(activeWebView.id)) {
+      Object.keys(webviewRefs.current).forEach(id => {
+        if (isDropdownApp(id) && id !== activeWebView.id) {
+          delete webviewRefs.current[id];
+        }
+      });
+    }
+  }, [standardApps, activeWebView]);
 
   // Helper function to check if favicon indicates new messages
   const checkForNotifications = (base64Image) => {
@@ -902,6 +911,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     );
   }
 
+  // Helper to check if an app is from the dropdown (not in standardApps)
+  const isDropdownApp = (id) => {
+    return !Object.keys(standardApps).includes(id.toLowerCase());
+  };
+
   return (
     <Box h="100%" w="100%" position="relative" overflow="hidden">
       {/* Download Progress */}
@@ -929,7 +943,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           />
         </Box>
       )}
-      {/* Webviews */}
+      {/* Preloaded Webviews for Navigation Apps */}
       {Object.entries(standardApps).map(([id, config]) => {
         if (!config.visible) return null;
         const isActive = activeWebView?.id === id;
@@ -975,6 +989,68 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           </Box>
         );
       })}
+
+      {/* Dynamic Webview for Dropdown Apps */}
+      {activeWebView && isDropdownApp(activeWebView.id) && (
+        <Box
+          position="absolute"
+          top="0"
+          left="0"
+          right="0"
+          bottom="0"
+          display="block"
+          visibility="visible"
+          zIndex={1}
+        >
+          {isLoading[activeWebView.id] && (
+            <Progress
+              size="xs"
+              isIndeterminate
+              position="absolute"
+              top="0"
+              left="0"
+              right="0"
+              zIndex="1"
+            />
+          )}
+          <webview
+            ref={(el) => {
+              if (el && !webviewRefs.current[activeWebView.id]) {
+                webviewRefs.current[activeWebView.id] = { current: el };
+                // Set up event listeners for the dynamic webview
+                const setupWebviewListeners = document.querySelectorAll('webview');
+                setupWebviewListeners.forEach(webview => {
+                  if (webview === el) {
+                    const id = webview.id.replace('wv-', '').toLowerCase();
+                    // Loading state handlers
+                    webview.addEventListener('did-start-loading', () => {
+                      setIsLoading(prev => ({ ...prev, [id]: true }));
+                    });
+                    webview.addEventListener('did-stop-loading', () => {
+                      setIsLoading(prev => ({ ...prev, [id]: false }));
+                    });
+                    // Apply zoom
+                    setTimeout(async () => {
+                      await applyZoom(webview, id);
+                    }, 1000);
+                  }
+                });
+              }
+            }}
+            id={`wv-${activeWebView.id}`}
+            src={activeWebView.url}
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+            }}
+            allowpopups="true"
+            partition="persist:main"
+            webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no,devTools=yes"
+            useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          />
+        </Box>
+      )}
     </Box>
   );
 });

@@ -66,8 +66,11 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
           <ButtonGroup key={id} size="sm" isAttached variant="outline" spacing={0}>
             <Tooltip label={!showText ? config.title : undefined} placement="top">
                 <Button
-                  onClick={(e) => onButtonClick(id, e.ctrlKey)}
-                variant={config.buttonVariant || 'solid'}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onButtonClick(id, e.ctrlKey);
+                  }}
+                  variant={config.buttonVariant || 'solid'}
                 _hover={{
                   opacity: 0.8,
                 }}
