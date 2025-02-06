@@ -405,17 +405,37 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           break;
 
         case 'handbook':
-          await webview.executeJavaScript(
-            `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = "${password}"; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('#submitButton').click();`
-          );
-          sleep(5000);
-          webview.reload();   
+          // Check if login form exists and wait for it if necessary
+          const formExists = await webview.executeJavaScript(`
+            (async () => {
+              // Wait for form elements to be ready (max 5 seconds)
+              for (let i = 0; i < 50; i++) {
+                const userInput = document.querySelector('#userNameInput');
+                const passwordInput = document.querySelector('#passwordInput');
+                const submitButton = document.querySelector('#submitButton');
+                
+                if (userInput && passwordInput && submitButton) {
+                  return true;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              return false;
+            })()
+          `);
+
+          if (formExists) {
+            await webview.executeJavaScript(
+              `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
+            );
+            await webview.executeJavaScript(
+              `document.querySelector('#passwordInput').value = "${password}"; void(0);`
+            );
+            await webview.executeJavaScript(
+              `document.querySelector('#submitButton').click();`
+            );
+            await sleep(5000);
+            webview.reload();
+          }
           break;
       }
 
