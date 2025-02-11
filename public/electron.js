@@ -168,10 +168,17 @@ const windowRegistry = new Map();
 
 // Update autostart based on settings
 async function updateAutostart() {
-  const { settings } = await db.getSettings();
-  const shouldAutostart = settings?.autostart ?? true;
-  
-  if (!isDev) {
+  try {
+    const { settings } = await db.getSettings();
+    const shouldAutostart = settings?.autostart ?? false;
+    
+    console.log('[Autostart] Current settings:', {
+      autostart: settings?.autostart,
+      shouldAutostart,
+      isDev
+    });
+    
+    if (!isDev) {
     const appPath = app.getPath('exe');
     const args = [];
     
@@ -198,6 +205,15 @@ async function updateAutostart() {
       args: args,
       enabled: shouldAutostart
     });
+    
+    console.log('[Autostart] Login item settings updated:', {
+      openAtLogin: shouldAutostart,
+      path: appPath,
+      args: args
+    });
+  }
+  } catch (error) {
+    console.error('[Autostart] Error updating autostart settings:', error);
   }
 }
 

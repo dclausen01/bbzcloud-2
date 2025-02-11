@@ -410,7 +410,7 @@ class DatabaseService {
                     }
                 }), {}),
                 theme: settings.theme,
-                autostart: settings.autostart ?? true,
+                autostart: settings.autostart,
                 minimizedStart: settings.minimizedStart ?? false
             };
 
@@ -458,7 +458,7 @@ class DatabaseService {
                             theme: settings?.theme,
                             globalZoom: globalZoom,
                             navbarZoom: navbarZoom,
-                            autostart: settings.autostart ?? true,
+                            autostart: settings.autostart ?? false,
                             minimizedStart: settings.minimizedStart ?? false
                         };
                         resolve(result);
