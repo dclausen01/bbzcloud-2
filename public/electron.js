@@ -3,6 +3,8 @@ const path = require('path');
 const zlib = require('zlib');
 const util = require('util');
 const crypto = require('crypto');
+const fs = require('fs').promises;
+const sudo = require('sudo-prompt');
 const compress = util.promisify(zlib.gzip);
 const decompress = util.promisify(zlib.gunzip);
 
@@ -10,9 +12,53 @@ const decompress = util.promisify(zlib.gunzip);
 const webviewsToReload = ['outlook', 'webuntis'];
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
+
+// Arch Linux detection
+const isArchBased = async () => {
+  if (process.platform !== 'linux') return false;
+  try {
+    // First check for pacman as the primary indicator
+    await fs.access('/usr/bin/pacman');
+    
+    // Then check os-release for additional confirmation
+    const osRelease = await fs.readFile('/etc/os-release', 'utf8');
+    const osReleaseLines = osRelease.split('\n');
+    
+    // Look for either ID=arch or ID_LIKE containing arch
+    const isArch = osReleaseLines.some(line => {
+      if (line.startsWith('ID=')) {
+        return line === 'ID=arch';
+      }
+      if (line.startsWith('ID_LIKE=')) {
+        // ID_LIKE can contain multiple values separated by spaces
+        return line.toLowerCase().includes('arch');
+      }
+      return false;
+    });
+    
+    return isArch;
+  } catch {
+    return false;
+  }
+};
+
+// Configure updater based on OS
+const configureUpdater = async () => {
+  const isArch = await isArchBased();
+  if (isArch) {
+    autoUpdater.logger = require('electron-log');
+    autoUpdater.logger.transports.file.level = 'debug';
+    autoUpdater.setFeedURL({
+      provider: 'generic',
+      url: 'https://github.com/clauben/bbzcloud/releases/latest/download',
+      channel: 'arch'
+    });
+  }
+};
+
 const Store = require('electron-store');
 const keytar = require('keytar');
-const fs = require('fs-extra');
+const fs_extra = require('fs-extra');
 const { Notification } = require('electron');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
@@ -982,9 +1028,39 @@ autoUpdater.on('update-downloaded', (info) => {
 // Handle update installation
 ipcMain.handle('install-update', async () => {
   await prepareForUpdate();
-  // isSilent = false (show installation progress)
-  // isForceRunAfter = true (ensure app restarts after update)
-  autoUpdater.quitAndInstall(false, true);
+  
+  const isArch = await isArchBased();
+  if (isArch) {
+    try {
+      const updatePath = autoUpdater.downloadedUpdatePath;
+      if (!updatePath) {
+        throw new Error('No downloaded update found');
+      }
+      
+      // Use sudo-prompt to run pacman with elevated privileges
+      await new Promise((resolve, reject) => {
+        sudo.exec(
+          `pacman -U "${updatePath}" --noconfirm`,
+          {
+            name: 'BBZCloud Updater'
+          },
+          (error, stdout, stderr) => {
+            if (error) reject(error);
+            else resolve(stdout);
+          }
+        );
+      });
+      
+      app.relaunch();
+      app.exit();
+    } catch (error) {
+      console.error('Failed to install Arch update:', error);
+      throw error;
+    }
+  } else {
+    // Default behavior for other systems
+    autoUpdater.quitAndInstall(false, true);
+  }
 });
 
 // Handle context menu events from webviews
@@ -1293,6 +1369,9 @@ app.on('ready', async () => {
         await secureDelete(path.join(tempDir, file));
       }
     }
+
+    // Configure auto-updater based on OS
+    await configureUpdater();
     
     await copyAssetsIfNeeded();
     await updateAutostart();
