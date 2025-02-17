@@ -57,7 +57,7 @@ Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht u
 3. Die Anwendung startet automatisch nach der Installation
 
 ### macOS
-1. Laden Sie die `.dmg` Datei herunter
+1. Laden Sie die passende `.dmg` Datei herunter - arm64 für M1, M2, M3 usw. Mac,Intel-Macsichnung für Intel-Macs
 2. Öffnen Sie die DMG-Datei
 3. Ziehen Sie die Anwendung in den Applications-Ordner
 4. Starten Sie die Anwendung aus dem Applications-Ordner
@@ -67,6 +67,7 @@ Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht u
 ```bash
 sudo dpkg -i bbzcloud_x.x.x_amd64.deb
 ```
+Debian und Ubuntu bieten eine Auto-Update-Funktion per Debian-Paket.
 
 #### Arch Linux
 ```bash
@@ -77,7 +78,7 @@ sudo pacman -U bbzcloud-x.x.x.pacman
 
 ### Voraussetzungen
 - Node.js (LTS Version)
-- npm oder yarn
+- npm (oder yarn)
 - Git
 
 ### Setup
@@ -95,9 +96,6 @@ npm run electron-dev
 
 ### Build
 ```bash
-# Für alle Plattformen
-npm run dist
-
 # Plattform-spezifisch
 npm run dist:win    # Windows
 npm run dist:mac    # macOS
