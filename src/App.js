@@ -278,22 +278,50 @@ function App() {
   useEffect(() => {
     if (!activeWebView && settings.navigationButtons) {
       const filteredButtons = filterNavigationButtons();
-      const firstVisibleApp = Object.entries(filteredButtons)
-        .find(([_, config]) => config.visible);
+      const isTeacher = email.endsWith('@bbz-rd-eck.de');
       
-      if (firstVisibleApp) {
-        const [id, config] = firstVisibleApp;
-        // Ensure consistent case with webview IDs
-        const webviewId = id.toLowerCase();
+      // For teachers, use the startup app setting if available
+      if (isTeacher && settings.startupApp) {
+        const startupConfig = filteredButtons[settings.startupApp];
+        if (startupConfig && startupConfig.visible) {
+          setActiveWebView({
+            id: settings.startupApp,
+            url: startupConfig.url,
+            title: startupConfig.title,
+          });
+          setCurrentUrl(startupConfig.url);
+          return;
+        }
+      }
+      
+      // For non-teachers or if teacher's startup app is not available,
+      // try to use schul.cloud
+      const schulcloudConfig = filteredButtons['schulcloud'];
+      if (schulcloudConfig && schulcloudConfig.visible) {
         setActiveWebView({
-          id: webviewId,
-          url: config.url,
-          title: config.title,
+          id: 'schulcloud',
+          url: schulcloudConfig.url,
+          title: schulcloudConfig.title,
         });
-        setCurrentUrl(config.url);
+        setCurrentUrl(schulcloudConfig.url);
+      } else {
+        // Fallback to first visible app if schul.cloud is not available
+        const firstVisibleApp = Object.entries(filteredButtons)
+          .find(([_, config]) => config.visible);
+        
+        if (firstVisibleApp) {
+          const [id, config] = firstVisibleApp;
+          const webviewId = id.toLowerCase();
+          setActiveWebView({
+            id: webviewId,
+            url: config.url,
+            title: config.title,
+          });
+          setCurrentUrl(config.url);
+        }
       }
     }
-  }, [settings.navigationButtons, activeWebView, filterNavigationButtons]);
+  }, [settings.navigationButtons, settings.startupApp, activeWebView, filterNavigationButtons, email]);
 
   const handleNavigationClick = (buttonId, isCtrlPressed) => {
     const filteredButtons = filterNavigationButtons();

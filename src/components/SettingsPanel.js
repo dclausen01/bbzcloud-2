@@ -21,11 +21,13 @@ import {
   SliderFilledTrack,
   SliderThumb,
   Tooltip,
+  RadioGroup,
+  Radio,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings, updateStatus } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings, updateStatus, setStartupApp } = useSettings();
   const { setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -374,7 +376,7 @@ function SettingsPanel({ onClose }) {
           <FormLabel mb={0}>Anwendung immer minimiert starten</FormLabel>
           <Switch isChecked={settings.minimizedStart} onChange={toggleMinimizedStart} />
         </FormControl>
-        <FormControl display="flex" alignItems="center">
+        <FormControl display="flex" alignItems="center" mb={4}>
           <FormLabel mb={0}>Dunkler Modus</FormLabel>
           <Switch 
             isChecked={settings.theme === 'dark'} 
@@ -384,6 +386,18 @@ function SettingsPanel({ onClose }) {
             }} 
           />
         </FormControl>
+
+        {credentials.email.endsWith('@bbz-rd-eck.de') && (
+          <FormControl>
+            <FormLabel>App beim Start öffnen</FormLabel>
+            <RadioGroup value={settings.startupApp} onChange={setStartupApp}>
+              <VStack align="start" spacing={2}>
+                <Radio value="wiki">Intranet</Radio>
+                <Radio value="schulcloud">schul.cloud</Radio>
+              </VStack>
+            </RadioGroup>
+          </FormControl>
+        )}
       </Box>
 
       <Divider />

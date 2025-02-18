@@ -145,7 +145,7 @@ const defaultSettings = {
     wiki: {
       visible: true,
       url: 'https://wiki.bbz-rd-eck.com',
-      title: 'Wiki',
+      title: 'Intranet',
       buttonVariant: 'wiki',
       zoom: 1.0
     },
@@ -164,7 +164,8 @@ const defaultSettings = {
   globalZoom: 1.0,
   navbarZoom: 0.8,
   autostart: true,
-  minimizedStart: false
+  minimizedStart: false,
+  startupApp: 'wiki'  // Default to Intranet (using 'wiki' key for compatibility)
 };
 
 export function SettingsProvider({ children }) {
@@ -392,9 +393,15 @@ export function SettingsProvider({ children }) {
     addCustomApp,
     removeCustomApp,
     toggleAutostart,
-    toggleMinimizedStart,
-    isLoading,
-    toggleDarkMode,
+  toggleMinimizedStart,
+  isLoading,
+  toggleDarkMode,
+  setStartupApp: (app) => {
+    setSettings(prevSettings => ({
+      ...prevSettings,
+      startupApp: app
+    }));
+  },
     updateNavbarZoom,
     updateStatus
   };
