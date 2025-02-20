@@ -24,7 +24,7 @@ const standardApps = {
   "RAABits": {
     "id": "RAABits",
     "title": "RAABits",
-    "url": "https://sso.raabe.de/auth/realms/raabe/protocol/openid-connect/auth?client_id=raabits&response_type=code&scope=openid%20email%20address%20profile&redirect_uri=https%253A//www.raabits.de/openid-connect/keycloak",
+    "url": "https://www.raabits.de/",
     "buttonVariant": "solid"
   },
   "OneNote": {
@@ -145,7 +145,7 @@ const defaultSettings = {
     wiki: {
       visible: true,
       url: 'https://wiki.bbz-rd-eck.com',
-      title: 'Wiki',
+      title: 'Intranet',
       buttonVariant: 'wiki',
       zoom: 1.0
     },
