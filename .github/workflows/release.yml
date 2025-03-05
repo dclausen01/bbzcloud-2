@@ -6,43 +6,10 @@ on:
       - "package.json"
 
 jobs:
-  build-mac:
-    runs-on: macos-latest
-    steps:
-      - name: Check out Git repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install setuptools wheel
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: |
-          npm install
-          sudo npm install -g electron@32.0.0 electron-builder
-          npm rebuild sqlite3 --build-from-source
-
-      - name: Build and release Mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CI: false
-        run: |
-          npm run build
-          electron-builder --mac --x64 --arm64 --publish=always
-
   build-linux:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     env:
       NODE_GYP_FORCE_PYTHON: "python3"
       npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
@@ -87,15 +54,79 @@ jobs:
         run: |
           sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/7zip-bin/linux/x64/7za
 
-      - name: Build and release Linux
+      - name: Get version
+        id: get_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Build Linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
           npm run build
-          electron-builder --linux --x64 --publish=always
+          electron-builder --linux --x64
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          name: v${{ steps.get_version.outputs.version }}
+          tag_name: v${{ steps.get_version.outputs.version }}
+          files: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pacman
+
+  build-mac:
+    needs: build-linux
+    runs-on: macos-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          npm install
+          sudo npm install -g electron@32.0.0 electron-builder
+          npm rebuild sqlite3 --build-from-source
+
+      - name: Build Mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: false
+        run: |
+          npm run build
+          electron-builder --mac --x64 --arm64
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          tag_name: v${{ needs.build-linux.outputs.version }}
+          files: dist/*.dmg
 
   build-windows:
+    needs: build-linux
     runs-on: windows-latest
     steps:
       - name: Check out Git repository
@@ -123,10 +154,19 @@ jobs:
           npm install
           npm install -g electron@32.0.0 electron-builder
 
-      - name: Build and release Windows
+      - name: Build Windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
           npm run build
-          electron-builder --win --x64 --publish=always
+          electron-builder --win --x64
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          tag_name: v${{ needs.build-linux.outputs.version }}
+          files: dist/*.exe
