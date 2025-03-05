@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.27",
+  "version": "2.0.28",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -66,7 +66,7 @@
     "release:mac": "npm run build && electron-builder --mac --publish=always"
   },
   "build": {
-    "appId": "com.bbzcloud.app",
+    "appId": "de.bbz_rd_eck.bbzcloud",
     "productName": "BBZ Cloud",
     "files": [
       "build/**/*",
@@ -114,7 +114,8 @@
       "target": [
         "AppImage",
         "deb",
-        "pacman"
+        "pacman",
+        "rpm"
       ],
       "icon": "assets/images/icon.png",
       "category": "Education",

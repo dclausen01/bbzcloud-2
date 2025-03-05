@@ -74,8 +74,8 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
                 _hover={{
                   opacity: 0.8,
                 }}
-                height="28px"
-                minW={showText ? "auto" : "28px"}
+                height="24px"
+                minW={showText ? "auto" : "24px"}
                 px={showText ? 2 : 1}
                 fontSize="xs"
                 display="flex"
@@ -83,7 +83,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
                 justifyContent="center"
                 gap={2}
               >
-                {!showText && <AppIcon id={id} size="20px" />}
+                {!showText && <AppIcon id={id} size="16px" />}
                 {showText && config.title}
               </Button>
             </Tooltip>
@@ -98,8 +98,8 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
                 _hover={{
                   opacity: 0.8,
                 }}
-                height="28px"
-                minW="28px"
+                height="24px"
+                minW="24px"
                 px={0}
                 fontSize="xs"
               />
