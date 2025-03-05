@@ -65,10 +65,16 @@
     "release": "npm run build && electron-builder --linux --win --publish=always",
     "release:mac": "npm run build && electron-builder --mac --publish=always"
   },
-  "build": {
-    "appId": "de.bbz_rd_eck.bbzcloud",
-    "productName": "BBZ Cloud",
-    "files": [
+    "build": {
+      "appId": "de.bbz_rd_eck.bbzcloud",
+      "productName": "BBZ Cloud",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "fileAssociations": {
+        "ext": "*",
+        "name": "BBZ Cloud File",
+        "role": "Editor"
+      },
+      "files": [
       "build/**/*",
       "node_modules/**/*",
       "package.json",
