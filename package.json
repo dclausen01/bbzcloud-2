@@ -68,6 +68,7 @@
   "build": {
     "appId": "com.bbzcloud.app",
     "productName": "BBZ Cloud",
+    "artifactName": "BBZ-Cloud-${version}.${ext}",
     "files": [
       "build/**/*",
       "node_modules/**/*",

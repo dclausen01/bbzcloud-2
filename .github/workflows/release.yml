@@ -88,6 +88,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.pacman
+            dist/*.yml
 
   build-mac:
     needs: build-linux
@@ -132,7 +133,10 @@ jobs:
         with:
           draft: true
           tag_name: v${{ needs.build-linux.outputs.version }}
-          files: dist/*.dmg
+          files: |
+            dist/*.dmg
+            dist/*.dmg.blockmap
+            dist/*.yml
 
   build-windows:
     needs: build-linux
@@ -178,4 +182,7 @@ jobs:
         with:
           draft: true
           tag_name: v${{ needs.build-linux.outputs.version }}
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/*.yml
