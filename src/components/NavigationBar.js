@@ -56,7 +56,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
       flexWrap="nowrap"
       flexShrink={0}
       style={{
-        transform: `scale(${settings.navbarZoom})`,
+        transform: `scale(${settings.navbarZoom - 0.2})`,
         transformOrigin: 'center center'
       }}
     >

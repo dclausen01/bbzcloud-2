@@ -162,7 +162,7 @@ const defaultSettings = {
   theme: 'light',
   startupDelay: 3000,
   globalZoom: 1.0,
-  navbarZoom: 0.8,
+  navbarZoom: 0.9,
   autostart: true,
   minimizedStart: false
 };

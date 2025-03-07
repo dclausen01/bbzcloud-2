@@ -479,10 +479,10 @@ function SettingsPanel({ onClose }) {
                 <Box flex="1">
                   <Slider
                     aria-label="Navigationsleiste Zoom"
-                    min={0.7}
-                    max={1.2}
+                    min={0.8}
+                    max={1.4}
                     step={0.05}
-                    value={Math.min(Math.max(settings.navbarZoom, 0.7), 1.2)}
+                    value={Math.min(Math.max(settings.navbarZoom, 0.8), 1.4)}
                     onChange={handleNavbarZoomChange}
                   >
                     <SliderTrack>
