@@ -404,20 +404,19 @@ function createSplashWindow() {
 
 // Calculate minWidth based on zoom factor
 function calculateMinWidth(zoomFactor) {
-  const baseMinWidth = 1150;
+  const baseMinWidth = 1000; // Reduced from 1150 to align with new threshold values
    
   // Dampen the zoom factor's effect
-  const dampening = 0.75; // Reduces the impact of zoom changes
+  const dampening = 0.6; // Reduced from 0.75 for more gradual transitions
   const zoomDiff = zoomFactor - 1.0; // How far we are from normal zoom
   const dampedZoom = 1.0 + (zoomDiff * dampening); // Apply dampening to the difference
     
   // Calculate width with dampened zoom
   const width = Math.round(baseMinWidth * dampedZoom);
   
-
   // Ensure width stays within reasonable bounds
-  const minAllowed = Math.round(baseMinWidth * 0.55); // Never go below 55% of base
-  const maxAllowed = Math.round(baseMinWidth * 1.75); // Never exceed 175% of base
+  const minAllowed = Math.round(baseMinWidth * 0.65); // Increased from 0.55 to account for new min zoom of 0.8
+  const maxAllowed = Math.round(baseMinWidth * 1.85); // Increased from 1.75 to account for new max zoom of 1.4
   
   return Math.min(Math.max(width, minAllowed), maxAllowed);
 }
