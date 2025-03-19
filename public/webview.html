@@ -77,6 +77,7 @@
       <button class="nav-button" onclick="goForward()" title="Vorwärts">→</button>
       <button class="nav-button" onclick="refresh()" title="Neu laden">↻</button>
       <button class="nav-button" onclick="copyCurrentUrl()" title="URL kopieren">📋</button>
+      <button class="nav-button" onclick="printPage()" title="Drucken">🖨️</button>
     </div>
     <webview 
       id="webview" 
@@ -154,6 +155,10 @@
         }
       }
 
+      function printPage() {
+        webview.print();
+      }
+
       // Apply zoom when webview is ready
       webview.addEventListener('dom-ready', async () => {
         try {
@@ -175,6 +180,15 @@
         document.querySelector('button[onclick="goBack()"]').disabled = !webview.canGoBack();
         document.querySelector('button[onclick="goForward()"]').disabled = !webview.canGoForward();
       }
+
+      // Add keyboard shortcut for printing (Ctrl+P)
+      document.addEventListener('keydown', (e) => {
+        // Check if Ctrl+P is pressed (or Cmd+P on Mac)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+          e.preventDefault(); // Prevent browser's print dialog
+          printPage();
+        }
+      });
     </script>
   </body>
 </html>

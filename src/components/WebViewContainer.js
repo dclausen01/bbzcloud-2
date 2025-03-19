@@ -41,6 +41,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       if (webview) {
         webview.reload();
       }
+    },
+    print: () => {
+      const webview = activeWebView && (
+        webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`)
+      );
+      if (webview) {
+        webview.print();
+      }
     }
   }));
   const webviewRefs = useRef({});

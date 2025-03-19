@@ -275,6 +275,24 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  // Add keyboard shortcut for printing (Ctrl+P)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check if Ctrl+P is pressed (or Cmd+P on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault(); // Prevent browser's print dialog
+        if (webViewRef.current) {
+          webViewRef.current.print();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   useEffect(() => {
     if (!activeWebView && settings.navigationButtons) {
       const filteredButtons = filterNavigationButtons();
@@ -429,6 +447,16 @@ function App() {
                     icon={<span>📋</span>}
                     onClick={handleCopyUrl}
                     aria-label="Link kopieren"
+                    height="28px"
+                    variant="outline"
+                  />
+                </Tooltip>
+
+                <Tooltip label="Drucken" placement="top">
+                  <IconButton
+                    icon={<span>🖨️</span>}
+                    onClick={() => webViewRef.current?.print()}
+                    aria-label="Drucken"
                     height="28px"
                     variant="outline"
                   />
