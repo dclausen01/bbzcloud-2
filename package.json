@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.32",
+  "version": "2.0.33",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -74,7 +74,8 @@
       "node_modules/**/*",
       "package.json",
       "public/electron.js",
-      "public/preload.js"
+      "public/preload.js",
+      "installer.nsh"
     ],
     "extraResources": [
       {
@@ -140,7 +141,10 @@
       }
     },
     "nsis": {
-      "differentialPackage": false
+      "differentialPackage": false,
+      "oneClick": false,
+      "allowElevation": true,
+      "include": "installer.nsh"
     },
     "dmg": {
       "title": "BBZ Cloud",
