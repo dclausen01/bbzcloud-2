@@ -33,6 +33,7 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { useSettings } from './context/SettingsContext';
+import { SchoolCustomizationProvider, useSchoolCustomization } from './components/SchoolCustomization';
 import NavigationBar from './components/NavigationBar';
 import WebViewContainer from './components/WebViewContainer';
 import SettingsPanel from './components/SettingsPanel';
@@ -44,7 +45,8 @@ import SecureDocuments from './components/SecureDocuments';
 // Helper function for delays
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function App() {
+// Main App component wrapped with SchoolCustomizationProvider
+function AppContent() {
   const { setColorMode } = useColorMode();
   const { settings } = useSettings();
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
@@ -184,20 +186,30 @@ function App() {
     }
   };
 
+  const { userRoles } = useSchoolCustomization();
+  
   const filterNavigationButtons = useCallback(() => {
     if (!settings.navigationButtons) return {};
 
-    const isTeacher = email.endsWith('@bbz-rd-eck.de');
+    // Determine user role based on email domain
+    let userRole = 'student'; // Default role
+    Object.entries(userRoles).forEach(([role, config]) => {
+      if (email && email.endsWith(config.domainPattern)) {
+        userRole = role;
+      }
+    });
 
-    if (isTeacher) {
+    // If user is a teacher or role allows all apps, return all buttons
+    if (userRole === 'teacher' || userRoles[userRole]?.allowedApps === 'all') {
       return settings.navigationButtons;
     }
 
-    const allowedApps = ['schulcloud', 'moodle', 'office', 'cryptpad', 'webuntis', 'wiki'];
+    // Otherwise filter by allowed apps for the role
+    const allowedApps = userRoles[userRole]?.allowedApps || [];
     return Object.entries(settings.navigationButtons)
       .filter(([key]) => allowedApps.includes(key))
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-  }, [email, settings.navigationButtons]);
+  }, [email, settings.navigationButtons, userRoles]);
 
   const { 
     isOpen: isSettingsOpen, 
@@ -740,6 +752,15 @@ function App() {
         </ModalContent>
       </Modal>
     </Box>
+  );
+}
+
+// Wrapper component that provides the SchoolCustomization context
+function App() {
+  return (
+    <SchoolCustomizationProvider>
+      <AppContent />
+    </SchoolCustomizationProvider>
   );
 }
 

@@ -1,5 +1,6 @@
 /* eslint-disable default-case */
 import React, { useRef, useEffect, useState, forwardRef, useCallback } from 'react';
+import { createRoot } from 'react-dom/client';
 import {
   Box,
   Flex,
@@ -11,6 +12,8 @@ import {
   Button,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
+import { useSchoolCustomization } from './SchoolCustomization';
+import LoginSystemWrapper from './LoginSystemWrapper';
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   // Expose navigation methods through ref
@@ -60,6 +63,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [credsAreSet, setCredsAreSet] = useState({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
   const [failedWebviews, setFailedWebviews] = useState({}); // eslint-disable-line no-unused-vars
+  const [credentials, setCredentials] = useState({
+    email: '',
+    password: '',
+    bbbPassword: '',
+    webuntisEmail: '',
+    webuntisPassword: ''
+  });
+  const { loginSystems } = useSchoolCustomization();
 
   // Translate error codes to user-friendly German messages
   const getErrorMessage = (error) => {
@@ -164,9 +175,72 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     return () => unsubscribe();
   }, []);
 
-  // Function to inject credentials based on webview ID
+  // Function to get credentials for login systems
+  const getCredentials = useCallback(async () => {
+    try {
+      // Get all credentials in parallel
+      const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
+        window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'email'
+        }),
+        window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'password'
+        }),
+        window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'bbbPassword'
+        }),
+        window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisEmail'
+        }),
+        window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'webuntisPassword'
+        })
+      ]);
+
+      const newCredentials = {
+        email: emailResult.success ? emailResult.password : '',
+        password: passwordResult.success ? passwordResult.password : '',
+        bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : '',
+        webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : '',
+        webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : ''
+      };
+
+      setCredentials(newCredentials);
+      return newCredentials;
+    } catch (error) {
+      console.error('Error getting credentials:', error);
+      return {
+        email: '',
+        password: '',
+        bbbPassword: '',
+        webuntisEmail: '',
+        webuntisPassword: ''
+      };
+    }
+  }, []);
+
+  // Load credentials on component mount
+  useEffect(() => {
+    getCredentials();
+  }, [getCredentials]);
+
+  // Handle login completion
+  const handleLoginComplete = useCallback((webviewId, success, error) => {
+    if (success) {
+      setCredsAreSet(prev => ({ ...prev, [webviewId]: true }));
+    } else if (error) {
+      console.error(`Login failed for ${webviewId}:`, error);
+    }
+  }, []);
+
+  // Function to inject credentials
   const injectCredentials = useCallback(async (webview, id) => {
-    if (!webview || credsAreSet[id]) {
+    if (!webview || credsAreSet[id] || !loginSystems[id]?.enabled) {
       return;
     }
 
@@ -200,6 +274,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       if (!emailAddress || !password || (id === 'bbb' && !bbbPassword)) {
         return;
       }
+
+      // Get login configuration from SchoolCustomization
+      const loginConfig = loginSystems[id];
+      if (!loginConfig) return;
 
       switch (id.toLowerCase()) {
         case 'webuntis':
@@ -357,13 +435,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'outlook':
           await webview.executeJavaScript(
-            `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
+            `document.querySelector('${loginConfig.loginSelector}').value = "${emailAddress}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = "${password}"; void(0);`
+            `document.querySelector('${loginConfig.passwordSelector}').value = "${password}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#submitButton').click();`
+            `document.querySelector('${loginConfig.submitSelector}').click();`
           );
           
           // Save credentials after successful login
@@ -378,31 +456,35 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             password: password
           });
           
-          await sleep(5000);
-          webview.reload();
+          if (loginConfig.reloadAfterLogin) {
+            await sleep(loginConfig.reloadDelay || 5000);
+            webview.reload();
+          }
           break;
 
         case 'moodle':
+          const loginValue = loginConfig.useLowerCase ? emailAddress.toLowerCase() : emailAddress;
+          
           await webview.executeJavaScript(
-            `document.querySelector('input[name="username"][id="username"]').value = "${emailAddress.toLowerCase()}"; void(0);`
+            `document.querySelector('${loginConfig.loginSelector}').value = "${loginValue}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('input[name="password"][id="password"]').value = "${password}"; void(0);`
+            `document.querySelector('${loginConfig.passwordSelector}').value = "${password}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('button[type="submit"][id="loginbtn"]').click();`
+            `document.querySelector('${loginConfig.submitSelector}').click();`
           );         
           break;
 
         case 'bbb':
           await webview.executeJavaScript(
-            `document.querySelector('#session_email').value = "${emailAddress}"; void(0);`
+            `document.querySelector('${loginConfig.loginSelector}').value = "${emailAddress}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#session_password').value = "${bbbPassword}"; void(0);`
+            `document.querySelector('${loginConfig.passwordSelector}').value = "${bbbPassword}"; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('.signin-button').click();`
+            `document.querySelector('${loginConfig.submitSelector}').click();`
           );
           
           // Save credentials after successful login
@@ -418,10 +500,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           const formExists = await webview.executeJavaScript(`
             (async () => {
               // Wait for form elements to be ready (max 5 seconds)
-              for (let i = 0; i < 50; i++) {
-                const userInput = document.querySelector('#userNameInput');
-                const passwordInput = document.querySelector('#passwordInput');
-                const submitButton = document.querySelector('#submitButton');
+              for (let i = 0; i < ${loginConfig.waitForFormTimeout / 100}; i++) {
+                const userInput = document.querySelector('${loginConfig.loginSelector}');
+                const passwordInput = document.querySelector('${loginConfig.passwordSelector}');
+                const submitButton = document.querySelector('${loginConfig.submitSelector}');
                 
                 if (userInput && passwordInput && submitButton) {
                   return true;
@@ -434,16 +516,48 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           if (formExists) {
             await webview.executeJavaScript(
-              `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
+              `document.querySelector('${loginConfig.loginSelector}').value = "${emailAddress}"; void(0);`
             );
             await webview.executeJavaScript(
-              `document.querySelector('#passwordInput').value = "${password}"; void(0);`
+              `document.querySelector('${loginConfig.passwordSelector}').value = "${password}"; void(0);`
             );
             await webview.executeJavaScript(
-              `document.querySelector('#submitButton').click();`
+              `document.querySelector('${loginConfig.submitSelector}').click();`
             );
-            await sleep(5000);
-            webview.reload();
+            
+            if (loginConfig.reloadAfterLogin) {
+              await sleep(loginConfig.reloadDelay || 5000);
+              webview.reload();
+            }
+          }
+          break;
+          
+        default:
+          // Generic login system for most platforms
+          if (loginConfig.loginSelector && loginConfig.passwordSelector && loginConfig.submitSelector) {
+            const loginValue = loginConfig.useLowerCase ? emailAddress.toLowerCase() : emailAddress;
+            const passwordValue = loginConfig.useSpecialPassword ? bbbPassword : password;
+            
+            // Fill username/email
+            await webview.executeJavaScript(
+              `document.querySelector('${loginConfig.loginSelector}').value = "${loginValue}"; void(0);`
+            );
+            
+            // Fill password
+            await webview.executeJavaScript(
+              `document.querySelector('${loginConfig.passwordSelector}').value = "${passwordValue}"; void(0);`
+            );
+            
+            // Submit form
+            await webview.executeJavaScript(
+              `document.querySelector('${loginConfig.submitSelector}').click();`
+            );
+            
+            // Handle post-login actions
+            if (loginConfig.reloadAfterLogin) {
+              await sleep(loginConfig.reloadDelay || 0);
+              webview.reload();
+            }
           }
           break;
       }
@@ -452,7 +566,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     } catch (error) {
       console.error(`Error injecting credentials for ${id}:`, error);
     }
-  }, [credsAreSet]);
+  }, [loginSystems, credsAreSet]);
 
   // Listen for webview messages
   useEffect(() => {
@@ -686,7 +800,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         setIsLoading(prev => ({ ...prev, [id]: false }));
 
         // For WebUntis, check for login form after loading finishes
-        if (id === 'webuntis') {
+        if (id === 'webuntis' && loginSystems.webuntis?.enabled) {
           const isLoginPage = await webview.executeJavaScript(`
             (function() {
               const form = document.querySelector('.un2-login-form form');
@@ -714,7 +828,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }, 1000);
         
         // For WebUntis, check for login form initially and set up periodic check
-        if (id === 'webuntis') {
+        if (id === 'webuntis' && loginSystems.webuntis?.enabled) {
           const checkLoginForm = async () => {
             const isLoginPage = await webview.executeJavaScript(`
               (function() {
@@ -736,7 +850,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // Set up periodic check
           const interval = setInterval(checkLoginForm, 2000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
-        } else {
+        } else if (loginSystems[id]?.enabled) {
           await injectCredentials(webview, id);
         }
 
@@ -792,7 +906,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Navigation handler with smarter session detection
       addWebviewListener(webview, 'did-navigate', async () => {
         // For WebUntis, check for login form after each navigation
-        if (id === 'webuntis') {
+        if (id === 'webuntis' && loginSystems.webuntis?.enabled) {
           const isLoginPage = await webview.executeJavaScript(`
             (function() {
               const form = document.querySelector('.un2-login-form form');
@@ -890,7 +1004,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       });
       eventCleanups.clear();
     };
-  }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast, isStartupPeriod, standardApps]);
+  }, [activeWebView, applyZoom, injectCredentials, onNavigate, toast, isStartupPeriod, standardApps, loginSystems]);
 
   if (!activeWebView && !Object.keys(standardApps).length) {
     return (

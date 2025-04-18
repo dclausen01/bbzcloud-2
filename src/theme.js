@@ -1,4 +1,5 @@
 import { extendTheme } from '@chakra-ui/react';
+import { defaultSchoolConfig } from './components/SchoolCustomization';
 
 const config = {
   initialColorMode: 'light',
@@ -8,151 +9,74 @@ const config = {
   storageKey: 'bbz-color-mode'
 };
 
+// Helper function to generate color scales from a base color
+const generateColorScale = (baseColor) => {
+  // This is a simplified version - in a real app, you might use a library like chroma.js
+  // to generate proper color scales with correct lightness/darkness variations
+  
+  // Convert hex to RGB
+  const hexToRgb = (hex) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
+  };
+  
+  // Adjust RGB values to create lighter/darker variants
+  const adjustColor = (rgb, amount) => {
+    return {
+      r: Math.max(0, Math.min(255, rgb.r + amount)),
+      g: Math.max(0, Math.min(255, rgb.g + amount)),
+      b: Math.max(0, Math.min(255, rgb.b + amount))
+    };
+  };
+  
+  // Convert RGB back to hex
+  const rgbToHex = (rgb) => {
+    return '#' + [rgb.r, rgb.g, rgb.b]
+      .map(x => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+      })
+      .join('');
+  };
+  
+  const rgb = hexToRgb(baseColor);
+  if (!rgb) return {};
+  
+  return {
+    50: rgbToHex(adjustColor(rgb, 120)),
+    100: rgbToHex(adjustColor(rgb, 80)),
+    200: rgbToHex(adjustColor(rgb, 60)),
+    300: rgbToHex(adjustColor(rgb, 40)),
+    400: rgbToHex(adjustColor(rgb, 20)),
+    500: baseColor,
+    600: rgbToHex(adjustColor(rgb, -20)),
+    700: rgbToHex(adjustColor(rgb, -40)),
+    800: rgbToHex(adjustColor(rgb, -60)),
+    900: rgbToHex(adjustColor(rgb, -80)),
+  };
+};
+
+// Get colors from SchoolCustomization
+const { colors: schoolColors } = defaultSchoolConfig.theme;
+
+// Generate color scales for all theme colors
 const colors = {
-  brand: {
-    50: '#e3f2fd',
-    100: '#bbdefb',
-    200: '#90caf9',
-    300: '#64b5f6',
-    400: '#42a5f5',
-    500: '#2196f3',
-    600: '#1e88e5',
-    700: '#1976d2',
-    800: '#1565c0',
-    900: '#0d47a1',
-  },
-  schulcloud: {
-    50: '#fff8e1',
-    100: '#ffecb3',
-    200: '#ffe082',
-    300: '#ffd54f',
-    400: '#ffca28',
-    500: '#ffc107',
-    600: '#ffb300',
-    700: '#ffa000',
-    800: '#ff8f00',
-    900: '#ff6f00',
-  },
-  moodle: {
-    50: '#fbe9e7',
-    100: '#ffccbc',
-    200: '#ffab91',
-    300: '#ff8a65',
-    400: '#ff7043',
-    500: '#ff5722',
-    600: '#f4511e',
-    700: '#e64a19',
-    800: '#d84315',
-    900: '#bf360c',
-  },
-  bbb: {
-    50: '#e8eaf6',
-    100: '#c5cae9',
-    200: '#9fa8da',
-    300: '#7986cb',
-    400: '#5c6bc0',
-    500: '#3f51b5',
-    600: '#3949ab',
-    700: '#303f9f',
-    800: '#283593',
-    900: '#1a237e',
-  },
-  wiki: {
-    50: '#e1f5fe',
-    100: '#b3e5fc',
-    200: '#81d4fa',
-    300: '#4fc3f7',
-    400: '#29b6f6',
-    500: '#03a9f4',
-    600: '#039be5',
-    700: '#0288d1',
-    800: '#0277bd',
-    900: '#01579b',
-  },
-  handbook: {
-    50: '#e8f5e9',
-    100: '#c8e6c9',
-    200: '#a5d6a7',
-    300: '#81c784',
-    400: '#66bb6a',
-    500: '#4caf50',
-    600: '#43a047',
-    700: '#388e3c',
-    800: '#2e7d32',
-    900: '#1b5e20',
-  },
-  taskcards: {
-    50: '#e0f7fa',
-    100: '#b2ebf2',
-    200: '#80deea',
-    300: '#4dd0e1',
-    400: '#26c6da',
-    500: '#00bcd4',
-    600: '#00acc1',
-    700: '#0097a7',
-    800: '#00838f',
-    900: '#006064',
-  },
-  cryptpad: {
-    50: '#e0f4f5',
-    100: '#b3e0e5',
-    200: '#80ccd3',
-    300: '#4db7c1',
-    400: '#26a7b3',
-    500: '#0097a4',
-    600: '#008a9c',
-    700: '#007891',
-    800: '#006787',
-    900: '#004a74',
-  },
-  lilac: {
-    50: '#f3e5f5',
-    100: '#e1bee7',
-    200: '#ce93d8',
-    300: '#ba68c8',
-    400: '#ab47bc',
-    500: '#9c27b0',
-    600: '#8e24aa',
-    700: '#7b1fa2',
-    800: '#6a1b9a',
-    900: '#4a148c',
-  },
-  blue: {
-    50: '#e3f2fd',
-    100: '#bbdefb',
-    200: '#90caf9',
-    300: '#64b5f6',
-    400: '#42a5f5',
-    500: '#2196f3',
-    600: '#1e88e5',
-    700: '#1976d2',
-    800: '#1565c0',
-    900: '#0d47a1',
-  },
-  orange: {
-    50: '#fff3e0',
-    100: '#ffe0b2',
-    200: '#ffcc80',
-    300: '#ffb74d',
-    400: '#ffa726',
-    500: '#ff9800',
-    600: '#fb8c00',
-    700: '#f57c00',
-    800: '#ef6c00',
-    900: '#e65100',
-  },
-  darkred: {
-    50: '#ffebee',
-    100: '#ffcdd2',
-    200: '#ef9a9a',
-    300: '#e57373',
-    400: '#ef5350',
-    500: '#b71c1c',
-    600: '#c62828',
-    700: '#d32f2f',
-    800: '#c62828',
-    900: '#b71c1c',
-  }
+  brand: generateColorScale(defaultSchoolConfig.theme.primaryColor),
+  schulcloud: generateColorScale(schoolColors.schulcloud),
+  moodle: generateColorScale(schoolColors.moodle),
+  bbb: generateColorScale(schoolColors.bbb),
+  wiki: generateColorScale(schoolColors.wiki),
+  handbook: generateColorScale(schoolColors.handbook),
+  taskcards: generateColorScale(schoolColors.taskcards),
+  cryptpad: generateColorScale(schoolColors.cryptpad),
+  lilac: generateColorScale(schoolColors.lilac),
+  blue: generateColorScale(schoolColors.blue),
+  orange: generateColorScale(schoolColors.orange),
+  darkred: generateColorScale(schoolColors.darkred),
 };
 
 const components = {
