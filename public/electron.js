@@ -842,6 +842,30 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
   }
 });
 
+ipcMain.handle('set-autostart', async (event, shouldAutostart) => {
+  try {
+    // Get current settings
+    const { settings } = await db.getSettings();
+    
+    // Update autostart setting
+    const updatedSettings = {
+      ...settings,
+      autostart: shouldAutostart
+    };
+    
+    // Save updated settings
+    await db.saveSettings(updatedSettings);
+    
+    // Update autostart in the system
+    await updateAutostart();
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Autostart] Error setting autostart:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('save-settings', async (event, settings) => {
   try {
     await db.saveSettings(settings);

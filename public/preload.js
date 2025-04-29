@@ -235,6 +235,9 @@ contextBridge.exposeInMainWorld('electron', {
 
   // App reload functionality
   reloadApp: () => ipcRenderer.invoke('reload-app'),
+  
+  // Autostart functionality
+  setAutostart: (shouldAutostart) => ipcRenderer.invoke('set-autostart', shouldAutostart),
 
   // Shell functionality
   shell: {
