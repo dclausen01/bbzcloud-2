@@ -133,10 +133,12 @@
       "icon": "assets/images/icon.png",
       "category": "Education",
       "desktop": {
-        "Name": "BBZ Cloud",
-        "Comment": "Die Desktop-App für die BBZ Cloud",
-        "Categories": "Education;Network;",
-        "StartupWMClass": "BBZ Cloud"
+        "entry": {
+          "Name": "BBZ Cloud",
+          "Comment": "Die Desktop-App für die BBZ Cloud",
+          "Categories": "Education;Network;",
+          "StartupWMClass": "BBZ Cloud"
+        }
       }
     },
     "nsis": {
