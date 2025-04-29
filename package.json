@@ -37,6 +37,7 @@
     "react-markdown": "^9.0.1",
     "react-router-dom": "^6.15.0",
     "react-scripts": "5.0.1",
+    "sqlite3": "^5.1.7",
     "uuid": "^11.0.3"
   },
   "devDependencies": {
@@ -47,7 +48,6 @@
     "electron-builder": "^24.9.1",
     "electron-devtools-installer": "^3.2.0",
     "node-gyp": "^10.0.1",
-    "sqlite3": "^5.1.7",
     "wait-on": "^7.0.1"
   },
   "scripts": {
