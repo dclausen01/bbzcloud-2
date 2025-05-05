@@ -95,9 +95,21 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/images/icon.ico"
+    },
+    "msi": {
+      "oneClick": false,
+      "perMachine": true,
+      "runAfterFinish": true,
+      "allowToChangeInstallationDirectory": true
     },
     "mac": {
       "target": [

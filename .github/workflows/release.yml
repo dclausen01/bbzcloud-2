@@ -185,4 +185,5 @@ jobs:
           files: |
             dist/*.exe
             dist/*.exe.blockmap
+            dist/*.msi
             dist/*.yml
