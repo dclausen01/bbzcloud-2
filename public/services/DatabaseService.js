@@ -392,28 +392,79 @@ class DatabaseService {
         }
     }
 
-    // Settings operations
-    async saveSettings(settings) {
-        return this.withConnection(async () => {
-            // Save zooms to electron-store (device specific)
-            const globalZoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
-            const navbarZoom = typeof settings.navbarZoom === 'number' ? settings.navbarZoom : 1.0;
-            this.store.set('globalZoom', globalZoom);
-            this.store.set('navbarZoom', navbarZoom);
+    // Helper method to get settings directly from database
+    async getSettingsFromDatabase() {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT value FROM settings WHERE id = ?',
+                ['app_settings'],
+                (err, row) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    
+                    let settings = {};
+                    try {
+                        settings = row ? JSON.parse(row.value) : {};
+                    } catch (error) {
+                        console.error('Error parsing settings:', error);
+                    }
+                    
+                    resolve(settings);
+                }
+            );
+        });
+    }
 
-            // Save other settings to database
+    // Settings operations
+    async saveSettings(newSettings) {
+        return this.withConnection(async () => {
+            // First, get existing settings from the database
+            const existingSettings = await this.getSettingsFromDatabase();
+            
+            // Save zooms to electron-store (device specific) if provided
+            if (typeof newSettings.globalZoom === 'number') {
+                this.store.set('globalZoom', newSettings.globalZoom);
+            }
+            if (typeof newSettings.navbarZoom === 'number') {
+                this.store.set('navbarZoom', newSettings.navbarZoom);
+            }
+
+            // Merge existing settings with new settings to preserve values
+            const mergedSettings = {
+                ...existingSettings,
+                navigationButtons: {
+                    ...(existingSettings.navigationButtons || {}),
+                    ...(newSettings.navigationButtons || {})
+                }
+            };
+            
+            // Only update specific settings if they are provided
+            if (newSettings.theme !== undefined) {
+                mergedSettings.theme = newSettings.theme;
+            }
+            if (newSettings.autostart !== undefined) {
+                mergedSettings.autostart = newSettings.autostart;
+            }
+            if (newSettings.minimizedStart !== undefined) {
+                mergedSettings.minimizedStart = newSettings.minimizedStart;
+            }
+            
+            // Prepare settings for database (excluding zoom factors)
             const settingsToSave = {
-                navigationButtons: Object.entries(settings.navigationButtons || {}).reduce((acc, [key, button]) => ({
+                navigationButtons: Object.entries(mergedSettings.navigationButtons || {}).reduce((acc, [key, button]) => ({
                     ...acc,
                     [key]: {
                         visible: button.visible
                     }
                 }), {}),
-                theme: settings.theme,
-                autostart: settings.autostart,
-                minimizedStart: settings.minimizedStart ?? false
+                theme: mergedSettings.theme,
+                autostart: mergedSettings.autostart,
+                minimizedStart: mergedSettings.minimizedStart ?? false
             };
 
+            // Save to database
             return new Promise((resolve, reject) => {
                 const timestamp = Date.now();
                 

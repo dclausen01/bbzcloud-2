@@ -844,17 +844,9 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
 
 ipcMain.handle('set-autostart', async (event, shouldAutostart) => {
   try {
-    // Get current settings
-    const { settings } = await db.getSettings();
-    
-    // Update autostart setting
-    const updatedSettings = {
-      ...settings,
-      autostart: shouldAutostart
-    };
-    
-    // Save updated settings
-    await db.saveSettings(updatedSettings);
+    // Only pass the autostart setting to saveSettings
+    // The improved saveSettings method will preserve other settings
+    await db.saveSettings({ autostart: shouldAutostart });
     
     // Update autostart in the system
     await updateAutostart();

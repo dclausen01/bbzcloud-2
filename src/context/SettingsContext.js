@@ -257,11 +257,13 @@ export function SettingsProvider({ children }) {
     const saveSettings = async () => {
       if (!isLoading) {
         try {
+          // Save all settings at once, including autostart
+          // No need to call setAutostart separately since our improved
+          // saveSettings method will handle it properly
           const result = await window.electron.saveSettings(settings);
           if (!result.success) {
             console.error('Failed to save settings:', result.error);
           }
-          await window.electron.setAutostart(settings.autostart);
         } catch (error) {
           console.error('Error saving settings:', error);
         }
