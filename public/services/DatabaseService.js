@@ -392,8 +392,33 @@ class DatabaseService {
         }
     }
 
+    // Helper method to get settings directly from database
+    async getSettingsFromDatabase() {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT value FROM settings WHERE id = ?',
+                ['app_settings'],
+                (err, row) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    
+                    let settings = {};
+                    try {
+                        settings = row ? JSON.parse(row.value) : {};
+                    } catch (error) {
+                        console.error('Error parsing settings:', error);
+                    }
+                    
+                    resolve(settings);
+                }
+            );
+        });
+    }
+
     // Settings operations
-    async saveSettings(settings) {
+    async saveSettings(newSettings) {
         return this.withConnection(async () => {
             try {
                 console.log('[DatabaseService] Saving settings:', JSON.stringify({
