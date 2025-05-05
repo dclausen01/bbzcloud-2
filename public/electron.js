@@ -1236,6 +1236,8 @@ ipcMain.handle('delete-secure-file', async (event, fileId) => {
 ipcMain.handle('open-secure-file', async (event, fileId) => {
   let tempPath = null;
   let watcher = null;
+  let updateTimeout = null;
+  let isProcessing = false;
   
   try {
     const password = await getEncryptionPassword();
@@ -1254,39 +1256,111 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
     // Open file with default application
     shell.openPath(tempPath);
     
-    // Watch for changes
-    watcher = fs.watch(tempPath, async () => {
+    // Function to handle file updates with debouncing
+    const handleFileUpdate = async () => {
+      if (isProcessing) return;
+      
       try {
-        const updatedContent = await fs.readFile(tempPath);
-        const compressedContent = await compress(updatedContent);
+        isProcessing = true;
         
-        const updatedDocument = {
-          ...document,
-          content: compressedContent,
-          compressed: true,
-          date: new Date().toISOString()
-        };
+        // Add a delay to ensure the file is completely written
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        await db.saveSecureDocument(updatedDocument, password);
-        await secureDelete(tempPath);
+        // Check if file still exists before reading
+        if (!fs.existsSync(tempPath)) {
+          isProcessing = false;
+          return;
+        }
         
-        // Notify frontend of file update
-        mainWindow?.webContents.send('secure-file-updated');
+        try {
+          // Read the updated content
+          const updatedContent = await fs.readFile(tempPath);
+          
+          // Compress the content
+          const compressedContent = await compress(updatedContent);
+          
+          // Update the document with the same compression flag as before
+          const updatedDocument = {
+            ...document,
+            content: compressedContent,
+            compressed: true, // Always use compression for consistency
+            size: `${(updatedContent.length / 1024).toFixed(2)} KB`, // Update size
+            date: new Date().toISOString()
+          };
+          
+          // Save the updated document
+          await db.saveSecureDocument(updatedDocument, password);
+          
+          // Notify frontend of file update
+          mainWindow?.webContents.send('secure-file-updated');
+        } catch (readError) {
+          console.error('Error reading or processing updated file:', readError);
+          // If there's an error reading or processing the file, try again after a delay
+          setTimeout(() => {
+            isProcessing = false;
+          }, 1000);
+          return;
+        }
       } catch (error) {
         console.error('Error updating encrypted file:', error);
+      } finally {
+        isProcessing = false;
+      }
+    };
+    
+    // Watch for changes with debouncing
+    watcher = fs.watch(tempPath, (eventType) => {
+      if (eventType === 'change') {
+        // Clear any existing timeout
+        if (updateTimeout) {
+          clearTimeout(updateTimeout);
+        }
+        
+        // Set a new timeout to handle the update
+        updateTimeout = setTimeout(handleFileUpdate, 300);
       }
     });
     
-    // Clean up temp file when app quits
-    app.on('before-quit', async () => {
-      if (watcher) watcher.close();
-      if (tempPath) await secureDelete(tempPath);
-    });
+    // Clean up resources when app quits
+    const cleanup = async () => {
+      if (updateTimeout) {
+        clearTimeout(updateTimeout);
+      }
+      
+      if (watcher) {
+        watcher.close();
+      }
+      
+      if (tempPath && fs.existsSync(tempPath)) {
+        try {
+          await secureDelete(tempPath);
+        } catch (error) {
+          console.error('Error deleting temp file:', error);
+        }
+      }
+    };
+    
+    // Add cleanup handler for app quit
+    app.on('before-quit', cleanup);
     
     return { success: true };
   } catch (error) {
-    if (watcher) watcher.close();
-    if (tempPath) await secureDelete(tempPath);
+    if (updateTimeout) {
+      clearTimeout(updateTimeout);
+    }
+    
+    if (watcher) {
+      watcher.close();
+    }
+    
+    if (tempPath && fs.existsSync(tempPath)) {
+      try {
+        await secureDelete(tempPath);
+      } catch (deleteError) {
+        console.error('Error deleting temp file:', deleteError);
+      }
+    }
+    
     console.error('Error opening secure file:', error);
     return { success: false, error: error.message };
   }
