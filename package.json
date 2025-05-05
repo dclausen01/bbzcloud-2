@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.35",
+  "version": "2.0.36",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -128,19 +128,19 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["arm64", "x64"]
+          "arch": ["x64"]
         },
         {
           "target": "deb",
-          "arch": ["arm64", "x64"]
+          "arch": ["x64"]
         },
         {
           "target": "pacman",
-          "arch": ["arm64", "x64"]
+          "arch": ["x64"]
         },
         {
           "target": "rpm",
-          "arch": ["arm64", "x64"]
+          "arch": ["x64"]
         }
       ],
       "icon": "assets/images/icon.png",
