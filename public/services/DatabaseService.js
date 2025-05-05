@@ -22,7 +22,7 @@ class DatabaseService {
                 },
                 navbarZoom: {
                     type: 'number',
-                    default: 1.0
+                    default: 0.9
                 }
             }
         });
@@ -396,8 +396,14 @@ class DatabaseService {
     async saveSettings(settings) {
         return this.withConnection(async () => {
             // Save zooms to electron-store (device specific)
+            // Make sure we're using the correct values and not undefined
             const globalZoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
-            const navbarZoom = typeof settings.navbarZoom === 'number' ? settings.navbarZoom : 1.0;
+            const navbarZoom = typeof settings.navbarZoom === 'number' ? settings.navbarZoom : 0.9;
+            
+            // Log the zoom values being saved
+            console.log('[Settings] Saving zoom values:', { globalZoom, navbarZoom });
+            
+            // Ensure we're setting the values correctly in electron-store
             this.store.set('globalZoom', globalZoom);
             this.store.set('navbarZoom', navbarZoom);
 
@@ -409,8 +415,8 @@ class DatabaseService {
                         visible: button.visible
                     }
                 }), {}),
-                theme: settings.theme,
-                autostart: settings.autostart,
+                theme: settings.theme || 'light', // Ensure theme is never undefined
+                autostart: settings.autostart ?? false,
                 minimizedStart: settings.minimizedStart ?? false
             };
 
@@ -449,13 +455,17 @@ class DatabaseService {
                         }
                         
                         // Get zooms from electron-store (device specific)
+                        // Make sure we're getting the correct values with proper defaults
                         const globalZoom = parseFloat(this.store.get('globalZoom')) || 1.0;
-                        const navbarZoom = parseFloat(this.store.get('navbarZoom')) || 1.0;
+                        const navbarZoom = parseFloat(this.store.get('navbarZoom')) || 0.9;
+                        
+                        // Log the zoom values being loaded
+                        console.log('[Settings] Loading zoom values:', { globalZoom, navbarZoom });
                         
                         // Only return the saved values, let the context handle defaults                       
                         const result = {
                             navigationButtons: settings?.navigationButtons || {},
-                            theme: settings?.theme,
+                            theme: settings?.theme || 'light', // Ensure theme is never undefined
                             globalZoom: globalZoom,
                             navbarZoom: navbarZoom,
                             autostart: settings.autostart ?? false,

@@ -261,7 +261,8 @@ export function SettingsProvider({ children }) {
           if (!result.success) {
             console.error('Failed to save settings:', result.error);
           }
-          await window.electron.setAutostart(settings.autostart);
+          // Don't call setAutostart here as it's already handled by saveSettings
+          // and calling it separately can cause settings to be overwritten
         } catch (error) {
           console.error('Error saving settings:', error);
         }
