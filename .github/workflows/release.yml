@@ -45,7 +45,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot
-          sudo snap install snapcraft --classic
 
       - name: Install dependencies
         run: |
@@ -54,7 +53,7 @@ jobs:
           sudo npm install -g electron@32.0.0 electron-builder
           npm rebuild sqlite3 --build-from-source
 
-      - name: Set 7zip permissions
+      - name: Set permissions
         run: |
           sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/7zip-bin/linux/x64/7za
           sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/app-builder-bin/linux/x64/app-builder
@@ -69,7 +68,8 @@ jobs:
           CI: false
         run: |
           npm run build
-          electron-builder --linux --x64
+          # Explizit konfigurieren, keine snap-Pakete zu bauen
+          electron-builder --linux deb rpm AppImage --x64
 
       - name: Get previous version
         id: get_previous_version
@@ -92,18 +92,6 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.rpm
-            dist/*.pacman
-            dist/*.yml
-
-      - name: Upload artifacts for future steps
-        uses: actions/upload-artifact@v3
-        with:
-          name: linux-x64-artifacts
-          path: |
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.rpm
-            dist/*.pacman
             dist/*.yml
 
   build-linux-arm64:
@@ -135,10 +123,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot qemu qemu-user-static
-          sudo snap install snapcraft --classic
+          # Keine snapcraft-Installation
           
-      - name: Enable Docker for ARM64 emulation
+      - name: Setup ARM64 cross-compilation environment
         run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           sudo apt-get install -y binfmt-support
           docker run --privileged --rm tonistiigi/binfmt --install arm64
 
@@ -153,13 +142,22 @@ jobs:
           sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/7zip-bin/linux/x64/7za
           sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/app-builder-bin/linux/x64/app-builder
 
-      - name: Build Linux (ARM64) with Docker
+      - name: Build Linux (ARM64)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
+          # ARM64-spezifische Umgebungsvariablen
+          npm_config_target: "32.0.0"
+          npm_config_runtime: "electron"
+          npm_config_arch: "arm64"
+          npm_config_target_arch: "arm64"
+          npm_config_disturl: "https://electronjs.org/headers"
         run: |
+          # Neubau von nativen Modulen für ARM64
+          npm rebuild sqlite3 --build-from-source
           npm run build
-          electron-builder --linux --arm64 --publish never -c.electronDist=./node_modules/electron/dist -c.electronVersion=32.0.0
+          # Explizit nur AppImage und deb/rpm bauen, keine snaps
+          electron-builder --linux deb rpm AppImage --arm64 -c.electronDist=./node_modules/electron/dist -c.electronVersion=32.0.0
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
