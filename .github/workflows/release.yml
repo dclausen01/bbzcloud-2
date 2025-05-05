@@ -58,13 +58,23 @@ jobs:
         id: get_version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Build Linux
+      - name: Build Linux (x64)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
           npm run build
           electron-builder --linux --x64
+
+      - name: Build Linux (ARM64)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: false
+          npm_config_arch: "arm64"
+          npm_config_target_arch: "arm64"
+        run: |
+          npm run build
+          electron-builder --linux --arm64
 
       - name: Get previous version
         id: get_previous_version

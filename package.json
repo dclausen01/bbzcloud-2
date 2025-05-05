@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.34",
+  "version": "2.0.35",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -68,7 +68,7 @@
   "build": {
     "appId": "com.bbzcloud.app",
     "productName": "BBZ Cloud",
-    "artifactName": "BBZ-Cloud-${version}.${ext}",
+    "artifactName": "BBZ-Cloud-${version}-${arch}.${ext}",
     "files": [
       "build/**/*",
       "node_modules/**/*",
