@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 const SettingsContext = createContext();
 
@@ -189,8 +189,11 @@ export function SettingsProvider({ children }) {
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
     try {
+      console.log('[SettingsContext] Loading settings...');
       const result = await window.electron.getSettings();
       if (result.success && result.settings) {
+        console.log('[SettingsContext] Settings loaded successfully:', result.settings);
+        
         // Start with default settings
         const newSettings = { ...defaultSettings };
 
@@ -209,6 +212,17 @@ export function SettingsProvider({ children }) {
           };
         }, {});
 
+        // Use nullish coalescing operator (??) for numeric values to handle 0 correctly
+        const globalZoom = result.settings.globalZoom !== undefined ? result.settings.globalZoom : defaultSettings.globalZoom;
+        const navbarZoom = result.settings.navbarZoom !== undefined ? result.settings.navbarZoom : defaultSettings.navbarZoom;
+        
+        console.log('[SettingsContext] Zoom values from loaded settings:', {
+          globalZoom,
+          navbarZoom,
+          rawGlobalZoom: result.settings.globalZoom,
+          rawNavbarZoom: result.settings.navbarZoom
+        });
+
         // Update settings with loaded data and ensure all required properties exist
         setSettings({
           ...newSettings,
@@ -217,15 +231,17 @@ export function SettingsProvider({ children }) {
           customApps: Array.isArray(result.settings.customApps) 
             ? result.settings.customApps 
             : [],
-          theme: result.settings.theme || defaultSettings.theme,
-          globalZoom: result.settings.globalZoom || defaultSettings.globalZoom,
-          navbarZoom: result.settings.navbarZoom || defaultSettings.navbarZoom,
+          theme: result.settings.theme ?? defaultSettings.theme,
+          globalZoom: globalZoom,
+          navbarZoom: navbarZoom,
           autostart: result.settings.autostart ?? defaultSettings.autostart,
           minimizedStart: result.settings.minimizedStart ?? defaultSettings.minimizedStart
         });
+      } else {
+        console.error('[SettingsContext] Failed to load settings:', result.error);
       }
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error('[SettingsContext] Error loading settings:', error);
     } finally {
       setIsLoading(false);
     }
@@ -253,22 +269,52 @@ export function SettingsProvider({ children }) {
     };
   }, [loadSettings, loadCustomApps]);
 
+  // Debounce timer for settings save
+  const saveSettingsTimerRef = useRef(null);
+
   useEffect(() => {
     const saveSettings = async () => {
       if (!isLoading) {
         try {
+          console.log('[SettingsContext] Saving settings:', {
+            theme: settings.theme,
+            globalZoom: settings.globalZoom,
+            navbarZoom: settings.navbarZoom,
+            autostart: settings.autostart,
+            minimizedStart: settings.minimizedStart
+          });
+          
           const result = await window.electron.saveSettings(settings);
           if (!result.success) {
-            console.error('Failed to save settings:', result.error);
+            console.error('[SettingsContext] Failed to save settings:', result.error);
+          } else {
+            console.log('[SettingsContext] Settings saved successfully');
           }
-          await window.electron.setAutostart(settings.autostart);
+          
+          // We don't need to call setAutostart separately as it's handled in the saveSettings method
+          // This prevents potential race conditions or duplicate saves
         } catch (error) {
-          console.error('Error saving settings:', error);
+          console.error('[SettingsContext] Error saving settings:', error);
         }
       }
     };
 
-    saveSettings();
+    // Clear any existing timer
+    if (saveSettingsTimerRef.current) {
+      clearTimeout(saveSettingsTimerRef.current);
+    }
+
+    // Set a new timer to debounce rapid settings changes
+    saveSettingsTimerRef.current = setTimeout(() => {
+      saveSettings();
+    }, 300); // 300ms debounce
+
+    // Cleanup on unmount
+    return () => {
+      if (saveSettingsTimerRef.current) {
+        clearTimeout(saveSettingsTimerRef.current);
+      }
+    };
   }, [settings, isLoading]);
 
   const updateSettings = (newSettings) => {

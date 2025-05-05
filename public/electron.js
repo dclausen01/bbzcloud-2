@@ -844,14 +844,31 @@ ipcMain.handle('inject-js', async (event, { webviewId, code }) => {
 
 ipcMain.handle('set-autostart', async (event, shouldAutostart) => {
   try {
-    // Get current settings
-    const { settings } = await db.getSettings();
+    console.log('[Autostart] Setting autostart to:', shouldAutostart);
     
-    // Update autostart setting
+    // Get current settings
+    const settings = await db.getSettings();
+    
+    if (!settings) {
+      console.error('[Autostart] Failed to get current settings');
+      return { success: false, error: 'Failed to get current settings' };
+    }
+    
+    console.log('[Autostart] Current settings retrieved:', {
+      theme: settings.theme,
+      globalZoom: settings.globalZoom,
+      navbarZoom: settings.navbarZoom,
+      autostart: settings.autostart,
+      minimizedStart: settings.minimizedStart
+    });
+    
+    // Update autostart setting while preserving all other settings
     const updatedSettings = {
       ...settings,
       autostart: shouldAutostart
     };
+    
+    console.log('[Autostart] Saving updated settings with autostart:', shouldAutostart);
     
     // Save updated settings
     await db.saveSettings(updatedSettings);
@@ -868,13 +885,41 @@ ipcMain.handle('set-autostart', async (event, shouldAutostart) => {
 
 ipcMain.handle('save-settings', async (event, settings) => {
   try {
+    console.log('[Settings] Saving settings:', {
+      theme: settings.theme,
+      globalZoom: settings.globalZoom,
+      navbarZoom: settings.navbarZoom,
+      autostart: settings.autostart,
+      minimizedStart: settings.minimizedStart
+    });
+    
+    // Validate settings before saving
+    if (settings === undefined || settings === null) {
+      console.error('[Settings] Invalid settings object:', settings);
+      return { success: false, error: 'Invalid settings object' };
+    }
+    
+    // Ensure zoom values are numbers
+    if (settings.globalZoom !== undefined && typeof settings.globalZoom !== 'number') {
+      settings.globalZoom = parseFloat(settings.globalZoom) || 1.0;
+    }
+    
+    if (settings.navbarZoom !== undefined && typeof settings.navbarZoom !== 'number') {
+      settings.navbarZoom = parseFloat(settings.navbarZoom) || 1.0;
+    }
+    
     await db.saveSettings(settings);
     updateAutostart();
-    const newTheme = settings.theme || globalTheme;
+    const newTheme = settings.theme ?? globalTheme;
     
     // Update minWidth if navbar zoom changed
-    if (settings.navbarZoom && mainWindow) {
+    if (settings.navbarZoom !== undefined && mainWindow) {
       const newMinWidth = calculateMinWidth(settings.navbarZoom);
+      
+      console.log('[Settings] Updating window minWidth for navbarZoom:', {
+        navbarZoom: settings.navbarZoom,
+        newMinWidth
+      });
       
       // Update the minimum size constraint
       mainWindow.setMinimumSize(newMinWidth, 700);
@@ -893,6 +938,7 @@ ipcMain.handle('save-settings', async (event, settings) => {
     
     // Only update theme if it actually changed
     if (newTheme !== globalTheme) {
+      console.log('[Settings] Theme changed from', globalTheme, 'to', newTheme);
       globalTheme = newTheme;
       
       // Update all windows with the new theme
@@ -915,20 +961,40 @@ ipcMain.handle('save-settings', async (event, settings) => {
     
     return { success: true };
   } catch (error) {
-    console.error('Error saving settings:', error);
+    console.error('[Settings] Error saving settings:', error);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('get-settings', async () => {
   try {
+    console.log('[Settings] Getting settings...');
     const settings = await db.getSettings();
-    shouldStartMinimized = settings?.minimizedStart;
-    globalTheme = settings?.theme || 'light';
+    
+    if (!settings) {
+      console.error('[Settings] Failed to get settings');
+      return { success: false, error: 'Failed to get settings' };
+    }
+    
+    console.log('[Settings] Retrieved settings:', {
+      theme: settings.theme,
+      globalZoom: settings.globalZoom,
+      navbarZoom: settings.navbarZoom,
+      autostart: settings.autostart,
+      minimizedStart: settings.minimizedStart
+    });
+    
+    shouldStartMinimized = settings?.minimizedStart ?? false;
+    globalTheme = settings?.theme ?? 'light';
     
     // Update window minWidth when settings are loaded
-    if (mainWindow && settings?.navbarZoom) {
+    if (mainWindow && settings?.navbarZoom !== undefined) {
       const newMinWidth = calculateMinWidth(settings.navbarZoom);
+      
+      console.log('[Settings] Updating window minWidth for navbarZoom:', {
+        navbarZoom: settings.navbarZoom,
+        newMinWidth
+      });
       
       // Update the minimum size constraint
       mainWindow.setMinimumSize(newMinWidth, 700);
@@ -945,10 +1011,10 @@ ipcMain.handle('get-settings', async () => {
       }
     }
     
-    return { success: true, settings: settings || {} };
+    return { success: true, settings: settings };
   } catch (error) {
-    console.error('Error getting settings:', error);
-    return { success: false, error: error.message };
+    console.error('[Settings] Error getting settings:', error);
+    return { success: false, error: error.message, settings: {} };
   }
 });
 

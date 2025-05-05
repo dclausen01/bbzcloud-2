@@ -395,76 +395,159 @@ class DatabaseService {
     // Settings operations
     async saveSettings(settings) {
         return this.withConnection(async () => {
-            // Save zooms to electron-store (device specific)
-            const globalZoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
-            const navbarZoom = typeof settings.navbarZoom === 'number' ? settings.navbarZoom : 1.0;
-            this.store.set('globalZoom', globalZoom);
-            this.store.set('navbarZoom', navbarZoom);
-
-            // Save other settings to database
-            const settingsToSave = {
-                navigationButtons: Object.entries(settings.navigationButtons || {}).reduce((acc, [key, button]) => ({
-                    ...acc,
-                    [key]: {
-                        visible: button.visible
-                    }
-                }), {}),
-                theme: settings.theme,
-                autostart: settings.autostart,
-                minimizedStart: settings.minimizedStart ?? false
-            };
-
-            return new Promise((resolve, reject) => {
-                const timestamp = Date.now();
+            try {
+                console.log('[DatabaseService] Saving settings:', JSON.stringify({
+                    globalZoom: settings.globalZoom,
+                    navbarZoom: settings.navbarZoom,
+                    theme: settings.theme,
+                    autostart: settings.autostart,
+                    minimizedStart: settings.minimizedStart
+                }));
                 
-                this.db.run(
-                    'INSERT OR REPLACE INTO settings (id, value, updated_at) VALUES (?, ?, ?)',
-                    ['app_settings', JSON.stringify(settingsToSave), timestamp],
-                    (err) => {
-                        if (err) reject(err);
-                        else resolve(true);
+                // Save zooms to electron-store (device specific)
+                // Use nullish coalescing to handle 0 values correctly
+                const globalZoom = typeof settings.globalZoom === 'number' ? settings.globalZoom : 1.0;
+                const navbarZoom = typeof settings.navbarZoom === 'number' ? settings.navbarZoom : 1.0;
+                
+                // Log the zoom values being saved
+                console.log('[DatabaseService] Saving zoom values to electron-store:', { globalZoom, navbarZoom });
+                
+                this.store.set('globalZoom', globalZoom);
+                this.store.set('navbarZoom', navbarZoom);
+                
+                // Get existing settings from database to merge with new settings
+                const existingSettings = await this.getSettingsFromDB();
+                
+                // Save other settings to database
+                const settingsToSave = {
+                    // Merge with existing settings to prevent data loss
+                    ...existingSettings,
+                    // Update with new values
+                    navigationButtons: Object.entries(settings.navigationButtons || {}).reduce((acc, [key, button]) => ({
+                        ...acc,
+                        [key]: {
+                            visible: button.visible
+                        }
+                    }), existingSettings.navigationButtons || {}),
+                    theme: settings.theme ?? existingSettings.theme,
+                    autostart: settings.autostart ?? existingSettings.autostart,
+                    minimizedStart: settings.minimizedStart ?? existingSettings.minimizedStart ?? false
+                };
+                
+                // Log the settings being saved to the database
+                console.log('[DatabaseService] Saving settings to database:', JSON.stringify(settingsToSave));
+
+                return new Promise((resolve, reject) => {
+                    const timestamp = Date.now();
+                    
+                    this.db.run(
+                        'INSERT OR REPLACE INTO settings (id, value, updated_at) VALUES (?, ?, ?)',
+                        ['app_settings', JSON.stringify(settingsToSave), timestamp],
+                        (err) => {
+                            if (err) {
+                                console.error('[DatabaseService] Error saving settings:', err);
+                                reject(err);
+                            } else {
+                                console.log('[DatabaseService] Settings saved successfully');
+                                resolve(true);
+                            }
+                        }
+                    );
+                });
+            } catch (error) {
+                console.error('[DatabaseService] Error in saveSettings:', error);
+                throw error;
+            }
+        });
+    }
+    
+    // Helper method to get settings from database only (without electron-store values)
+    async getSettingsFromDB() {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                'SELECT value FROM settings WHERE id = ?',
+                ['app_settings'],
+                (err, row) => {
+                    if (err) {
+                        console.error('[DatabaseService] Error getting settings from DB:', err);
+                        reject(err);
+                        return;
                     }
-                );
-            });
+                    
+                    let settings = {};
+                    try {
+                        settings = row ? JSON.parse(row.value) : {};
+                    } catch (error) {
+                        console.error('[DatabaseService] Error parsing settings from DB:', error);
+                    }
+                    
+                    resolve(settings);
+                }
+            );
         });
     }
 
     async getSettings() {
         return this.withConnection(async () => {
-            return new Promise((resolve, reject) => {
-                this.db.get(
-                    'SELECT value FROM settings WHERE id = ?',
-                    ['app_settings'],
-                    (err, row) => {
-                        if (err) {
-                            reject(err);
-                            return;
+            try {
+                return new Promise((resolve, reject) => {
+                    this.db.get(
+                        'SELECT value FROM settings WHERE id = ?',
+                        ['app_settings'],
+                        (err, row) => {
+                            if (err) {
+                                console.error('[DatabaseService] Error getting settings from DB:', err);
+                                reject(err);
+                                return;
+                            }
+                            
+                            let settings = {};
+                            try {
+                                settings = row ? JSON.parse(row.value) : {};
+                            } catch (error) {
+                                console.error('[DatabaseService] Error parsing settings:', error);
+                            }
+                            
+                            // Get zooms from electron-store (device specific)
+                            // Use nullish coalescing to handle 0 values correctly
+                            // First get the raw values to check if they exist
+                            const rawGlobalZoom = this.store.get('globalZoom');
+                            const rawNavbarZoom = this.store.get('navbarZoom');
+                            
+                            // Convert to numbers if they exist, otherwise use defaults
+                            const globalZoom = rawGlobalZoom !== undefined ? 
+                                (typeof rawGlobalZoom === 'number' ? rawGlobalZoom : parseFloat(rawGlobalZoom)) : 1.0;
+                            const navbarZoom = rawNavbarZoom !== undefined ? 
+                                (typeof rawNavbarZoom === 'number' ? rawNavbarZoom : parseFloat(rawNavbarZoom)) : 1.0;
+                            
+                            // Log the retrieved settings
+                            console.log('[DatabaseService] Retrieved settings:', {
+                                dbSettings: settings,
+                                globalZoom: globalZoom,
+                                navbarZoom: navbarZoom,
+                                rawGlobalZoom: rawGlobalZoom,
+                                rawNavbarZoom: rawNavbarZoom
+                            });
+                            
+                            // Only return the saved values, let the context handle defaults                       
+                            const result = {
+                                navigationButtons: settings?.navigationButtons || {},
+                                theme: settings?.theme,
+                                globalZoom: globalZoom,
+                                navbarZoom: navbarZoom,
+                                autostart: settings.autostart ?? false,
+                                minimizedStart: settings.minimizedStart ?? false
+                            };
+                            
+                            console.log('[DatabaseService] Returning settings:', result);
+                            resolve(result);
                         }
-                        
-                        let settings = {};
-                        try {
-                            settings = row ? JSON.parse(row.value) : {};
-                        } catch (error) {
-                            console.error('Error parsing settings:', error);
-                        }
-                        
-                        // Get zooms from electron-store (device specific)
-                        const globalZoom = parseFloat(this.store.get('globalZoom')) || 1.0;
-                        const navbarZoom = parseFloat(this.store.get('navbarZoom')) || 1.0;
-                        
-                        // Only return the saved values, let the context handle defaults                       
-                        const result = {
-                            navigationButtons: settings?.navigationButtons || {},
-                            theme: settings?.theme,
-                            globalZoom: globalZoom,
-                            navbarZoom: navbarZoom,
-                            autostart: settings.autostart ?? false,
-                            minimizedStart: settings.minimizedStart ?? false
-                        };
-                        resolve(result);
-                    }
-                );
-            });
+                    );
+                });
+            } catch (error) {
+                console.error('[DatabaseService] Error in getSettings:', error);
+                throw error;
+            }
         });
     }
 
