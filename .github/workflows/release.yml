@@ -70,9 +70,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
+          NODE_GYP_FORCE_PYTHON: "python3"
+          npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
+          npm_config_target: "32.0.0"
+          npm_config_runtime: "electron"
           npm_config_arch: "arm64"
           npm_config_target_arch: "arm64"
+          npm_config_disturl: "https://electronjs.org/headers"
+          npm_config_python: "python3"
         run: |
+          # Rebuild native modules for ARM64
+          npm rebuild sqlite3 --build-from-source
           npm run build
           electron-builder --linux --arm64
 
