@@ -24,7 +24,7 @@ jobs:
       - name: Check out Git repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Wichtig für den Tag-Zugriff
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -68,7 +68,6 @@ jobs:
           CI: false
         run: |
           npm run build
-          # Explizit konfigurieren, keine snap-Pakete zu bauen
           electron-builder --linux deb rpm AppImage --x64
 
       - name: Get previous version
@@ -123,7 +122,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot qemu qemu-user-static
-          # Keine snapcraft-Installation
           
       - name: Setup ARM64 cross-compilation environment
         run: |
@@ -146,17 +144,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
-          # ARM64-spezifische Umgebungsvariablen
           npm_config_target: "32.0.0"
           npm_config_runtime: "electron"
           npm_config_arch: "arm64"
           npm_config_target_arch: "arm64"
           npm_config_disturl: "https://electronjs.org/headers"
         run: |
-          # Neubau von nativen Modulen für ARM64
           npm rebuild sqlite3 --build-from-source
           npm run build
-          # Explizit nur AppImage und deb/rpm bauen, keine snaps
           electron-builder --linux deb rpm AppImage --arm64 -c.electronDist=./node_modules/electron/dist -c.electronVersion=32.0.0
 
       - name: Upload to Release
