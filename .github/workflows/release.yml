@@ -79,9 +79,20 @@ jobs:
           npm_config_disturl: "https://electronjs.org/headers"
           npm_config_python: "python3"
         run: |
+          # Clean any previous build artifacts
+          rm -rf dist
+          rm -rf node_modules
+          
+          # Reinstall dependencies with ARM64 architecture
+          npm install
+          
           # Rebuild native modules for ARM64
           npm rebuild sqlite3 --build-from-source
+          
+          # Build the application
           npm run build
+          
+          # Build electron packages for ARM64 only
           electron-builder --linux --arm64 -c.linux.target=AppImage -c.linux.target=deb -c.linux.target=rpm -c.linux.target=pacman
 
       - name: Get previous version
