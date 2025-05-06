@@ -13,7 +13,7 @@ jobs:
     env:
       NODE_GYP_FORCE_PYTHON: "python3"
       npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
-      npm_config_target: "32.0.0"
+      npm_config_target: "32.3.3"
       npm_config_runtime: "electron"
       npm_config_arch: "x64"
       npm_config_target_arch: "x64"
@@ -47,7 +47,7 @@ jobs:
         run: |
           sudo npm install -g node-gyp@9.4.0
           npm install
-          sudo npm install -g electron@32.0.0 electron-builder
+          sudo npm install -g electron@32.3.3 electron-builder
           npm rebuild sqlite3 --build-from-source
 
       - name: Set 7zip permissions
@@ -72,7 +72,7 @@ jobs:
           CI: false
           NODE_GYP_FORCE_PYTHON: "python3"
           npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
-          npm_config_target: "32.0.0"
+          npm_config_target: "32.3.3"
           npm_config_runtime: "electron"
           npm_config_arch: "arm64"
           npm_config_target_arch: "arm64"
@@ -82,16 +82,16 @@ jobs:
           # Clean any previous build artifacts
           rm -rf dist
           rm -rf node_modules
-          
+
           # Reinstall dependencies with ARM64 architecture
           npm install
-          
+
           # Rebuild native modules for ARM64
           npm rebuild sqlite3 --build-from-source
-          
+
           # Build the application
           npm run build
-          
+
           # Build electron packages for ARM64 only
           electron-builder --linux --arm64 -c.linux.target=AppImage -c.linux.target=deb -c.linux.target=rpm -c.linux.target=pacman
 
@@ -144,7 +144,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
-          sudo npm install -g electron@32.0.0 electron-builder
+          sudo npm install -g electron@32.3.3 electron-builder
           npm rebuild sqlite3 --build-from-source
 
       - name: Build Mac
@@ -194,7 +194,7 @@ jobs:
           npm_config_build_from_source: false
         run: |
           npm install
-          npm install -g electron@32.0.0 electron-builder
+          npm install -g electron@32.3.3 electron-builder
 
       - name: Build Windows
         env:
