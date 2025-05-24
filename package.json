@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.38",
+  "version": "2.0.39",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -15,40 +15,40 @@
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",
-    "@chakra-ui/react": "^2.8.0",
+    "@chakra-ui/react": "^2.10.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@emotion/react": "^11.11.1",
-    "@emotion/styled": "^11.11.0",
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
     "@uiw/react-md-editor": "^4.0.5",
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "electron-is-dev": "^2.0.0",
-    "electron-store": "^8.1.0",
-    "electron-updater": "^6.1.7",
-    "framer-motion": "^10.16.4",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9",
+    "framer-motion": "^10.18.0",
     "fs-extra": "^11.2.0",
     "keytar": "^7.9.0",
-    "playwright": "^1.50.0",
-    "react": "^18.2.0",
+    "playwright": "^1.49.1",
+    "react": "^18.3.1",
     "react-datepicker": "^7.5.0",
-    "react-dom": "^18.2.0",
+    "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
-    "react-router-dom": "^6.15.0",
+    "react-router-dom": "^6.28.0",
     "react-scripts": "5.0.1",
     "sqlite3": "^5.1.7",
     "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
-    "concurrently": "^8.2.1",
+    "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "^32.0.0",
-    "electron-builder": "^24.9.1",
+    "electron": "^33.2.0",
+    "electron-builder": "^24.13.3",
     "electron-devtools-installer": "^3.2.0",
-    "node-gyp": "^10.0.1",
-    "wait-on": "^7.0.1"
+    "node-gyp": "^10.2.0",
+    "wait-on": "^8.0.1"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -63,7 +63,9 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "cross-env LC_ALL=C npm run build && electron-builder --linux",
     "release": "npm run build && electron-builder --linux --win --publish=always",
-    "release:mac": "npm run build && electron-builder --mac --publish=always"
+    "release:mac": "npm run build && electron-builder --mac --publish=always",
+    "update-deps": "npm update && npm audit fix",
+    "check-updates": "npm outdated"
   },
   "build": {
     "appId": "com.bbzcloud.app",
@@ -74,7 +76,9 @@
       "node_modules/**/*",
       "package.json",
       "public/electron.js",
-      "public/preload.js"
+      "public/preload.js",
+      "public/webview-preload.js",
+      "public/services/**/*"
     ],
     "extraResources": [
       {

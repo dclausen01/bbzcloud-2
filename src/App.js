@@ -48,20 +48,15 @@ import {
   useModalShortcuts, 
   useWebViewShortcuts 
 } from './hooks/useKeyboardShortcuts';
-import { useCredentials } from './hooks/useCredentials';
 import { 
   SUCCESS_MESSAGES, 
   ERROR_MESSAGES, 
-  UI_CONFIG, 
-  APP_CONFIG,
-  URLS 
+  UI_CONFIG 
 } from './utils/constants';
 import { 
   saveFocus, 
   restoreFocus, 
-  trapFocus, 
-  announceToScreenReader,
-  createAccessibleButton 
+  announceToScreenReader
 } from './utils/accessibility';
 
 // Helper function for delays
@@ -153,6 +148,26 @@ function App() {
     loadInitialData();
   }, []);
 
+  const filterNavigationButtons = useCallback(() => {
+    if (!settings.navigationButtons) return {};
+
+    const isTeacher = email.endsWith('@bbz-rd-eck.de');
+
+    if (isTeacher) {
+      return settings.navigationButtons;
+    }
+
+    const allowedApps = ['schulcloud', 'moodle', 'office', 'cryptpad', 'webuntis', 'wiki'];
+    return Object.entries(settings.navigationButtons)
+      .filter(([key]) => allowedApps.includes(key))
+      .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+  }, [email, settings.navigationButtons]);
+
+  // Define filteredNavigationButtons before it's used
+  const filteredNavigationButtons = filterNavigationButtons();
+
+  const toast = useToast();
+
   const handleCredentialsSubmit = async () => {
     if (!email) return;
 
@@ -207,21 +222,6 @@ function App() {
     }
   };
 
-  const filterNavigationButtons = useCallback(() => {
-    if (!settings.navigationButtons) return {};
-
-    const isTeacher = email.endsWith('@bbz-rd-eck.de');
-
-    if (isTeacher) {
-      return settings.navigationButtons;
-    }
-
-    const allowedApps = ['schulcloud', 'moodle', 'office', 'cryptpad', 'webuntis', 'wiki'];
-    return Object.entries(settings.navigationButtons)
-      .filter(([key]) => allowedApps.includes(key))
-      .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-  }, [email, settings.navigationButtons]);
-
   const { 
     isOpen: isSettingsOpen, 
     onOpen: onSettingsOpen, 
@@ -257,13 +257,13 @@ function App() {
       setContextMenuText('');
     }
   }, [isTodoOpen]);
+  
   const [activeWebView, setActiveWebView] = useState(null);
   const webViewRef = useRef(null);
   const [appIconPath, setAppIconPath] = useState('');
   const [currentUrl, setCurrentUrl] = useState('');
   const [hasUpdate, setHasUpdate] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
-  const toast = useToast();
 
   // Listen for update status
   useEffect(() => {
@@ -435,8 +435,6 @@ function App() {
       });
     }
   };
-
-  const filteredNavigationButtons = filterNavigationButtons();
 
   return (
     <Box h="100vh" display="flex" flexDirection="column" overflow="hidden">

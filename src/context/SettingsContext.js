@@ -273,110 +273,134 @@ export function SettingsProvider({ children }) {
     saveSettings();
   }, [settings, isLoading]);
 
-  const updateSettings = (newSettings) => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      ...newSettings
-    }));
-  };
-
-  const toggleButtonVisibility = (buttonId) => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      navigationButtons: {
-        ...prevSettings.navigationButtons,
-        [buttonId]: {
-          ...prevSettings.navigationButtons[buttonId],
-          visible: !prevSettings.navigationButtons[buttonId].visible
-        }
-      }
-    }));
-  };
-
-  const updateGlobalZoom = (zoom) => {
-    setSettings(prevSettings => {
-      const updatedNavigationButtons = Object.entries(prevSettings.navigationButtons).reduce((acc, [id, config]) => ({
-        ...acc,
-        [id]: {
-          ...config,
-          zoom: zoom
-        }
-      }), {});
-
-      const updatedCustomApps = prevSettings.customApps.map(app => ({
-        ...app,
-        zoom: zoom
-      }));
-
-      return {
+  // Memoize the context value to prevent unnecessary re-renders
+  const value = useMemo(() => {
+    const updateSettings = (newSettings) => {
+      setSettings(prevSettings => ({
         ...prevSettings,
-        globalZoom: zoom,
-        navigationButtons: updatedNavigationButtons,
-        customApps: updatedCustomApps
-      };
-    });
-  };
+        ...newSettings
+      }));
+    };
 
-  const addCustomApp = async (app) => {
-    try {
-      const result = await window.electron.saveCustomApps([
-        ...customApps,
-        {
-          ...app,
-          buttonVariant: 'solid',
-          zoom: settings.globalZoom
+    const toggleButtonVisibility = (buttonId) => {
+      setSettings(prevSettings => ({
+        ...prevSettings,
+        navigationButtons: {
+          ...prevSettings.navigationButtons,
+          [buttonId]: {
+            ...prevSettings.navigationButtons[buttonId],
+            visible: !prevSettings.navigationButtons[buttonId].visible
+          }
         }
-      ]);
-      if (result.success) {
-        await loadCustomApps();
+      }));
+    };
+
+    const updateGlobalZoom = (zoom) => {
+      setSettings(prevSettings => {
+        const updatedNavigationButtons = Object.entries(prevSettings.navigationButtons).reduce((acc, [id, config]) => ({
+          ...acc,
+          [id]: {
+            ...config,
+            zoom: zoom
+          }
+        }), {});
+
+        const updatedCustomApps = prevSettings.customApps.map(app => ({
+          ...app,
+          zoom: zoom
+        }));
+
+        return {
+          ...prevSettings,
+          globalZoom: zoom,
+          navigationButtons: updatedNavigationButtons,
+          customApps: updatedCustomApps
+        };
+      });
+    };
+
+    const addCustomApp = async (app) => {
+      try {
+        const result = await window.electron.saveCustomApps([
+          ...customApps,
+          {
+            ...app,
+            buttonVariant: 'solid',
+            zoom: settings.globalZoom
+          }
+        ]);
+        if (result.success) {
+          await loadCustomApps();
+        }
+      } catch (error) {
+        console.error('Failed to add custom app:', error);
+        throw error;
       }
-    } catch (error) {
-      console.error('Failed to add custom app:', error);
-      throw error;
-    }
-  };
+    };
 
-  const removeCustomApp = async (appId) => {
-    try {
-      const result = await window.electron.saveCustomApps(
-        customApps.filter(app => app.id !== appId)
-      );
-      if (result.success) {
-        await loadCustomApps();
+    const removeCustomApp = async (appId) => {
+      try {
+        const result = await window.electron.saveCustomApps(
+          customApps.filter(app => app.id !== appId)
+        );
+        if (result.success) {
+          await loadCustomApps();
+        }
+      } catch (error) {
+        console.error('Failed to remove custom app:', error);
+        throw error;
       }
-    } catch (error) {
-      console.error('Failed to remove custom app:', error);
-      throw error;
-    }
-  };
+    };
 
-  const toggleAutostart = () => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      autostart: !prevSettings.autostart
-    }));
-  };
+    const toggleAutostart = () => {
+      setSettings(prevSettings => ({
+        ...prevSettings,
+        autostart: !prevSettings.autostart
+      }));
+    };
 
-  const toggleMinimizedStart = () => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      minimizedStart: !prevSettings.minimizedStart
-    }));
-  };
+    const toggleMinimizedStart = () => {
+      setSettings(prevSettings => ({
+        ...prevSettings,
+        minimizedStart: !prevSettings.minimizedStart
+      }));
+    };
 
-  const toggleDarkMode = () => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      theme: prevSettings.theme === 'dark' ? 'light' : 'dark'
-    }));
-  };
+    const toggleDarkMode = () => {
+      setSettings(prevSettings => ({
+        ...prevSettings,
+        theme: prevSettings.theme === 'dark' ? 'light' : 'dark'
+      }));
+    };
 
-  const updateNavbarZoom = (zoom) => {
-    setSettings(prevSettings => ({
-      ...prevSettings,
-      navbarZoom: zoom
-    }));
-  };
+    const updateNavbarZoom = (zoom) => {
+      setSettings(prevSettings => ({
+        ...prevSettings,
+        navbarZoom: zoom
+      }));
+    };
+
+    return {
+      settings: { ...settings, customApps },
+      updateSettings,
+      toggleButtonVisibility,
+      updateGlobalZoom,
+      addCustomApp,
+      removeCustomApp,
+      toggleAutostart,
+      toggleMinimizedStart,
+      isLoading,
+      toggleDarkMode,
+      updateNavbarZoom,
+      updateStatus
+    };
+  }, [
+    settings,
+    customApps,
+    isLoading,
+    updateStatus,
+    loadCustomApps
+  ]);
 
   // Listen for update status changes
   useEffect(() => {
@@ -385,36 +409,6 @@ export function SettingsProvider({ children }) {
     });
     return () => unsubscribe();
   }, []);
-
-  // Memoize the context value to prevent unnecessary re-renders
-  const value = useMemo(() => ({
-    settings: { ...settings, customApps },
-    updateSettings,
-    toggleButtonVisibility,
-    updateGlobalZoom,
-    addCustomApp,
-    removeCustomApp,
-    toggleAutostart,
-    toggleMinimizedStart,
-    isLoading,
-    toggleDarkMode,
-    updateNavbarZoom,
-    updateStatus
-  }), [
-    settings,
-    customApps,
-    updateSettings,
-    toggleButtonVisibility,
-    updateGlobalZoom,
-    addCustomApp,
-    removeCustomApp,
-    toggleAutostart,
-    toggleMinimizedStart,
-    isLoading,
-    toggleDarkMode,
-    updateNavbarZoom,
-    updateStatus
-  ]);
 
   // Don't render children until settings are loaded
   return (
