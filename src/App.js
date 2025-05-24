@@ -41,6 +41,29 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 
+// Import our new utilities and hooks
+import { 
+  useAppShortcuts, 
+  useNavigationShortcuts, 
+  useModalShortcuts, 
+  useWebViewShortcuts 
+} from './hooks/useKeyboardShortcuts';
+import { useCredentials } from './hooks/useCredentials';
+import { 
+  SUCCESS_MESSAGES, 
+  ERROR_MESSAGES, 
+  UI_CONFIG, 
+  APP_CONFIG,
+  URLS 
+} from './utils/constants';
+import { 
+  saveFocus, 
+  restoreFocus, 
+  trapFocus, 
+  announceToScreenReader,
+  createAccessibleButton 
+} from './utils/accessibility';
+
 // Helper function for delays
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -176,10 +199,10 @@ function App() {
     } catch (error) {
       console.error('Error saving credentials:', error);
       toast({
-        title: 'Fehler beim Speichern',
+        title: ERROR_MESSAGES.DATABASE_ERROR,
         description: error.message,
         status: 'error',
-        duration: 5000,
+        duration: UI_CONFIG.TOAST_DURATION,
       });
     }
   };
@@ -275,23 +298,70 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Add keyboard shortcut for printing (Ctrl+P)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Check if Ctrl+P is pressed (or Cmd+P on Mac)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
-        e.preventDefault(); // Prevent browser's print dialog
-        if (webViewRef.current) {
-          webViewRef.current.print();
-        }
-      }
-    };
+  // Keyboard shortcuts setup
+  const navigationItems = Object.entries(filteredNavigationButtons)
+    .filter(([_, config]) => config.visible)
+    .map(([id, config]) => ({ id, ...config }));
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, []);
+  // Application-level keyboard shortcuts
+  useAppShortcuts({
+    onToggleTodo: onTodoOpen,
+    onToggleSecureDocs: onSecureDocsOpen,
+    onOpenSettings: onSettingsOpen,
+    onReloadCurrent: () => {
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+    },
+    onReloadAll: () => {
+      // Reload all webviews
+      const webviews = document.querySelectorAll('webview');
+      webviews.forEach(webview => webview.reload());
+      announceToScreenReader('Alle Webviews werden neu geladen');
+    },
+  });
+
+  // Navigation shortcuts (Ctrl+1-9)
+  useNavigationShortcuts(
+    (item) => handleNavigationClick(item.id, false),
+    navigationItems
+  );
+
+  // WebView shortcuts
+  useWebViewShortcuts(webViewRef, !!activeWebView);
+
+  // Modal shortcuts for drawers
+  useModalShortcuts(onSettingsClose, isSettingsOpen);
+  useModalShortcuts(onTodoClose, isTodoOpen);
+  useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
+
+  // Focus management for drawers
+  useEffect(() => {
+    if (isSettingsOpen) {
+      saveFocus();
+      announceToScreenReader('Einstellungen geöffnet');
+    } else {
+      restoreFocus();
+    }
+  }, [isSettingsOpen]);
+
+  useEffect(() => {
+    if (isTodoOpen) {
+      saveFocus();
+      announceToScreenReader('Todo-Liste geöffnet');
+    } else {
+      restoreFocus();
+    }
+  }, [isTodoOpen]);
+
+  useEffect(() => {
+    if (isSecureDocsOpen) {
+      saveFocus();
+      announceToScreenReader('Sichere Dokumente geöffnet');
+    } else {
+      restoreFocus();
+    }
+  }, [isSecureDocsOpen]);
 
   useEffect(() => {
     if (!activeWebView && settings.navigationButtons) {
@@ -358,9 +428,9 @@ function App() {
     if (currentUrl) {
       navigator.clipboard.writeText(currentUrl);
       toast({
-        title: 'Link kopiert',
+        title: SUCCESS_MESSAGES.LINK_COPIED,
         status: 'success',
-        duration: 2000,
+        duration: UI_CONFIG.NOTIFICATION_DURATION,
         isClosable: true,
       });
     }

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { URLS, ZOOM_CONFIG } from '../utils/constants';
 
 const SettingsContext = createContext();
 
@@ -81,88 +82,88 @@ const defaultSettings = {
   navigationButtons: {
     schulcloud: { 
       visible: true, 
-      url: 'https://app.schul.cloud', 
+      url: URLS.SCHULCLOUD, 
       title: 'schul.cloud',
       buttonVariant: 'schulcloud',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     moodle: { 
       visible: true, 
-      url: 'https://portal.bbz-rd-eck.com', 
+      url: URLS.MOODLE, 
       title: 'Moodle',
       buttonVariant: 'moodle',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     bbb: { 
       visible: true, 
-      url: 'https://bbb.bbz-rd-eck.de/b/signin', 
+      url: URLS.BBB_SIGNIN, 
       title: 'BigBlueButton',
       buttonVariant: 'bbb',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     outlook: {
       visible: true,
-      url: 'https://exchange.bbz-rd-eck.de/owa/#path=/mail',
+      url: URLS.OUTLOOK,
       title: 'Outlook',
       buttonVariant: 'blue',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     office: {
       visible: true,
-      url: 'https://m365.cloud.microsoft/?auth=2',
+      url: URLS.OFFICE,
       title: 'Office',
       buttonVariant: 'lilac',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     cryptpad: {
       visible: true,
-      url: 'https://cryptpad.fr/drive',
+      url: URLS.CRYPTPAD,
       title: 'CryptPad',
       buttonVariant: 'cryptpad',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     taskcards: {
       visible: true,
-      url: 'https://bbzrdeck.taskcards.app',
+      url: URLS.TASKCARDS,
       title: 'TaskCards',
       buttonVariant: 'taskcards',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     webuntis: {
       visible: true,
-      url: 'https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login',
+      url: URLS.WEBUNTIS,
       title: 'WebUntis',
       buttonVariant: 'orange',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     fobizz: {
       visible: true,
-      url: 'https://tools.fobizz.com/',
+      url: URLS.FOBIZZ,
       title: 'Fobizz Tools',
       buttonVariant: 'darkred',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     wiki: {
       visible: true,
-      url: 'https://wiki.bbz-rd-eck.com',
+      url: URLS.WIKI,
       title: 'Intranet',
       buttonVariant: 'wiki',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     handbook: {
       visible: true,
-      url: 'https://viflow.bbz-rd-eck.de/viflow/',
+      url: URLS.HANDBOOK,
       title: 'Handbuch',
       buttonVariant: 'handbook',
-      zoom: 1.0
+      zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     }
   },
   standardApps: Object.values(standardApps),
   customApps: [],
   theme: 'light',
   startupDelay: 3000,
-  globalZoom: 1.0,
-  navbarZoom: 0.9,
+  globalZoom: ZOOM_CONFIG.DEFAULT_ZOOM,
+  navbarZoom: ZOOM_CONFIG.DEFAULT_NAVBAR_ZOOM,
   autostart: true,
   minimizedStart: false
 };
@@ -385,7 +386,8 @@ export function SettingsProvider({ children }) {
     return () => unsubscribe();
   }, []);
 
-  const value = {
+  // Memoize the context value to prevent unnecessary re-renders
+  const value = useMemo(() => ({
     settings: { ...settings, customApps },
     updateSettings,
     toggleButtonVisibility,
@@ -398,7 +400,21 @@ export function SettingsProvider({ children }) {
     toggleDarkMode,
     updateNavbarZoom,
     updateStatus
-  };
+  }), [
+    settings,
+    customApps,
+    updateSettings,
+    toggleButtonVisibility,
+    updateGlobalZoom,
+    addCustomApp,
+    removeCustomApp,
+    toggleAutostart,
+    toggleMinimizedStart,
+    isLoading,
+    toggleDarkMode,
+    updateNavbarZoom,
+    updateStatus
+  ]);
 
   // Don't render children until settings are loaded
   return (

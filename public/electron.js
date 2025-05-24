@@ -169,16 +169,26 @@ const windowRegistry = new Map();
 // Update autostart based on settings
 async function updateAutostart() {
   try {
-    const { settings } = await db.getSettings();
+    // Ensure database is initialized before trying to get settings
+    await db.ensureInitialized();
+    
+    const result = await db.getSettings();
+    const settings = result?.settings || result || {};
     const shouldAutostart = settings?.autostart ?? false;
     
     console.log('[Autostart] Current settings:', {
       autostart: settings?.autostart,
       shouldAutostart,
-      isDev
+      isDev,
+      platform: process.platform
     });
     
-    if (!isDev) {
+    // Skip autostart setup in development mode
+    if (isDev) {
+      console.log('[Autostart] Skipping autostart setup in development mode');
+      return;
+    }
+    
     const appPath = app.getPath('exe');
     const args = [];
     
@@ -189,31 +199,55 @@ async function updateAutostart() {
         args.push('--minimized');
       }
     } else if (process.platform === 'linux') {
-      // For Linux, we need the full path to the executable
-      if (appPath.endsWith('bbzcloud')) {
-        // If running the AppImage/binary directly
-        args.push('--no-sandbox');
+      // For Linux, handle AppImage and regular binary
+      if (process.env.APPIMAGE) {
+        // If running as AppImage, use the APPIMAGE path
+        console.log('[Autostart] Using AppImage path:', process.env.APPIMAGE);
       }
+      if (settings?.minimizedStart) {
+        args.push('--minimized');
+      }
+    } else if (process.platform === 'darwin') {
+      // For macOS, handle minimized start
       if (settings?.minimizedStart) {
         args.push('--minimized');
       }
     }
     
-    app.setLoginItemSettings({
+    const loginItemSettings = {
       openAtLogin: shouldAutostart,
-      path: appPath,
+      path: process.env.APPIMAGE || appPath, // Use AppImage path if available
       args: args,
       enabled: shouldAutostart
-    });
+    };
     
-    console.log('[Autostart] Login item settings updated:', {
-      openAtLogin: shouldAutostart,
-      path: appPath,
-      args: args
-    });
-  }
+    app.setLoginItemSettings(loginItemSettings);
+    
+    console.log('[Autostart] Login item settings updated:', loginItemSettings);
+    
+    // Verify the settings were applied correctly
+    const currentSettings = app.getLoginItemSettings();
+    console.log('[Autostart] Current login item settings:', currentSettings);
+    
+    if (currentSettings.openAtLogin !== shouldAutostart) {
+      console.warn('[Autostart] Warning: Login item settings may not have been applied correctly');
+    }
+    
   } catch (error) {
     console.error('[Autostart] Error updating autostart settings:', error);
+    
+    // Try a fallback approach for critical errors
+    if (!isDev) {
+      try {
+        console.log('[Autostart] Attempting fallback autostart setup');
+        app.setLoginItemSettings({
+          openAtLogin: false, // Disable as fallback
+          enabled: false
+        });
+      } catch (fallbackError) {
+        console.error('[Autostart] Fallback autostart setup also failed:', fallbackError);
+      }
+    }
   }
 }
 
@@ -1383,11 +1417,20 @@ app.on('ready', async () => {
     }
     
     await copyAssetsIfNeeded();
-    await updateAutostart();
     createTray();
     createSplashWindow();
     await createWindow();
-    // await setupFileWatcher();
+    
+    // Update autostart AFTER window is created and database is fully initialized
+    // Add a small delay to ensure everything is ready
+    setTimeout(async () => {
+      try {
+        await updateAutostart();
+        console.log('[Autostart] Autostart setup completed after app initialization');
+      } catch (error) {
+        console.error('[Autostart] Error during delayed autostart setup:', error);
+      }
+    }, 2000);
     
     // Initial update check
     autoUpdater.checkForUpdatesAndNotify();
