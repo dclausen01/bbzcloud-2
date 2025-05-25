@@ -1,3 +1,31 @@
+/**
+ * BBZCloud - Main Application Component
+ * 
+ * This is the main React component that orchestrates the entire BBZCloud application.
+ * BBZCloud is an Electron-based desktop application that provides a unified interface
+ * for educational web applications and tools.
+ * 
+ * ARCHITECTURE OVERVIEW:
+ * - Uses Chakra UI for consistent, accessible UI components
+ * - Implements a WebView-based architecture for embedding web applications
+ * - Features a responsive navigation bar with customizable app buttons
+ * - Includes secure credential management via Electron's keytar
+ * - Supports keyboard shortcuts for power users
+ * - Provides accessibility features for screen readers
+ * - Includes a todo system and secure document storage
+ * 
+ * CUSTOMIZATION GUIDE:
+ * To adapt this for your own organization:
+ * 1. Update the navigation buttons in src/context/SettingsContext.js
+ * 2. Modify the URLs in src/utils/constants.js
+ * 3. Replace icons in assets/icons/ directory
+ * 4. Update the welcome modal text and branding
+ * 5. Adjust the user filtering logic in filterNavigationButtons()
+ * 
+ * @author Dennis Clausen <dennis.clausen@bbz-rd-eck.de>
+ * @version 2.0.38
+ */
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CloseIcon } from '@chakra-ui/icons';
 import {
@@ -32,6 +60,8 @@ import {
   VStack,
   Text,
 } from '@chakra-ui/react';
+
+// Context and Components
 import { useSettings } from './context/SettingsContext';
 import NavigationBar from './components/NavigationBar';
 import WebViewContainer from './components/WebViewContainer';
@@ -41,7 +71,7 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 
-// Import our new utilities and hooks
+// Custom Hooks and Utilities
 import { 
   useAppShortcuts, 
   useNavigationShortcuts, 
@@ -59,34 +89,104 @@ import {
   announceToScreenReader
 } from './utils/accessibility';
 
-// Helper function for delays
+/**
+ * Helper function to create delays in async operations
+ * Used primarily for ensuring reliable credential loading
+ * @param {number} ms - Milliseconds to wait
+ * @returns {Promise} Promise that resolves after the specified delay
+ */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Main App Component
+ * 
+ * This component manages the entire application state and coordinates
+ * between different features like navigation, webviews, settings, and user management.
+ */
 function App() {
+  // ============================================================================
+  // HOOKS AND STATE MANAGEMENT
+  // ============================================================================
+  
   const { setColorMode } = useColorMode();
   const { settings } = useSettings();
+  const toast = useToast();
+
+  // Welcome Modal State - Handles first-time user setup
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-  const [welcomeStep, setWelcomeStep] = useState(1);
+  const [welcomeStep, setWelcomeStep] = useState(1); // 1: credentials, 2: database location
+
+  // User Credentials State - Stored securely via Electron keytar
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [bbbPassword, setBbbPassword] = useState('');
+  const [bbbPassword, setBbbPassword] = useState(''); // BigBlueButton password
   const [webuntisEmail, setWebuntisEmail] = useState('');
   const [webuntisPassword, setWebuntisPassword] = useState('');
+  
+  // Password visibility toggles for form inputs
   const [showPassword, setShowPassword] = useState(false);
   const [showBBBPassword, setShowBBBPassword] = useState(false);
   const [showWebuntisPassword, setShowWebuntisPassword] = useState(false);
+
+  // Application State
   const [isLoadingEmail, setIsLoadingEmail] = useState(true);
   const [dbPath, setDbPath] = useState('');
+  const [activeWebView, setActiveWebView] = useState(null);
+  const [appIconPath, setAppIconPath] = useState('');
+  const [currentUrl, setCurrentUrl] = useState('');
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [reminderCount, setReminderCount] = useState(0);
+  const [contextMenuText, setContextMenuText] = useState('');
 
+  // Refs for WebView management
+  const webViewRef = useRef(null);
+
+  // Drawer/Modal state management using Chakra UI's useDisclosure
+  const { 
+    isOpen: isSettingsOpen, 
+    onOpen: onSettingsOpen, 
+    onClose: onSettingsClose 
+  } = useDisclosure();
+  
+  const {
+    isOpen: isTodoOpen,
+    onOpen: onTodoOpen,
+    onClose: onTodoClose
+  } = useDisclosure();
+
+  const {
+    isOpen: isSecureDocsOpen,
+    onOpen: onSecureDocsOpen,
+    onClose: onSecureDocsClose
+  } = useDisclosure();
+
+  // ============================================================================
+  // THEME MANAGEMENT
+  // ============================================================================
+  
+  /**
+   * Synchronize Chakra UI color mode with application settings
+   * This ensures consistent theming across the entire application
+   */
   useEffect(() => {
     setColorMode(settings.theme);
   }, [settings.theme, setColorMode]);
 
+  // ============================================================================
+  // CREDENTIAL AND DATA LOADING
+  // ============================================================================
+  
+  /**
+   * Load initial application data including credentials and database path
+   * This runs once when the component mounts and handles the welcome flow
+   */
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        // Load credentials
-        await sleep(1000); // wait a second to make loading of credentials more reliable
+        // Add delay to ensure Electron main process is ready
+        await sleep(1000);
+        
+        // Load all credentials in parallel for better performance
         const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',
@@ -110,11 +210,11 @@ function App() {
           })
         ]);
 
-        // Load database path
+        // Load database path for user information
         const path = await window.electron.getDatabasePath();
         setDbPath(path);
 
-        // Only set email if found, but don't show welcome modal on error
+        // Set credentials if they exist
         if (emailResult.success && emailResult.password) {
           setEmail(emailResult.password);
         }
@@ -135,7 +235,7 @@ function App() {
           setWebuntisPassword(webuntisPasswordResult.password);
         }
 
-        // Only show welcome modal if no email is saved
+        // Show welcome modal for new users (no email saved)
         if (!emailResult.success || !emailResult.password) {
           setShowWelcomeModal(true);
         }
@@ -148,40 +248,65 @@ function App() {
     loadInitialData();
   }, []);
 
+  // ============================================================================
+  // USER ROLE AND NAVIGATION FILTERING
+  // ============================================================================
+  
+  /**
+   * Filter navigation buttons based on user role
+   * 
+   * CUSTOMIZATION: Modify this function to implement your own user role logic
+   * Current logic: Teachers (ending with @bbz-rd-eck.de) see all apps,
+   * students see only a subset of allowed apps
+   * 
+   * @returns {Object} Filtered navigation buttons object
+   */
   const filterNavigationButtons = useCallback(() => {
     if (!settings.navigationButtons) return {};
 
+    // CUSTOMIZE: Change this logic for your organization's email domains
     const isTeacher = email.endsWith('@bbz-rd-eck.de');
 
     if (isTeacher) {
       return settings.navigationButtons;
     }
 
+    // CUSTOMIZE: Define which apps students/restricted users can access
     const allowedApps = ['schulcloud', 'moodle', 'office', 'cryptpad', 'webuntis', 'wiki'];
     return Object.entries(settings.navigationButtons)
       .filter(([key]) => allowedApps.includes(key))
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
   }, [email, settings.navigationButtons]);
 
-  // Define filteredNavigationButtons before it's used
+  // Pre-compute filtered buttons to avoid recalculation
   const filteredNavigationButtons = filterNavigationButtons();
 
-  const toast = useToast();
-
+  // ============================================================================
+  // CREDENTIAL MANAGEMENT
+  // ============================================================================
+  
+  /**
+   * Handle credential submission during welcome flow
+   * Saves credentials securely and reloads the application
+   */
   const handleCredentialsSubmit = async () => {
     if (!email) return;
 
+    // Multi-step welcome process
     if (welcomeStep === 1) {
       setWelcomeStep(2);
       return;
     }
+
     try {
+      // Save all credentials in parallel
       await Promise.all([
         window.electron.saveCredentials({
           service: 'bbzcloud',
           account: 'email',
           password: email
         }),
+        // Only save optional credentials if they exist
         password ? window.electron.saveCredentials({
           service: 'bbzcloud',
           account: 'password',
@@ -204,12 +329,12 @@ function App() {
         }) : Promise.resolve()
       ]);
       
-      // Trigger a database change event to reload settings
+      // Notify other parts of the app that database has changed
       window.electron.emit('database-changed');
       
-      // Close modal and reload the app after a delay to ensure credentials are saved
+      // Close modal and reload to apply changes
       setShowWelcomeModal(false);
-      await sleep(2000); // Wait 2 seconds before reload to ensure credentials are saved
+      await sleep(2000); // Ensure credentials are saved before reload
       window.location.reload();
     } catch (error) {
       console.error('Error saving credentials:', error);
@@ -222,50 +347,35 @@ function App() {
     }
   };
 
-  const { 
-    isOpen: isSettingsOpen, 
-    onOpen: onSettingsOpen, 
-    onClose: onSettingsClose 
-  } = useDisclosure();
+  // ============================================================================
+  // EVENT LISTENERS AND SIDE EFFECTS
+  // ============================================================================
   
-  const {
-    isOpen: isTodoOpen,
-    onOpen: onTodoOpen,
-    onClose: onTodoClose
-  } = useDisclosure();
-
-  const {
-    isOpen: isSecureDocsOpen,
-    onOpen: onSecureDocsOpen,
-    onClose: onSecureDocsClose
-  } = useDisclosure();
-
-  // Handle todo additions from context menu
-  const [contextMenuText, setContextMenuText] = useState('');
-
+  /**
+   * Handle todo additions from context menu
+   * This allows users to right-click on text and add it as a todo
+   */
   useEffect(() => {
     const unsubscribe = window.electron.onAddTodo((text) => {
       setContextMenuText(text);
-      onTodoOpen(); // Open todo drawer when text is selected
+      onTodoOpen();
     });
     return () => unsubscribe();
   }, [onTodoOpen]);
 
-  // Clear context menu text when drawer closes
+  /**
+   * Clear context menu text when todo drawer closes
+   */
   useEffect(() => {
     if (!isTodoOpen) {
       setContextMenuText('');
     }
   }, [isTodoOpen]);
-  
-  const [activeWebView, setActiveWebView] = useState(null);
-  const webViewRef = useRef(null);
-  const [appIconPath, setAppIconPath] = useState('');
-  const [currentUrl, setCurrentUrl] = useState('');
-  const [hasUpdate, setHasUpdate] = useState(false);
-  const [reminderCount, setReminderCount] = useState(0);
 
-  // Listen for update status
+  /**
+   * Listen for application update status
+   * Shows a red dot on settings button when updates are available
+   */
   useEffect(() => {
     const unsubscribe = window.electron.onUpdateStatus((status) => {
       const isUpdateAvailable = status.includes('verfügbar') || status.includes('heruntergeladen');
@@ -275,6 +385,9 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  /**
+   * Load application icon for the header
+   */
   useEffect(() => {
     const loadAppIcon = async () => {
       try {
@@ -287,10 +400,11 @@ function App() {
     loadAppIcon();
   }, []);
 
-  // Listen for database changes
+  /**
+   * Listen for database changes and reload webviews accordingly
+   */
   useEffect(() => {
     const unsubscribe = window.electron.on('database-changed', () => {
-      // Reload all webviews when database changes
       if (webViewRef.current) {
         webViewRef.current.reload();
       }
@@ -298,71 +412,9 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // Keyboard shortcuts setup
-  const navigationItems = Object.entries(filteredNavigationButtons)
-    .filter(([_, config]) => config.visible)
-    .map(([id, config]) => ({ id, ...config }));
-
-  // Application-level keyboard shortcuts
-  useAppShortcuts({
-    onToggleTodo: onTodoOpen,
-    onToggleSecureDocs: onSecureDocsOpen,
-    onOpenSettings: onSettingsOpen,
-    onReloadCurrent: () => {
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
-    },
-    onReloadAll: () => {
-      // Reload all webviews
-      const webviews = document.querySelectorAll('webview');
-      webviews.forEach(webview => webview.reload());
-      announceToScreenReader('Alle Webviews werden neu geladen');
-    },
-  });
-
-  // Navigation shortcuts (Ctrl+1-9)
-  useNavigationShortcuts(
-    (item) => handleNavigationClick(item.id, false),
-    navigationItems
-  );
-
-  // WebView shortcuts
-  useWebViewShortcuts(webViewRef, !!activeWebView);
-
-  // Modal shortcuts for drawers
-  useModalShortcuts(onSettingsClose, isSettingsOpen);
-  useModalShortcuts(onTodoClose, isTodoOpen);
-  useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
-
-  // Focus management for drawers
-  useEffect(() => {
-    if (isSettingsOpen) {
-      saveFocus();
-      announceToScreenReader('Einstellungen geöffnet');
-    } else {
-      restoreFocus();
-    }
-  }, [isSettingsOpen]);
-
-  useEffect(() => {
-    if (isTodoOpen) {
-      saveFocus();
-      announceToScreenReader('Todo-Liste geöffnet');
-    } else {
-      restoreFocus();
-    }
-  }, [isTodoOpen]);
-
-  useEffect(() => {
-    if (isSecureDocsOpen) {
-      saveFocus();
-      announceToScreenReader('Sichere Dokumente geöffnet');
-    } else {
-      restoreFocus();
-    }
-  }, [isSecureDocsOpen]);
-
+  /**
+   * Set default active webview when navigation buttons are loaded
+   */
   useEffect(() => {
     if (!activeWebView && settings.navigationButtons) {
       const filteredButtons = filterNavigationButtons();
@@ -371,8 +423,7 @@ function App() {
       
       if (firstVisibleApp) {
         const [id, config] = firstVisibleApp;
-        // Ensure consistent case with webview IDs
-        const webviewId = id.toLowerCase();
+        const webviewId = id.toLowerCase(); // Ensure consistent casing
         setActiveWebView({
           id: webviewId,
           url: config.url,
@@ -383,16 +434,110 @@ function App() {
     }
   }, [settings.navigationButtons, activeWebView, filterNavigationButtons]);
 
+  // ============================================================================
+  // KEYBOARD SHORTCUTS SETUP
+  // ============================================================================
+  
+  // Prepare navigation items for keyboard shortcuts
+  const navigationItems = Object.entries(filteredNavigationButtons)
+    .filter(([_, config]) => config.visible)
+    .map(([id, config]) => ({ id, ...config }));
+
+  // Application-level keyboard shortcuts (Ctrl+T, Ctrl+D, etc.)
+  useAppShortcuts({
+    onToggleTodo: onTodoOpen,
+    onToggleSecureDocs: onSecureDocsOpen,
+    onOpenSettings: onSettingsOpen,
+    onReloadCurrent: () => {
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+    },
+    onReloadAll: () => {
+      // Reload all webviews in the application
+      const webviews = document.querySelectorAll('webview');
+      webviews.forEach(webview => webview.reload());
+      announceToScreenReader('Alle Webviews werden neu geladen');
+    },
+  });
+
+  // Navigation shortcuts (Ctrl+1-9 for quick app switching)
+  useNavigationShortcuts(
+    (item) => handleNavigationClick(item.id, false),
+    navigationItems
+  );
+
+  // WebView-specific shortcuts (Alt+Left/Right for navigation, F5 for reload, etc.)
+  useWebViewShortcuts(webViewRef, !!activeWebView);
+
+  // Modal/Drawer shortcuts (Escape to close)
+  useModalShortcuts(onSettingsClose, isSettingsOpen);
+  useModalShortcuts(onTodoClose, isTodoOpen);
+  useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
+
+  // ============================================================================
+  // ACCESSIBILITY FEATURES
+  // ============================================================================
+  
+  /**
+   * Focus management for settings drawer
+   * Saves and restores focus for screen reader users
+   */
+  useEffect(() => {
+    if (isSettingsOpen) {
+      saveFocus();
+      announceToScreenReader('Einstellungen geöffnet');
+    } else {
+      restoreFocus();
+    }
+  }, [isSettingsOpen]);
+
+  /**
+   * Focus management for todo drawer
+   */
+  useEffect(() => {
+    if (isTodoOpen) {
+      saveFocus();
+      announceToScreenReader('Todo-Liste geöffnet');
+    } else {
+      restoreFocus();
+    }
+  }, [isTodoOpen]);
+
+  /**
+   * Focus management for secure documents drawer
+   */
+  useEffect(() => {
+    if (isSecureDocsOpen) {
+      saveFocus();
+      announceToScreenReader('Sichere Dokumente geöffnet');
+    } else {
+      restoreFocus();
+    }
+  }, [isSecureDocsOpen]);
+
+  // ============================================================================
+  // EVENT HANDLERS
+  // ============================================================================
+  
+  /**
+   * Handle navigation button clicks
+   * Supports both regular clicks and Ctrl+click for external browser
+   * 
+   * @param {string} buttonId - ID of the clicked navigation button
+   * @param {boolean} isCtrlPressed - Whether Ctrl key was held during click
+   */
   const handleNavigationClick = (buttonId, isCtrlPressed) => {
     const filteredButtons = filterNavigationButtons();
-    // Convert buttonId to lowercase for lookup since keys in filteredButtons are lowercase
     const buttonConfig = filteredButtons[buttonId.toLowerCase()];
+    
     if (buttonConfig) {
       if (isCtrlPressed) {
+        // Open in external browser
         window.electron.shell.openExternal(buttonConfig.url);
       } else {
-        // Ensure we're setting the correct ID that matches the webview ID
-        const webviewId = buttonId.toLowerCase(); // WebView IDs are lowercase
+        // Open in internal webview
+        const webviewId = buttonId.toLowerCase();
         setActiveWebView({
           id: webviewId,
           url: buttonConfig.url,
@@ -403,8 +548,12 @@ function App() {
     }
   };
 
+  /**
+   * Handle custom app clicks from the apps menu
+   * 
+   * @param {Object} app - Custom app object with id, url, and title
+   */
   const handleCustomAppClick = (app) => {
-    // Ensure consistent case with webview IDs
     const webviewId = app.id.toLowerCase();
     setActiveWebView({
       id: webviewId,
@@ -414,16 +563,30 @@ function App() {
     setCurrentUrl(app.url);
   };
 
+  /**
+   * Open URL in a new external window
+   * 
+   * @param {string} url - URL to open
+   * @param {string} title - Window title
+   */
   const handleOpenInNewWindow = (url, title) => {
     window.electron.openExternalWindow({ url, title });
   };
 
+  /**
+   * Handle webview navigation actions (back, forward, reload)
+   * 
+   * @param {string} action - Navigation action to perform
+   */
   const handleWebViewNavigation = (action) => {
     if (webViewRef.current) {
       webViewRef.current[action]();
     }
   };
 
+  /**
+   * Copy current URL to clipboard
+   */
   const handleCopyUrl = () => {
     if (currentUrl) {
       navigator.clipboard.writeText(currentUrl);
@@ -436,8 +599,15 @@ function App() {
     }
   };
 
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+  
   return (
     <Box h="100vh" display="flex" flexDirection="column" overflow="hidden">
+      {/* ========================================================================
+          HEADER / NAVIGATION BAR
+          ======================================================================== */}
       <Flex
         as="header"
         align="center"
@@ -445,7 +615,7 @@ function App() {
         borderBottom="1px"
         borderColor={settings.theme === 'light' ? 'gray.200' : 'gray.700'}
       >
-        {/* Left section - Dynamic width */}
+        {/* Left section - App logo */}
         <Box minW="40px" w="auto" pl={1}>
           {appIconPath && (
             <Image
@@ -460,7 +630,7 @@ function App() {
           )}
         </Box>
 
-        {/* Center section - Center navigation with equal spacing */}
+        {/* Center section - Main navigation */}
         <Box flex="1" display="flex" justifyContent="center" alignItems="center" minW={0}>
           <Box>
             <NavigationBar
@@ -471,9 +641,10 @@ function App() {
           </Box>
         </Box>
 
-        {/* Right section - Responsive width */}
+        {/* Right section - Tools and settings */}
         <Box minW="auto" pr={2} overflow="hidden">
           <Flex justify="flex-end" align="center" gap={1} flexShrink={1} minW={0} flexWrap="nowrap">
+            {/* Custom apps menu */}
             <CustomAppsMenu
               apps={settings.customApps}
               standardApps={settings.standardApps}
@@ -481,6 +652,7 @@ function App() {
               onNewWindow={handleOpenInNewWindow}
             />
 
+            {/* WebView navigation controls - only shown when a webview is active */}
             {activeWebView && (
               <Flex gap={1} flexShrink={1} minW={0}>
                 <ButtonGroup size="sm" isAttached variant="outline">
@@ -532,6 +704,7 @@ function App() {
               </Flex>
             )}
 
+            {/* Documents menu (Todo and Secure Documents) */}
             <DocumentsMenu 
               reminderCount={reminderCount}
               onNavigate={(view) => {
@@ -543,6 +716,7 @@ function App() {
               }} 
             />
 
+            {/* Settings button with update indicator */}
             <ButtonGroup size="sm" position="relative">
               <Tooltip label="Einstellungen" placement="top">
                 <IconButton
@@ -553,6 +727,7 @@ function App() {
                   height="28px"
                 />
               </Tooltip>
+              {/* Update indicator dot */}
               <Box
                 position="absolute"
                 top="-2px"
@@ -570,6 +745,9 @@ function App() {
         </Box>
       </Flex>
 
+      {/* ========================================================================
+          MAIN CONTENT AREA - WEBVIEW CONTAINER
+          ======================================================================== */}
       <Box flex="1" position="relative" overflow="hidden">
         {!isLoadingEmail && (
           <WebViewContainer
@@ -589,6 +767,9 @@ function App() {
         )}
       </Box>
 
+      {/* ========================================================================
+          SETTINGS DRAWER
+          ======================================================================== */}
       <Drawer isOpen={isSettingsOpen} placement="right" onClose={onSettingsClose} size="md">
         <DrawerOverlay />
         <DrawerContent>
@@ -600,7 +781,9 @@ function App() {
         </DrawerContent>
       </Drawer>
 
-      {/* Todo Drawer */}
+      {/* ========================================================================
+          TODO DRAWER
+          ======================================================================== */}
       <Box 
         position="fixed" 
         right={0} 
@@ -633,7 +816,9 @@ function App() {
         </Flex>
       </Box>
 
-      {/* Secure Documents Drawer */}
+      {/* ========================================================================
+          SECURE DOCUMENTS DRAWER
+          ======================================================================== */}
       <Box 
         position="fixed" 
         right={0} 
@@ -661,12 +846,16 @@ function App() {
         </Flex>
       </Box>
 
+      {/* ========================================================================
+          WELCOME MODAL - FIRST-TIME USER SETUP
+          ======================================================================== */}
       <Modal isOpen={showWelcomeModal} onClose={() => {}} closeOnOverlayClick={false}>
         <ModalOverlay />
         <ModalContent>
           <ModalHeader>Willkommen bei BBZCloud</ModalHeader>
           <ModalBody>
             <VStack spacing={4}>
+              {/* Step 1: Credential Collection */}
               {welcomeStep === 1 && (
                 <>
                   <FormControl isRequired>
@@ -719,96 +908,4 @@ function App() {
                       type="text"
                       value={webuntisEmail}
                       onChange={(e) => setWebuntisEmail(e.target.value)}
-                      placeholder="WebUntis Benutzername (optional)"
-                    />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>WebUntis Passwort</FormLabel>
-                    <InputGroup>
-                      <Input
-                        type={showWebuntisPassword ? 'text' : 'password'}
-                        value={webuntisPassword}
-                        onChange={(e) => setWebuntisPassword(e.target.value)}
-                        placeholder="WebUntis Passwort (optional)"
-                      />
-                      <InputRightElement width="4.5rem">
-                        <Button h="1.75rem" size="sm" onClick={() => setShowWebuntisPassword(!showWebuntisPassword)}>
-                          {showWebuntisPassword ? 'Verbergen' : 'Zeigen'}
-                        </Button>
-                      </InputRightElement>
-                    </InputGroup>
-                  </FormControl>
-                </>
-              )}
-
-              {welcomeStep === 2 && (
-                <>
-                  <Text>
-                    Wählen Sie einen Speicherort für die Datenbank aus. Hier werden Ihre Einstellungen, 
-                    ToDos und benutzerdefinierten Apps gespeichert.
-                  </Text>
-                  <FormControl>
-                    <FormLabel>Datenbank-Speicherort</FormLabel>
-                    <Input value={dbPath} isReadOnly placeholder="Standardspeicherort" />
-                  </FormControl>
-                  <Button onClick={async () => {
-                    try {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = '.db';
-                      input.style.display = 'none';
-                      document.body.appendChild(input);
-
-                      input.onchange = async (e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                          const result = await window.electron.changeDatabaseLocation(file.path);
-                          if (result.success) {
-                            setDbPath(file.path);
-                            toast({
-                              title: 'Datenbank-Speicherort festgelegt',
-                              status: 'success',
-                              duration: 3000,
-                            });
-                          } else {
-                            throw new Error(result.error);
-                          }
-                        }
-                        document.body.removeChild(input);
-                      };
-
-                      input.click();
-                    } catch (error) {
-                      toast({
-                        title: 'Fehler beim Festlegen des Speicherorts',
-                        description: error.message,
-                        status: 'error',
-                        duration: 5000,
-                      });
-                    }
-                  }}>
-                    Speicherort auswählen
-                  </Button>
-                </>
-              )}
-            </VStack>
-          </ModalBody>
-          <ModalFooter>
-            {welcomeStep === 1 ? (
-              <Button colorScheme="blue" onClick={handleCredentialsSubmit} isDisabled={!email}>
-                Weiter
-              </Button>
-            ) : (
-              <Button colorScheme="blue" onClick={handleCredentialsSubmit}>
-                Fertig
-              </Button>
-            )}
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-    </Box>
-  );
-}
-
-export default App;
+                      placeholder
