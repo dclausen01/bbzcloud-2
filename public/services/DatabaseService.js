@@ -8,6 +8,11 @@ const Store = require('electron-store');
 class DatabaseService {
     constructor() {
         this.isConnected = false;
+        this.activeWatchers = new Map(); // Track file watchers for cleanup
+        this.tempFiles = new Set(); // Track temporary files for cleanup
+        this.lastMemoryCheck = Date.now();
+        this.memoryCheckInterval = 5 * 60 * 1000; // 5 minutes
+        
         // Initialize electron-store with schema
         this.store = new Store({
             name: 'bbzcloud-store',
@@ -31,6 +36,11 @@ class DatabaseService {
         this.initPromise = this.initialize().catch(err => {
             console.error('Failed to initialize database:', err);
         });
+        
+        // Setup periodic memory monitoring (macOS specific)
+        if (process.platform === 'darwin') {
+            this.setupMemoryMonitoring();
+        }
     }
 
     async initialize() {
@@ -906,6 +916,142 @@ class DatabaseService {
                 });
             });
         });
+    }
+
+    // Memory monitoring and cleanup methods (macOS specific optimizations)
+    setupMemoryMonitoring() {
+        console.log('[DatabaseService] Setting up memory monitoring for macOS');
+        
+        // Check memory usage periodically
+        this.memoryMonitorInterval = setInterval(() => {
+            this.checkMemoryUsage();
+        }, this.memoryCheckInterval);
+
+        // Setup cleanup on app exit
+        const cleanup = () => {
+            this.cleanupResources();
+        };
+
+        process.on('exit', cleanup);
+        process.on('SIGINT', cleanup);
+        process.on('SIGTERM', cleanup);
+    }
+
+    checkMemoryUsage() {
+        try {
+            const memUsage = process.memoryUsage();
+            const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+            
+            console.log(`[DatabaseService] Memory usage: ${heapUsedMB}MB heap used`);
+            
+            // If memory usage is high, trigger cleanup
+            if (heapUsedMB > 200) { // 200MB threshold
+                console.log('[DatabaseService] High memory usage detected, triggering cleanup');
+                this.performMemoryCleanup();
+            }
+        } catch (error) {
+            console.error('[DatabaseService] Error checking memory usage:', error);
+        }
+    }
+
+    performMemoryCleanup() {
+        try {
+            // Clean up file watchers
+            this.cleanupFileWatchers();
+            
+            // Clean up temporary files
+            this.cleanupTempFiles();
+            
+            // Force garbage collection if available
+            if (global.gc) {
+                global.gc();
+                console.log('[DatabaseService] Forced garbage collection');
+            }
+        } catch (error) {
+            console.error('[DatabaseService] Error during memory cleanup:', error);
+        }
+    }
+
+    cleanupFileWatchers() {
+        try {
+            let cleanedCount = 0;
+            for (const [key, watcher] of this.activeWatchers.entries()) {
+                if (watcher && typeof watcher.close === 'function') {
+                    watcher.close();
+                    this.activeWatchers.delete(key);
+                    cleanedCount++;
+                }
+            }
+            if (cleanedCount > 0) {
+                console.log(`[DatabaseService] Cleaned up ${cleanedCount} file watchers`);
+            }
+        } catch (error) {
+            console.error('[DatabaseService] Error cleaning up file watchers:', error);
+        }
+    }
+
+    cleanupTempFiles() {
+        try {
+            let cleanedCount = 0;
+            for (const tempFile of this.tempFiles) {
+                try {
+                    if (fs.existsSync(tempFile)) {
+                        fs.unlinkSync(tempFile);
+                        cleanedCount++;
+                    }
+                    this.tempFiles.delete(tempFile);
+                } catch (error) {
+                    console.error(`[DatabaseService] Error cleaning temp file ${tempFile}:`, error);
+                }
+            }
+            if (cleanedCount > 0) {
+                console.log(`[DatabaseService] Cleaned up ${cleanedCount} temporary files`);
+            }
+        } catch (error) {
+            console.error('[DatabaseService] Error cleaning up temp files:', error);
+        }
+    }
+
+    cleanupResources() {
+        try {
+            console.log('[DatabaseService] Performing final resource cleanup');
+            
+            // Clear intervals
+            if (this.memoryMonitorInterval) {
+                clearInterval(this.memoryMonitorInterval);
+            }
+            if (this.closeTimeout) {
+                clearTimeout(this.closeTimeout);
+            }
+
+            // Cleanup watchers and temp files
+            this.cleanupFileWatchers();
+            this.cleanupTempFiles();
+
+            console.log('[DatabaseService] Resource cleanup completed');
+        } catch (error) {
+            console.error('[DatabaseService] Error during final cleanup:', error);
+        }
+    }
+
+    // Enhanced file watcher registration for tracking
+    registerFileWatcher(key, watcher) {
+        // Clean up existing watcher if present
+        if (this.activeWatchers.has(key)) {
+            const existingWatcher = this.activeWatchers.get(key);
+            if (existingWatcher && typeof existingWatcher.close === 'function') {
+                existingWatcher.close();
+            }
+        }
+        
+        this.activeWatchers.set(key, watcher);
+        console.log(`[DatabaseService] Registered file watcher: ${key}`);
+    }
+
+    // Enhanced temp file registration for tracking
+    registerTempFile(filePath) {
+        this.tempFiles.add(filePath);
+        console.log(`[DatabaseService] Registered temp file: ${filePath}`);
     }
 }
 

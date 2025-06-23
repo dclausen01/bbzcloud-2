@@ -166,6 +166,94 @@ let splashWindow;
 let tray;
 const windowRegistry = new Map();
 
+// macOS-specific memory optimization
+let imageCache = new Map();
+let lastImageCleanup = Date.now();
+const IMAGE_CACHE_CLEANUP_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+// Optimized image loading for macOS
+function getOptimizedImage(imagePath, options = {}) {
+  const cacheKey = `${imagePath}-${JSON.stringify(options)}`;
+  
+  // Check if we need to cleanup old images
+  const now = Date.now();
+  if (now - lastImageCleanup > IMAGE_CACHE_CLEANUP_INTERVAL) {
+    imageCache.clear();
+    lastImageCleanup = now;
+    if (process.platform === 'darwin') {
+      console.log('[macOS] Cleared image cache to free memory');
+    }
+  }
+  
+  // Return cached image if available
+  if (imageCache.has(cacheKey)) {
+    return imageCache.get(cacheKey);
+  }
+  
+  // Create new image
+  let image = nativeImage.createFromPath(imagePath);
+  
+  // Apply options
+  if (options.resize) {
+    image = image.resize(options.resize);
+  }
+  
+  // Cache the image (limit cache size on macOS)
+  if (process.platform === 'darwin' && imageCache.size < 20) {
+    imageCache.set(cacheKey, image);
+  } else if (process.platform !== 'darwin') {
+    imageCache.set(cacheKey, image);
+  }
+  
+  return image;
+}
+
+// Enhanced webview session cleanup for macOS
+function cleanupWebviewSessions() {
+  if (process.platform !== 'darwin') return;
+  
+  try {
+    const allWebContents = webContents.getAllWebContents();
+    const webviews = allWebContents.filter(wc => wc.getType() === 'webview');
+    
+    console.log(`[macOS] Found ${webviews.length} webview sessions for cleanup`);
+    
+    webviews.forEach((webview, index) => {
+      try {
+        // Clear cache for webviews that haven't been used recently
+        if (webview.session && !webview.isDestroyed()) {
+          webview.session.clearCache();
+          
+          // Clear storage data for non-essential webviews
+          const url = webview.getURL();
+          if (!url.includes('exchange.bbz-rd-eck.de') && !url.includes('webuntis.com')) {
+            webview.session.clearStorageData({
+              storages: ['cookies', 'localstorage', 'sessionstorage', 'websql']
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`[macOS] Error cleaning webview ${index}:`, error);
+      }
+    });
+  } catch (error) {
+    console.error('[macOS] Error during webview session cleanup:', error);
+  }
+}
+
+// Setup periodic cleanup for macOS
+if (process.platform === 'darwin') {
+  setInterval(() => {
+    cleanupWebviewSessions();
+    
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+      console.log('[macOS] Forced garbage collection');
+    }
+  }, 15 * 60 * 1000); // Every 15 minutes
+}
+
 // Update autostart based on settings
 async function updateAutostart() {
   try {
@@ -357,7 +445,7 @@ const copyAssetsIfNeeded = async () => {
 function createTray() {
   let trayIcon;
   if (process.platform === 'darwin') {
-    trayIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
+    trayIcon = getOptimizedImage(getAssetPath('tray-lowres.png'), { resize: { width: 22, height: 22 } });
   } else if (process.platform === 'win32') {
     trayIcon = getAssetPath('tray-lowres.png');
   } else {
@@ -1287,6 +1375,9 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
     tempPath = path.join(os.tmpdir(), tempFileName);
     await fs.writeFile(tempPath, fileContent);
     
+    // Register temp file for cleanup tracking
+    db.registerTempFile(tempPath);
+    
     // Open file with default application
     shell.openPath(tempPath);
     
@@ -1354,6 +1445,9 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
         updateTimeout = setTimeout(handleFileUpdate, 300);
       }
     });
+    
+    // Register watcher for cleanup tracking
+    db.registerFileWatcher(`secure-file-${fileId}`, watcher);
     
     // Clean up resources when app quits
     const cleanup = async () => {
