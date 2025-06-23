@@ -135,9 +135,11 @@ jobs:
           npm_config_target_arch: "arm64"
           npm_config_target_platform: "linux"
           npm_config_arch: "arm64"
+          npm_config_cache: "/tmp/.npm"
+          npm_config_build_from_source: "true"
         run: |
           sudo npm install -g node-gyp@9.4.0
-          npm install
+          npm install --ignore-scripts
           sudo npm install -g electron@32.3.3 electron-builder
 
       - name: Rebuild native modules for ARM64
@@ -146,11 +148,24 @@ jobs:
           CXX: aarch64-linux-gnu-g++
           AR: aarch64-linux-gnu-ar
           STRIP: aarch64-linux-gnu-strip
+          LINK: aarch64-linux-gnu-gcc
           npm_config_target_arch: "arm64"
           npm_config_target_platform: "linux"
           npm_config_arch: "arm64"
+          npm_config_disturl: "https://electronjs.org/headers"
+          npm_config_runtime: "electron"
+          npm_config_target: "32.3.3"
+          npm_config_build_from_source: "true"
+          npm_config_force: "true"
+          CFLAGS: "-march=armv8-a"
+          CXXFLAGS: "-march=armv8-a"
+          LDFLAGS: ""
         run: |
-          npm rebuild sqlite3 --build-from-source
+          # Rebuild sqlite3 with proper ARM64 configuration
+          npm rebuild sqlite3 --build-from-source --target_arch=arm64 --target_platform=linux --dist-url=https://electronjs.org/headers --runtime=electron --target=32.3.3
+
+          # Rebuild keytar with proper ARM64 configuration
+          npm rebuild keytar --build-from-source --target_arch=arm64 --target_platform=linux --dist-url=https://electronjs.org/headers --runtime=electron --target=32.3.3
 
       - name: Build React app
         run: npm run build
