@@ -908,4 +908,96 @@ function App() {
                       type="text"
                       value={webuntisEmail}
                       onChange={(e) => setWebuntisEmail(e.target.value)}
-                      placeholder
+                      placeholder="WebUntis Benutzername (optional)"
+                    />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>WebUntis Passwort</FormLabel>
+                    <InputGroup>
+                      <Input
+                        type={showWebuntisPassword ? 'text' : 'password'}
+                        value={webuntisPassword}
+                        onChange={(e) => setWebuntisPassword(e.target.value)}
+                        placeholder="WebUntis Passwort (optional)"
+                      />
+                      <InputRightElement width="4.5rem">
+                        <Button h="1.75rem" size="sm" onClick={() => setShowWebuntisPassword(!showWebuntisPassword)}>
+                          {showWebuntisPassword ? 'Verbergen' : 'Zeigen'}
+                        </Button>
+                      </InputRightElement>
+                    </InputGroup>
+                  </FormControl>
+                </>
+              )}
+
+              {welcomeStep === 2 && (
+                <>
+                  <Text>
+                    Wählen Sie einen Speicherort für die Datenbank aus. Hier werden Ihre Einstellungen,
+                    ToDos und benutzerdefinierten Apps gespeichert.
+                  </Text>
+                  <FormControl>
+                    <FormLabel>Datenbank-Speicherort</FormLabel>
+                    <Input value={dbPath} isReadOnly placeholder="Standardspeicherort" />
+                  </FormControl>
+                  <Button onClick={async () => {
+                    try {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = '.db';
+                      input.style.display = 'none';
+                      document.body.appendChild(input);
+
+                      input.onchange = async (e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const result = await window.electron.changeDatabaseLocation(file.path);
+                          if (result.success) {
+                            setDbPath(file.path);
+                            toast({
+                              title: 'Datenbank-Speicherort festgelegt',
+                              status: 'success',
+                              duration: 3000,
+                            });
+                          } else {
+                            throw new Error(result.error);
+                          }
+                        }
+                        document.body.removeChild(input);
+                      };
+
+                      input.click();
+                    } catch (error) {
+                      toast({
+                        title: 'Fehler beim Festlegen des Speicherorts',
+                        description: error.message,
+                        status: 'error',
+                        duration: 5000,
+                      });
+                    }
+                  }}>
+                    Speicherort auswählen
+                  </Button>
+                </>
+              )}
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            {welcomeStep === 1 ? (
+              <Button colorScheme="blue" onClick={handleCredentialsSubmit} isDisabled={!email}>
+                Weiter
+              </Button>
+            ) : (
+              <Button colorScheme="blue" onClick={handleCredentialsSubmit}>
+                Fertig
+              </Button>
+            )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </Box>
+  );
+}
+
+export default App;
