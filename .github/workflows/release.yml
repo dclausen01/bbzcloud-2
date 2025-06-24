@@ -89,8 +89,7 @@ jobs:
             dist/*.yml
 
   build-linux-arm64:
-    runs-on: ubuntu-latest
-    needs: build-linux-x64
+    runs-on: ubuntu-24.04-arm
     env:
       NODE_GYP_FORCE_PYTHON: "python3"
       npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
@@ -120,69 +119,25 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install system dependencies for cross-compilation
+      - name: Install system dependencies
         run: |
-          # Install native build tools first (amd64)
           sudo apt-get update
           sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-          # Add ARM64 architecture
-          sudo dpkg --add-architecture arm64
-
-          # Add ARM64 repositories to a separate file to avoid conflicts
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64-ports.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.list
-
-          # Update package lists
-          sudo apt-get update
-
-          # Try to install ARM64 libraries, but don't fail if some are missing
-          sudo apt-get install -y libsecret-1-dev:arm64 || echo "libsecret-1-dev:arm64 not available, continuing..."
-          sudo apt-get install -y libglib2.0-dev:arm64 || echo "libglib2.0-dev:arm64 not available, continuing..."
-          sudo apt-get install -y libgio-2.0-dev:arm64 || echo "libgio-2.0-dev:arm64 not available, continuing..."
-
-      - name: Install dependencies for ARM64
-        env:
-          CC: aarch64-linux-gnu-gcc
-          CXX: aarch64-linux-gnu-g++
-          AR: aarch64-linux-gnu-ar
-          STRIP: aarch64-linux-gnu-strip
-          npm_config_target_arch: "arm64"
-          npm_config_target_platform: "linux"
-          npm_config_arch: "arm64"
-          npm_config_cache: "/tmp/.npm"
-          npm_config_build_from_source: "true"
+      - name: Install dependencies
         run: |
           sudo npm install -g node-gyp@9.4.0
-          npm install --ignore-scripts
+          npm install
           sudo npm install -g electron@32.3.3 electron-builder
+          npm rebuild sqlite3 --build-from-source
 
-      - name: Rebuild native modules for ARM64
-        env:
-          CC: aarch64-linux-gnu-gcc
-          CXX: aarch64-linux-gnu-g++
-          AR: aarch64-linux-gnu-ar
-          STRIP: aarch64-linux-gnu-strip
-          LINK: aarch64-linux-gnu-gcc
-          npm_config_target_arch: "arm64"
-          npm_config_target_platform: "linux"
-          npm_config_arch: "arm64"
-          npm_config_disturl: "https://electronjs.org/headers"
-          npm_config_runtime: "electron"
-          npm_config_target: "32.3.3"
-          npm_config_build_from_source: "true"
-          npm_config_force: "true"
-          CFLAGS: "-march=armv8-a"
-          CXXFLAGS: "-march=armv8-a"
-          LDFLAGS: ""
+      - name: Set 7zip permissions
         run: |
-          # Rebuild sqlite3 with proper ARM64 configuration
-          npm rebuild sqlite3 --build-from-source --target_arch=arm64 --target_platform=linux --dist-url=https://electronjs.org/headers --runtime=electron --target=32.3.3
+          sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/7zip-bin/linux/arm64/7za
 
-          # Rebuild keytar with proper ARM64 configuration
-          npm rebuild keytar --build-from-source --target_arch=arm64 --target_platform=linux --dist-url=https://electronjs.org/headers --runtime=electron --target=32.3.3
+      - name: Get version
+        id: get_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
       - name: Build React app
         run: npm run build
@@ -191,9 +146,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
-          npm_config_target_arch: "arm64"
-          npm_config_target_platform: "linux"
-          npm_config_arch: "arm64"
         run: |
           electron-builder --linux --arm64 -c.linux.target=AppImage -c.linux.target=deb -c.linux.target=rpm -c.linux.target=pacman
 
@@ -221,7 +173,7 @@ jobs:
 
   create-release:
     runs-on: ubuntu-latest
-    needs: [build-linux-x64, build-linux-arm64]
+    needs: [build-linux-x64, build-linux-arm64, build-mac, build-windows]
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
@@ -232,23 +184,38 @@ jobs:
         id: get_version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Download x64 artifacts
+      - name: Download Linux x64 artifacts
         uses: actions/download-artifact@v4
         with:
           name: linux-x64-artifacts
-          path: dist-x64/
+          path: dist-linux-x64/
 
-      - name: Download ARM64 artifacts
+      - name: Download Linux ARM64 artifacts
         uses: actions/download-artifact@v4
         with:
           name: linux-arm64-artifacts
-          path: dist-arm64/
+          path: dist-linux-arm64/
 
-      - name: Combine artifacts
+      - name: Download Mac artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-artifacts
+          path: dist-mac/
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist-windows/
+
+      - name: Combine all artifacts
         run: |
           mkdir -p dist
-          cp -r dist-x64/* dist/ 2>/dev/null || true
-          cp -r dist-arm64/* dist/ 2>/dev/null || true
+          cp -r dist-linux-x64/* dist/ 2>/dev/null || true
+          cp -r dist-linux-arm64/* dist/ 2>/dev/null || true
+          cp -r dist-mac/* dist/ 2>/dev/null || true
+          cp -r dist-windows/* dist/ 2>/dev/null || true
+          echo "Combined artifacts:"
           ls -la dist/
 
       - name: Get previous version
@@ -274,24 +241,35 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.pacman
+            dist/*.dmg
+            dist/*.dmg.blockmap
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/*.msi
             dist/*.yml
 
       - name: Upload Test Build Artifacts
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: test-build-linux-${{ steps.get_version.outputs.version }}
+          name: test-build-all-platforms-${{ steps.get_version.outputs.version }}
           path: |
             dist/*.AppImage
             dist/*.deb
             dist/*.rpm
             dist/*.pacman
+            dist/*.dmg
+            dist/*.dmg.blockmap
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/*.msi
             dist/*.yml
           retention-days: 7
 
   build-mac:
-    needs: create-release
     runs-on: macos-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
@@ -317,6 +295,10 @@ jobs:
           sudo npm install -g electron@32.3.3 electron-builder
           npm rebuild sqlite3 --build-from-source
 
+      - name: Get version
+        id: get_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Build Mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -325,21 +307,19 @@ jobs:
           npm run build
           electron-builder --mac --x64 --arm64
 
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Mac artifacts
+        uses: actions/upload-artifact@v4
         with:
-          draft: true
-          tag_name: v${{ needs.create-release.outputs.version }}
-          files: |
+          name: mac-artifacts
+          path: |
             dist/*.dmg
             dist/*.dmg.blockmap
             dist/*.yml
 
   build-windows:
-    needs: create-release
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
@@ -366,6 +346,10 @@ jobs:
           npm install
           npm install -g electron@32.3.3 electron-builder
 
+      - name: Get version
+        id: get_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Build Windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -374,14 +358,11 @@ jobs:
           npm run build
           electron-builder --win --x64
 
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
         with:
-          draft: true
-          tag_name: v${{ needs.create-release.outputs.version }}
-          files: |
+          name: windows-artifacts
+          path: |
             dist/*.exe
             dist/*.exe.blockmap
             dist/*.msi
