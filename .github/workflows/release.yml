@@ -122,7 +122,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot
+          sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools
 
       - name: Install dependencies
         run: |
@@ -153,7 +153,7 @@ jobs:
         run: |
           echo "Checking built ARM64 binaries:"
           ls -la dist/
-          for file in dist/*.AppImage dist/*.deb dist/*.rpm dist/*.pacman; do
+          for file in dist/*.AppImage dist/*.deb dist/*.pacman; do
             if [ -f "$file" ]; then
               echo "File: $file"
               file "$file" || true
@@ -167,7 +167,6 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
-            dist/*.rpm
             dist/*.pacman
             dist/*.yml
 
@@ -355,7 +354,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
-          CI=false npm run build
+          npm run build
           electron-builder --win --x64
 
       - name: Upload Windows artifacts
