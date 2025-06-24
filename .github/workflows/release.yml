@@ -74,7 +74,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
-          npm run build
+          CI=false npm run build
           electron-builder --linux --x64 -c.linux.target=AppImage -c.linux.target=deb -c.linux.target=rpm -c.linux.target=pacman
 
       - name: Upload x64 artifacts
@@ -140,7 +140,7 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
       - name: Build React app
-        run: npm run build
+        run: CI=false npm run build
 
       - name: Build Linux ARM64
         env:
@@ -304,7 +304,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
-          npm run build
+          CI=false npm run build
           electron-builder --mac --x64 --arm64
 
       - name: Upload Mac artifacts
@@ -355,7 +355,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
-          npm run build
+          CI=false npm run build
           electron-builder --win --x64
 
       - name: Upload Windows artifacts
