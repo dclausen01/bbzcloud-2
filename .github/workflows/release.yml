@@ -123,16 +123,26 @@ jobs:
       - name: Install system dependencies for cross-compilation
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-          # Install ARM64 cross-compilation libraries for keytar
-          sudo apt-get install -y libsecret-1-dev:arm64 libglib2.0-dev:arm64 libgio-2.0-dev:arm64 || true
-
-          # Alternative: Install multiarch support and ARM64 libraries
+          
+          # Add ARM64 architecture support FIRST
           sudo dpkg --add-architecture arm64
+          
+          # Update sources.list to include ARM64 repositories
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs) main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs)-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          
+          # Update package lists with new architecture
           sudo apt-get update
-          sudo apt-get install -y libsecret-1-dev:arm64 libglib2.0-dev:arm64 || true
+          
+          # Install native x64 build tools
+          sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot
+          
+          # Install ARM64 cross-compilation toolchain
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          
+          # Install ARM64 libraries
+          sudo apt-get install -y libsecret-1-dev:arm64 libglib2.0-dev:arm64 libgio-2.0-dev:arm64
 
       - name: Install dependencies for ARM64
         env:
