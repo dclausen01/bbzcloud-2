@@ -147,13 +147,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
-          electron-builder --linux --arm64 -c.linux.target=AppImage -c.linux.target=deb -c.linux.target=pacman
+          electron-builder --linux --arm64 -c.linux.target=AppImage -c.linux.target=deb
 
       - name: Verify ARM64 binaries
         run: |
           echo "Checking built ARM64 binaries:"
           ls -la dist/
-          for file in dist/*.AppImage dist/*.deb dist/*.pacman; do
+          for file in dist/*.AppImage dist/*.deb; do
             if [ -f "$file" ]; then
               echo "File: $file"
               file "$file" || true
@@ -167,7 +167,6 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
-            dist/*.pacman
             dist/*.yml
 
   create-release:
