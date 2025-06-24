@@ -123,25 +123,27 @@ jobs:
       - name: Install system dependencies for cross-compilation
         run: |
           sudo apt-get update
-          
-          # Add ARM64 architecture support FIRST
+
+          # Add ARM64 architecture
           sudo dpkg --add-architecture arm64
-          
-          # Update sources.list to include ARM64 repositories
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs) main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs)-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          
-          # Update package lists with new architecture
+
+          # Configure sources.list to use ports.ubuntu.com for ARM64 packages
+          # and keep the default repositories for amd64
+          sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null <<EOF
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-security main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-backports main restricted universe multiverse
+          EOF
+
+          # Update package lists
           sudo apt-get update
-          
-          # Install native x64 build tools
+
+          # Install native build tools and cross-compilation toolchain
           sudo apt-get install -y libsecret-1-dev gcc g++ make libarchive-tools rpm fakeroot
-          
-          # Install ARM64 cross-compilation toolchain
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          
-          # Install ARM64 libraries
+
+          # Install ARM64 development libraries
           sudo apt-get install -y libsecret-1-dev:arm64 libglib2.0-dev:arm64 libgio-2.0-dev:arm64
 
       - name: Install dependencies for ARM64
