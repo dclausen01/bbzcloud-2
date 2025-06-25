@@ -142,18 +142,39 @@ jobs:
       - name: Build React app
         run: CI=false npm run build
 
+      - name: Create ARM64 config
+        run: |
+          cat > electron-builder-arm64.json << 'EOF'
+          {
+            "extends": "./package.json",
+            "linux": {
+              "target": ["AppImage"],
+              "icon": "assets/images/icon.png",
+              "category": "Education",
+              "desktop": {
+                "entry": {
+                  "Name": "BBZ Cloud",
+                  "Comment": "Die Desktop-App für die BBZ Cloud",
+                  "Categories": "Education;Network;",
+                  "StartupWMClass": "BBZ Cloud"
+                }
+              }
+            }
+          }
+          EOF
+
       - name: Build Linux ARM64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
-          electron-builder --linux --arm64 -c.linux.target=AppImage -c.linux.target=deb
+          electron-builder --linux --arm64 --config electron-builder-arm64.json
 
       - name: Verify ARM64 binaries
         run: |
           echo "Checking built ARM64 binaries:"
           ls -la dist/
-          for file in dist/*.AppImage dist/*.deb; do
+          for file in dist/*.AppImage; do
             if [ -f "$file" ]; then
               echo "File: $file"
               file "$file" || true
@@ -166,7 +187,6 @@ jobs:
           name: linux-arm64-artifacts
           path: |
             dist/*.AppImage
-            dist/*.deb
             dist/*.yml
 
   create-release:
