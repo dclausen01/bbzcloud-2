@@ -146,7 +146,28 @@ jobs:
         run: |
           cat > electron-builder-arm64.json << 'EOF'
           {
-            "extends": "./package.json",
+            "appId": "com.bbzcloud.app",
+            "productName": "BBZ Cloud",
+            "artifactName": "BBZ-Cloud-${version}-${arch}.${ext}",
+            "files": [
+              "build/**/*",
+              "node_modules/**/*",
+              "package.json",
+              "public/electron.js",
+              "public/preload.js",
+              "public/webview-preload.js",
+              "public/services/**/*"
+            ],
+            "extraResources": [
+              {
+                "from": "assets",
+                "to": "assets",
+                "filter": ["**/*"]
+              }
+            ],
+            "directories": {
+              "buildResources": "assets"
+            },
             "linux": {
               "target": ["AppImage"],
               "icon": "assets/images/icon.png",
@@ -159,6 +180,11 @@ jobs:
                   "StartupWMClass": "BBZ Cloud"
                 }
               }
+            },
+            "publish": {
+              "provider": "github",
+              "owner": "dclausen01",
+              "repo": "bbzcloud-2"
             }
           }
           EOF
