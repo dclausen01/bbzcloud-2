@@ -984,15 +984,20 @@ function App() {
             </VStack>
           </ModalBody>
           <ModalFooter>
-            {welcomeStep === 1 ? (
-              <Button colorScheme="blue" onClick={handleCredentialsSubmit} isDisabled={!email}>
-                Weiter
+            <Flex justify="space-between" width="100%">
+              <Button variant="ghost" onClick={() => setShowWelcomeModal(false)}>
+                Überspringen
               </Button>
-            ) : (
-              <Button colorScheme="blue" onClick={handleCredentialsSubmit}>
-                Fertig
-              </Button>
-            )}
+              {welcomeStep === 1 ? (
+                <Button colorScheme="blue" onClick={handleCredentialsSubmit} isDisabled={!email}>
+                  Weiter
+                </Button>
+              ) : (
+                <Button colorScheme="blue" onClick={handleCredentialsSubmit}>
+                  Fertig
+                </Button>
+              )}
+            </Flex>
           </ModalFooter>
         </ModalContent>
       </Modal>
