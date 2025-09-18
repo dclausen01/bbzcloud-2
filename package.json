@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.41",
+  "version": "2.0.43",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -68,29 +68,10 @@
     "check-updates": "npm outdated"
   },
   "build": {
-    "appId": "com.bbzcloud.app",
+    "appId": "ch.bbz.multicloud",
     "productName": "BBZ Cloud",
-    "artifactName": "BBZ-Cloud-${version}-${arch}.${ext}",
-    "files": [
-      "build/**/*",
-      "node_modules/**/*",
-      "package.json",
-      "public/electron.js",
-      "public/preload.js",
-      "public/webview-preload.js",
-      "public/services/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "assets",
-        "to": "assets",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "directories": {
-      "buildResources": "assets"
+      "output": "dist"
     },
     "win": {
       "target": [
@@ -118,7 +99,12 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
       ],
       "icon": "assets/images/icon.png",
       "category": "public.app-category.education",
@@ -126,7 +112,8 @@
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "identity": null
     },
     "linux": {
       "target": [
