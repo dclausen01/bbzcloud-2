@@ -10,6 +10,12 @@ const standardApps = {
     "url": "https://portal.schule-sh.de/",
     "buttonVariant": "solid"
   },
+  "DMS - Anträge & Workflows": {
+    "id": "DMS",
+    "title": "DMS",
+    "url": "https://dms.bbz-rd-eck.de",
+    "buttonVariant": "solid"
+  },
   "Hubbs": {
     "id": "Hubbs",
     "title": "Hubbs",
