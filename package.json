@@ -102,7 +102,7 @@
           "target": "dmg",
           "arch": [
             "x64",
-            "aarch64"
+            "arm64"
           ]
         }
       ],
