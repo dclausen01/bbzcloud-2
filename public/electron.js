@@ -16,7 +16,7 @@ const fs = require('fs-extra');
 const { Notification } = require('electron');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
-const DatabaseService = require('./services/DatabaseService');
+const DatabaseService = require('./services/DatabaseServiceNew');
 
 // Update check interval (15 minutes)
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
@@ -257,8 +257,8 @@ if (process.platform === 'darwin') {
 // Update autostart based on settings
 async function updateAutostart() {
   try {
-    // Ensure database is initialized before trying to get settings
-    await db.ensureInitialized();
+    // Ensure database is connected before trying to get settings
+    db.ensureConnection();
     
     const result = await db.getSettings();
     const settings = result?.settings || result || {};
@@ -545,8 +545,8 @@ function calculateMinWidth(zoomFactor) {
 
 async function createWindow() {
   const windowState = restoreWindowState();
-  // Ensure database is initialized before creating main window
-  await db.ensureInitialized();
+  // Ensure database is connected before creating main window
+  db.ensureConnection();
   
   // Debug: Check settings right before window creation
   const settings = await db.getSettings();
