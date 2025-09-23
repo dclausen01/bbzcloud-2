@@ -350,7 +350,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
           npm run build
-          electron-builder --mac --x64 --aarch64 --config.mac.identity=null --config.mac.hardenedRuntime=true --config.mac.gatekeeperAssess=false
+          electron-builder --mac --x64 --arm64 --config.mac.identity=null --config.mac.hardenedRuntime=true --config.mac.gatekeeperAssess=false
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
