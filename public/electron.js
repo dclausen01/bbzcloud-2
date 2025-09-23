@@ -1513,8 +1513,11 @@ app.on('ready', async () => {
       }
     }
     
-    // Run credential migration on startup
-    await credentialService.runStartupMigration();
+    // Run credential migration on startup (non-blocking)
+    credentialService.runStartupMigration().catch(error => {
+      console.error('[Migration] Migration failed during startup:', error);
+      // Continue with app initialization even if migration fails
+    });
     
     await copyAssetsIfNeeded();
     createTray();

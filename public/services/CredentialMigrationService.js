@@ -174,7 +174,12 @@ class CredentialMigrationService {
     async getPasswordCompat(service, account) {
         // If migration is completed, use only safeStorage
         if (this.isMigrationCompleted()) {
-            return await this.getPassword(service, account);
+            try {
+                return await this.getPassword(service, account);
+            } catch (error) {
+                console.error(`[Migration] Error getting password from safeStorage for ${service}:${account}:`, error);
+                return null;
+            }
         }
 
         // During migration phase, try keytar first, then safeStorage
@@ -192,6 +197,7 @@ class CredentialMigrationService {
         try {
             return await this.getPassword(service, account);
         } catch (error) {
+            console.error(`[Migration] Error getting password from safeStorage for ${service}:${account}:`, error);
             return null;
         }
     }
