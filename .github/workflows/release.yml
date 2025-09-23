@@ -24,7 +24,7 @@ jobs:
     env:
       NODE_GYP_FORCE_PYTHON: "python3"
       npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
-      npm_config_target: "32.3.3"
+      npm_config_target: "38.1.2"
       npm_config_runtime: "electron"
       npm_config_arch: "x64"
       npm_config_target_arch: "x64"
@@ -58,8 +58,8 @@ jobs:
         run: |
           sudo npm install -g node-gyp@9.4.0
           npm install
-          sudo npm install -g electron@32.3.3 electron-builder
-          npm rebuild sqlite3 --build-from-source
+          sudo npm install -g electron@38.1.2 electron-builder
+          # better-sqlite3 will be built automatically during npm install
 
       - name: Set 7zip permissions
         run: |
@@ -93,7 +93,7 @@ jobs:
     env:
       NODE_GYP_FORCE_PYTHON: "python3"
       npm_config_node_gyp: "/usr/local/lib/node_modules/node-gyp/bin/node-gyp.js"
-      npm_config_target: "32.3.3"
+      npm_config_target: "38.1.2"
       npm_config_runtime: "electron"
       npm_config_arch: "arm64"
       npm_config_target_arch: "arm64"
@@ -128,8 +128,8 @@ jobs:
         run: |
           sudo npm install -g node-gyp@9.4.0
           npm install
-          sudo npm install -g electron@32.3.3 electron-builder
-          npm rebuild sqlite3 --build-from-source
+          sudo npm install -g electron@38.1.2 electron-builder
+          # better-sqlite3 will be built automatically during npm install
 
       - name: Set 7zip permissions
         run: |
@@ -336,8 +336,8 @@ jobs:
       - name: Install dependencies
         run: |
           npm install
-          sudo npm install -g electron@32.3.3 electron-builder
-          npm rebuild sqlite3 --build-from-source
+          sudo npm install -g electron@38.1.2 electron-builder
+          # better-sqlite3 will be built automatically during npm install
 
       - name: Get version
         id: get_version
@@ -389,7 +389,7 @@ jobs:
           npm_config_build_from_source: false
         run: |
           npm install
-          npm install -g electron@32.3.3 electron-builder
+          npm install -g electron@38.1.2 electron-builder
 
       - name: Get version
         id: get_version

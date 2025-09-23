@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.43",
+  "version": "2.1.0",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -37,17 +37,17 @@
     "react-markdown": "^9.0.1",
     "react-router-dom": "^6.28.0",
     "react-scripts": "5.0.1",
-    "sqlite3": "^5.1.7",
+    "better-sqlite3": "^11.5.0",
     "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "^33.2.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^38.1.2",
+    "electron-builder": "^25.1.8",
     "electron-devtools-installer": "^3.2.0",
-    "node-gyp": "^10.2.0",
+    "node-gyp": "^10.3.1",
     "wait-on": "^8.0.1"
   },
   "scripts": {
