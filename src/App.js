@@ -28,12 +28,11 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CloseIcon } from '@chakra-ui/icons';
+import { useColorMode, useColorModeValue } from '@chakra-ui/color-mode';
 import {
   Box,
   Flex,
   IconButton,
-  useColorMode,
-  useColorModeValue,
   useDisclosure,
   Drawer,
   DrawerBody,

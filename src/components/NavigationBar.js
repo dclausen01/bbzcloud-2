@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import AppIcon from './AppIcon';
+import { useColorMode } from '@chakra-ui/color-mode';
 import {
   Flex,
   Button,
   IconButton,
   Tooltip,
   ButtonGroup,
-  useColorMode,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
 

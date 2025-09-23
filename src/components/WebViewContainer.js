@@ -1,11 +1,11 @@
 /* eslint-disable default-case */
 import React, { useRef, useEffect, useState, forwardRef, useCallback } from 'react';
+import { useColorMode } from '@chakra-ui/color-mode';
 import {
   Box,
   Flex,
   Progress,
   useToast,
-  useColorMode,
   Image as ChakraImage,
   Text,
   Button,

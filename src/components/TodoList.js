@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useColorModeValue } from '@chakra-ui/color-mode';
 import {
   Box,
   VStack,
   HStack,
   Input,
   IconButton,
-  useColorModeValue,
   Button,
   Menu,
   MenuButton,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useColorMode } from '@chakra-ui/color-mode';
 import {
   Box,
   Button,
@@ -11,7 +12,6 @@ import {
   Tr,
   Th,
   Td,
-  useColorMode,
   IconButton,
   useDisclosure,
   AlertDialog,

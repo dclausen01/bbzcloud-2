@@ -1,4 +1,5 @@
 import React from 'react';
+import { useColorMode } from '@chakra-ui/color-mode';
 import {
   Menu,
   MenuButton,
@@ -8,7 +9,6 @@ import {
   Button,
   Text,
   HStack,
-  useColorMode,
   IconButton,
   Image,
 } from '@chakra-ui/react';
