@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.0.43",
+  "version": "2.0.44",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -103,7 +103,7 @@
           "target": "dmg",
           "arch": [
             "x64",
-            "arm64"
+            "aarch64"
           ]
         }
       ],
@@ -177,4 +177,4 @@
       "last 1 safari version"
     ]
   }
-} 
+}
