@@ -11,8 +11,8 @@ const webviewsToReload = ['outlook', 'webuntis'];
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
-const keytar = require('keytar');
 const fs = require('fs-extra');
+const CredentialMigrationService = require('./services/CredentialMigrationService');
 const { Notification } = require('electron');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
@@ -160,6 +160,9 @@ const store = new Store({
 
 // Initialize database service
 const db = new DatabaseService();
+
+// Initialize credential migration service
+const credentialService = new CredentialMigrationService();
 
 let mainWindow;
 let splashWindow;
@@ -679,7 +682,7 @@ async function createWebviewWindow(url, title) {
 
 async function getCredentials(service, account) {
   try {
-    return await keytar.getPassword(service, account);
+    return await credentialService.getPasswordCompat(service, account);
   } catch (error) {
     console.error('Error getting credentials:', error);
     return null;
@@ -884,7 +887,7 @@ ipcMain.handle('schedule-notification', async (event, { title, body, when }) => 
 
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
   try {
-    await keytar.setPassword(service, account, password);
+    await credentialService.setPasswordCompat(service, account, password);
     return { success: true };
   } catch (error) {
     console.error('Error in save-credentials:', error);
@@ -1277,10 +1280,10 @@ app.on('before-quit', async () => {
   }
 });
 
-// Get encryption password from keytar
+// Get encryption password from credential service
 async function getEncryptionPassword() {
   try {
-    const password = await keytar.getPassword('bbzcloud', 'password');
+    const password = await credentialService.getPasswordCompat('bbzcloud', 'password');
     if (!password) {
       throw new Error('Kein Passwort in den Einstellungen gefunden');
     }
@@ -1295,7 +1298,7 @@ async function getEncryptionPassword() {
 // Secure store handlers
 ipcMain.handle('check-secure-store-access', async () => {
   try {
-    const password = await keytar.getPassword('bbzcloud', 'password');
+    const password = await credentialService.getPasswordCompat('bbzcloud', 'password');
     if (!password) {
       return { 
         success: false, 
@@ -1509,6 +1512,9 @@ app.on('ready', async () => {
         await secureDelete(path.join(tempDir, file));
       }
     }
+    
+    // Run credential migration on startup
+    await credentialService.runStartupMigration();
     
     await copyAssetsIfNeeded();
     createTray();
