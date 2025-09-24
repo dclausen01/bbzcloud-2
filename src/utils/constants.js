@@ -126,7 +126,7 @@ export const SUCCESS_MESSAGES = {
  */
 export const KEYBOARD_SHORTCUTS = {
   // Global application shortcuts
-  TOGGLE_TODO: 'ctrl+t',           // Open/close todo drawer
+  TOGGLE_TODO: 'ctrl+shift+o',     // Open/close todo drawer
   TOGGLE_SECURE_DOCS: 'ctrl+d',    // Open/close secure documents drawer
   OPEN_SETTINGS: 'ctrl+comma',     // Open settings panel
   RELOAD_CURRENT: 'ctrl+r',        // Reload current webview
@@ -156,6 +156,14 @@ export const KEYBOARD_SHORTCUTS = {
   
   // Utility shortcuts
   PRINT: 'ctrl+p',                 // Print current webview content
+  
+  // Power user shortcuts
+  COMMAND_PALETTE: 'ctrl+shift+p', // Open command palette
+  FOCUS_SEARCH: 'ctrl+f',          // Focus search input
+  NEW_TODO: 'ctrl+shift+t',        // Create new todo item
+  NEW_DOCUMENT: 'ctrl+shift+n',    // Create new document
+  CLOSE_TAB: 'ctrl+w',             // Close current tab
+  NEW_TAB: 'ctrl+t',               // Open new tab
 };
 
 // ============================================================================
