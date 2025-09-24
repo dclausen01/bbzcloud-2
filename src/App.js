@@ -78,6 +78,9 @@ import {
   useModalShortcuts, 
   useWebViewShortcuts 
 } from './hooks/useKeyboardShortcuts';
+import { usePowerUserShortcuts } from './hooks/usePowerUserShortcuts';
+import CommandPalette from './components/CommandPalette';
+import './styles/command-palette.css';
 import { 
   SUCCESS_MESSAGES, 
   ERROR_MESSAGES, 
@@ -137,6 +140,9 @@ function App() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
   const [contextMenuText, setContextMenuText] = useState('');
+  
+  // Command Palette State
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   // Refs for WebView management
   const webViewRef = useRef(null);
@@ -474,6 +480,156 @@ function App() {
   useModalShortcuts(onSettingsClose, isSettingsOpen);
   useModalShortcuts(onTodoClose, isTodoOpen);
   useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
+
+  // Power user shortcuts
+  usePowerUserShortcuts({
+    onOpenCommandPalette: () => setIsCommandPaletteOpen(true),
+    onFocusSearch: () => {
+      // Focus the search input if it exists
+      const searchInput = document.querySelector('input[type="search"]') || document.querySelector('input[type="text"]');
+      if (searchInput) {
+        searchInput.focus();
+      }
+    },
+    onCreateNewTodo: onTodoOpen,
+    onCreateNewDocument: onSecureDocsOpen,
+    onCloseTab: () => {
+      // Close the active webview
+      if (activeWebView) {
+        setActiveWebView(null);
+        setCurrentUrl('');
+      }
+    },
+    onOpenNewTab: () => {
+      // Open a new tab with the first available app
+      const filteredButtons = filterNavigationButtons();
+      const firstVisibleApp = Object.entries(filteredButtons)
+        .find(([_, config]) => config.visible);
+      
+      if (firstVisibleApp) {
+        const [id, config] = firstVisibleApp;
+        const webviewId = id.toLowerCase();
+        setActiveWebView({
+          id: webviewId,
+          url: config.url,
+          title: config.title,
+        });
+        setCurrentUrl(config.url);
+      }
+    },
+    onOpenCustomAppsMenu: () => {
+      // This would require implementing a way to programmatically open the custom apps menu
+      // For now, we'll just open the settings panel as an alternative
+      onSettingsOpen();
+    }
+  }, true);
+
+  // Handle command palette selections
+  const handleCommandSelect = (command) => {
+    switch (command) {
+      case 'TOGGLE_TODO_DRAWER':
+        onTodoOpen();
+        break;
+      case 'TOGGLE_SECURE_DOCS_DRAWER':
+        onSecureDocsOpen();
+        break;
+      case 'OPEN_SETTINGS':
+        onSettingsOpen();
+        break;
+      case 'RELOAD':
+        if (webViewRef.current) {
+          webViewRef.current.reload();
+        }
+        break;
+      case 'NAVIGATE_APP_1':
+      case 'NAVIGATE_APP_2':
+      case 'NAVIGATE_APP_3':
+      case 'NAVIGATE_APP_4':
+      case 'NAVIGATE_APP_5':
+      case 'NAVIGATE_APP_6':
+      case 'NAVIGATE_APP_7':
+      case 'NAVIGATE_APP_8':
+      case 'NAVIGATE_APP_9':
+        // Extract the app number from the command
+        const appNumber = parseInt(command.replace('NAVIGATE_APP_', ''));
+        const navigationItems = Object.entries(filteredNavigationButtons)
+          .filter(([_, config]) => config.visible)
+          .map(([id, config]) => ({ id, ...config }));
+        
+        if (navigationItems[appNumber - 1]) {
+          handleNavigationClick(navigationItems[appNumber - 1].id, false);
+        }
+        break;
+      case 'WEBVIEW_BACK':
+        if (webViewRef.current) {
+          webViewRef.current.goBack();
+        }
+        break;
+      case 'WEBVIEW_FORWARD':
+        if (webViewRef.current) {
+          webViewRef.current.goForward();
+        }
+        break;
+      case 'WEBVIEW_REFRESH':
+        if (webViewRef.current) {
+          webViewRef.current.reload();
+        }
+        break;
+      case 'PRINT':
+        if (webViewRef.current) {
+          webViewRef.current.print();
+        }
+        break;
+      case 'TOGGLE_FULLSCREEN':
+        window.electron.toggleFullscreen();
+        break;
+      case 'CLOSE_MODAL':
+        if (isSettingsOpen) onSettingsClose();
+        if (isTodoOpen) onTodoClose();
+        if (isSecureDocsOpen) onSecureDocsClose();
+        break;
+      case 'COMMAND_PALETTE':
+        setIsCommandPaletteOpen(true);
+        break;
+      case 'FOCUS_SEARCH':
+        const searchInput = document.querySelector('input[type="search"]') || document.querySelector('input[type="text"]');
+        if (searchInput) {
+          searchInput.focus();
+        }
+        break;
+      case 'NEW_TODO':
+        onTodoOpen();
+        break;
+      case 'NEW_DOCUMENT':
+        onSecureDocsOpen();
+        break;
+      case 'CLOSE_TAB':
+        if (activeWebView) {
+          setActiveWebView(null);
+          setCurrentUrl('');
+        }
+        break;
+      case 'NEW_TAB':
+        // Open a new tab with the first available app
+        const filteredButtons = filterNavigationButtons();
+        const firstVisibleApp = Object.entries(filteredButtons)
+          .find(([_, config]) => config.visible);
+        
+        if (firstVisibleApp) {
+          const [id, config] = firstVisibleApp;
+          const webviewId = id.toLowerCase();
+          setActiveWebView({
+            id: webviewId,
+            url: config.url,
+            title: config.title,
+          });
+          setCurrentUrl(config.url);
+        }
+        break;
+      default:
+        console.warn('Unknown command:', command);
+    }
+  };
 
   // ============================================================================
   // ACCESSIBILITY FEATURES

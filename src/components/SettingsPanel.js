@@ -732,6 +732,34 @@ function SettingsPanel({ onClose }) {
         </VStack>
       </Box>
 
+      <Divider />
+
+      <Box>
+        <Text fontSize="lg" fontWeight="bold" mb={4}>
+          Tastaturkürzel
+        </Text>
+        <VStack spacing={4} align="stretch">
+          <Text>
+            BBZCloud unterstützt eine Vielzahl von Tastaturkürzeln, um die Bedienung zu beschleunigen.
+            Die vollständige Liste der verfügbaren Kürzel finden Sie in der Dokumentation.
+          </Text>
+          
+          <Button
+            as="a"
+            href="https://github.com/bbz-cloud/bbzcloud/wiki/Keyboard-Shortcuts"
+            target="_blank"
+            rel="noopener noreferrer"
+            colorScheme="blue"
+          >
+            Dokumentation der Tastaturkürzel öffnen
+          </Button>
+          
+          <Text fontSize="sm" color="gray.500">
+            Tipp: Drücken Sie Ctrl+Shift+P, um die Befehlspalette zu öffnen und schnell auf alle Funktionen zuzugreifen.
+          </Text>
+        </VStack>
+      </Box>
+
       <Button onClick={onClose} mt={4}>
         Schließen
       </Button>
