@@ -4,6 +4,7 @@ import { ChakraProvider, ColorModeScript } from '@chakra-ui/react';
 import App from './App';
 import theme from './theme';
 import { SettingsProvider } from './context/SettingsContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const container = document.getElementById('root');
 const root = createRoot(container);
@@ -12,9 +13,11 @@ root.render(
   <React.StrictMode>
     <ChakraProvider theme={theme}>
       <ColorModeScript initialColorMode={theme.config.initialColorMode} storageKey={theme.config.storageKey} />
-      <SettingsProvider>
-        <App />
-      </SettingsProvider>
+      <ErrorBoundary>
+        <SettingsProvider>
+          <App />
+        </SettingsProvider>
+      </ErrorBoundary>
     </ChakraProvider>
   </React.StrictMode>
 );

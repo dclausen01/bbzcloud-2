@@ -144,24 +144,40 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   // Listen for theme changes from main process
   useEffect(() => {
-    const unsubscribe = window.electron.onThemeChanged((theme) => {
-      setColorMode(theme);
-    });
-    return () => unsubscribe();
+    if (!window.electron || !window.electron.onThemeChanged) {
+      return;
+    }
+    
+    try {
+      const unsubscribe = window.electron.onThemeChanged((theme) => {
+        setColorMode(theme);
+      });
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn('Error setting up theme change listener:', error);
+    }
   }, [setColorMode]);
 
   // Listen for download progress
   useEffect(() => {
-    const unsubscribe = window.electron.onDownloadProgress((progress) => {
-      if (progress === 'completed' || progress === 'failed' || progress === 'interrupted') {
-        setDownloadProgress(null);
-      } else if (progress === 'paused') {
-        setDownloadProgress('paused');
-      } else if (typeof progress === 'number') {
-        setDownloadProgress(progress);
-      }
-    });
-    return () => unsubscribe();
+    if (!window.electron || !window.electron.onDownloadProgress) {
+      return;
+    }
+    
+    try {
+      const unsubscribe = window.electron.onDownloadProgress((progress) => {
+        if (progress === 'completed' || progress === 'failed' || progress === 'interrupted') {
+          setDownloadProgress(null);
+        } else if (progress === 'paused') {
+          setDownloadProgress('paused');
+        } else if (typeof progress === 'number') {
+          setDownloadProgress(progress);
+        }
+      });
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn('Error setting up download progress listener:', error);
+    }
   }, []);
 
   // Function to inject credentials based on webview ID
@@ -456,52 +472,72 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   // Listen for webview messages
   useEffect(() => {
-    const messageHandler = (message) => {
-      if (message.type === 'webuntis-needs-login') {
-        const webview = document.querySelector('#wv-webuntis');
-        if (webview) {
-          setCredsAreSet(prev => ({ ...prev, webuntis: false }));
-          injectCredentials(webview, 'webuntis');
+    if (!window.electron || !window.electron.onMessage) {
+      return;
+    }
+    
+    try {
+      const messageHandler = (message) => {
+        if (message.type === 'webuntis-needs-login') {
+          const webview = document.querySelector('#wv-webuntis');
+          if (webview) {
+            setCredsAreSet(prev => ({ ...prev, webuntis: false }));
+            injectCredentials(webview, 'webuntis');
+          }
         }
-      }
-    };
+      };
 
-    window.electron.onMessage(messageHandler);
+      const unsubscribe = window.electron.onMessage(messageHandler);
 
-    return () => {
-      window.electron.offMessage(messageHandler);
-    };
+      return () => {
+        if (unsubscribe && typeof unsubscribe === 'function') {
+          unsubscribe();
+        } else if (window.electron && window.electron.offMessage) {
+          window.electron.offMessage(messageHandler);
+        }
+      };
+    } catch (error) {
+      console.warn('Error setting up message listener:', error);
+    }
   }, [injectCredentials]);
 
   // Listen for system resume events
   useEffect(() => {
-    const unsubscribe = window.electron.onSystemResumed((webviewsToReload) => {
-      webviewsToReload.forEach(id => {
-        const webview = webviewRefs.current[id]?.current;
-        if (webview) {
-          if (id === 'outlook') {
-            // For Outlook, clear credentials state and force complete reload
-            setCredsAreSet(prev => ({ ...prev, [id]: false }));
-            webview.clearHistory();
-            // Force navigation to base OWA URL
-            webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
-          } else if (id === 'webuntis') {
-            // For WebUntis, check if we're on the authenticator page before reloading
-            webview.executeJavaScript(`
-              const authLabel = document.querySelector('.un-input-group__label');
-              authLabel?.textContent === 'Bestätigungscode';
-            `).then(isAuthPage => {
-              if (!isAuthPage) {
-                webview.reload();
-              }
-            });
-          } else {
-            webview.reload();
+    if (!window.electron || !window.electron.onSystemResumed) {
+      return;
+    }
+    
+    try {
+      const unsubscribe = window.electron.onSystemResumed((webviewsToReload) => {
+        webviewsToReload.forEach(id => {
+          const webview = webviewRefs.current[id]?.current;
+          if (webview) {
+            if (id === 'outlook') {
+              // For Outlook, clear credentials state and force complete reload
+              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              webview.clearHistory();
+              // Force navigation to base OWA URL
+              webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+            } else if (id === 'webuntis') {
+              // For WebUntis, check if we're on the authenticator page before reloading
+              webview.executeJavaScript(`
+                const authLabel = document.querySelector('.un-input-group__label');
+                authLabel?.textContent === 'Bestätigungscode';
+              `).then(isAuthPage => {
+                if (!isAuthPage) {
+                  webview.reload();
+                }
+              });
+            } else {
+              webview.reload();
+            }
           }
-        }
+        });
       });
-    });
-    return () => unsubscribe();
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn('Error setting up system resume listener:', error);
+    }
   }, []);
 
   useEffect(() => {

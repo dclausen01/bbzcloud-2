@@ -49,10 +49,14 @@ function SecureDocuments({ isVisible }) {
   }, [files, searchQuery]);
 
   const loadFiles = useCallback(async () => {
-    if (!isReady) return;
-    const result = await window.electron.listSecureFiles();
-    if (result.success) {
-      setFiles(result.files);
+    if (!isReady || !window.electron) return;
+    try {
+      const result = await window.electron.listSecureFiles();
+      if (result.success) {
+        setFiles(result.files);
+      }
+    } catch (error) {
+      console.warn('Error loading secure files:', error);
     }
   }, [isReady]);
 
@@ -128,20 +132,37 @@ function SecureDocuments({ isVisible }) {
 
   // Listen for file updates
   useEffect(() => {
-    const handleFileUpdate = () => {
-      loadFiles();
-    };
+    if (!window.electron || !window.electron.on) {
+      return;
+    }
     
-    window.electron.on('secure-file-updated', handleFileUpdate);
-    
-    return () => {
-      window.electron.off('secure-file-updated', handleFileUpdate);
-    };
+    try {
+      const handleFileUpdate = () => {
+        loadFiles();
+      };
+      
+      const unsubscribe = window.electron.on('secure-file-updated', handleFileUpdate);
+      
+      return () => {
+        if (unsubscribe && typeof unsubscribe === 'function') {
+          unsubscribe();
+        } else if (window.electron && window.electron.off) {
+          window.electron.off('secure-file-updated', handleFileUpdate);
+        }
+      };
+    } catch (error) {
+      console.warn('Error setting up secure file update listener:', error);
+    }
   }, [loadFiles]);
 
   const sleep = useCallback((ms) => new Promise(resolve => setTimeout(resolve, ms)), []);
 
   const checkAccess = useCallback(async () => {
+    if (!window.electron) {
+      console.warn('Electron API not available, secure documents disabled');
+      return;
+    }
+    
     console.log('Checking secure store access from frontend, attempt:', retryCount + 1);
     try {
       // Add a longer initial delay to ensure keytar is ready

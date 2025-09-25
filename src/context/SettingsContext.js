@@ -443,7 +443,18 @@ export function SettingsProvider({ children }) {
   // Don't render children until settings are loaded
   return (
     <SettingsContext.Provider value={value}>
-      {isLoading ? null : children}
+      {isLoading ? (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh',
+          fontSize: '18px',
+          color: '#666'
+        }}>
+          Loading BBZCloud...
+        </div>
+      ) : children}
     </SettingsContext.Provider>
   );
 }

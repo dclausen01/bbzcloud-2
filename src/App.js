@@ -110,9 +110,13 @@ function App() {
   // HOOKS AND STATE MANAGEMENT
   // ============================================================================
   
+  console.log('App component rendering...');
+  
   const { setColorMode } = useColorMode();
   const { settings } = useSettings();
   const toast = useToast();
+  
+  console.log('App settings loaded:', settings);
 
   // Welcome Modal State - Handles first-time user setup
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
