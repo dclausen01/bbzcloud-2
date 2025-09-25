@@ -5,6 +5,10 @@ import App from './App';
 import theme from './theme';
 import { SettingsProvider } from './context/SettingsContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import { setupGlobalErrorHandling } from './utils/errorHandler';
+
+// Set up global error handling
+setupGlobalErrorHandling();
 
 const container = document.getElementById('root');
 const root = createRoot(container);

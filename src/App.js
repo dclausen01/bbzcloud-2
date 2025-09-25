@@ -73,13 +73,7 @@ import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
 
 // Custom Hooks and Utilities
-import { 
-  useAppShortcuts, 
-  useNavigationShortcuts, 
-  useModalShortcuts, 
-  useWebViewShortcuts 
-} from './hooks/useKeyboardShortcuts';
-import { useEnhancedWebViewShortcuts } from './hooks/useWebViewKeyboardShortcuts';
+import { useConsolidatedKeyboardShortcuts } from './hooks/useConsolidatedKeyboardShortcuts';
 import { 
   SUCCESS_MESSAGES, 
   ERROR_MESSAGES, 
@@ -90,6 +84,14 @@ import {
   restoreFocus, 
   announceToScreenReader
 } from './utils/accessibility';
+import { 
+  setupGlobalErrorHandling,
+  handleCredentialError,
+  handleWebViewError,
+  safeExecute,
+  performanceMonitor,
+  ERROR_CATEGORIES
+} from './utils/errorHandler';
 
 /**
  * Helper function to create delays in async operations
@@ -509,60 +511,39 @@ function App() {
     .filter(([_, config]) => config.visible)
     .map(([id, config]) => ({ id, ...config }));
 
-  // Application-level keyboard shortcuts (Ctrl+T, Ctrl+D, etc.)
-  useAppShortcuts({
-    onToggleTodo: onTodoOpen,
-    onToggleSecureDocs: onSecureDocsOpen,
-    onOpenSettings: onSettingsOpen,
-    onOpenCommandPalette: onCommandPaletteOpen,
-    onReloadCurrent: () => {
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
+  // Consolidated keyboard shortcuts to prevent conflicts and black screen issues
+  useConsolidatedKeyboardShortcuts({
+    handlers: {
+      onToggleTodo: onTodoOpen,
+      onToggleSecureDocs: onSecureDocsOpen,
+      onOpenSettings: onSettingsOpen,
+      onOpenCommandPalette: onCommandPaletteOpen,
+      onSettingsClose: onSettingsClose,
+      onTodoClose: onTodoClose,
+      onSecureDocsClose: onSecureDocsClose,
+      onCommandPaletteClose: onCommandPaletteClose,
+      onReloadCurrent: () => {
+        if (webViewRef.current) {
+          webViewRef.current.reload();
+        }
+      },
+      onReloadAll: () => {
+        // Reload all webviews in the application
+        const webviews = document.querySelectorAll('webview');
+        webviews.forEach(webview => webview.reload());
+        announceToScreenReader('Alle Webviews werden neu geladen');
+      },
+      onNavigate: (item) => handleNavigationClick(item.id, false),
     },
-    onReloadAll: () => {
-      // Reload all webviews in the application
-      const webviews = document.querySelectorAll('webview');
-      webviews.forEach(webview => webview.reload());
-      announceToScreenReader('Alle Webviews werden neu geladen');
+    navigationItems,
+    modalStates: {
+      isSettingsOpen,
+      isTodoOpen,
+      isSecureDocsOpen,
+      isCommandPaletteOpen,
     },
-  });
-
-  // Navigation shortcuts (Ctrl+1-9 for quick app switching)
-  useNavigationShortcuts(
-    (item) => handleNavigationClick(item.id, false),
-    navigationItems
-  );
-
-  // WebView-specific shortcuts (Alt+Left/Right for navigation, F5 for reload, etc.)
-  useWebViewShortcuts(webViewRef, !!activeWebView);
-
-  // Modal/Drawer shortcuts (Escape to close)
-  useModalShortcuts(onSettingsClose, isSettingsOpen);
-  useModalShortcuts(onTodoClose, isTodoOpen);
-  useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
-
-  // Enhanced webview shortcuts that work even when webview has focus
-  useEnhancedWebViewShortcuts({
-    onOpenCommandPalette: onCommandPaletteOpen,
-    onToggleTodo: onTodoOpen,
-    onToggleSecureDocs: onSecureDocsOpen,
-    onOpenSettings: onSettingsOpen,
-    onReloadCurrent: () => {
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
-    },
-    onReloadAll: () => {
-      const webviews = document.querySelectorAll('webview');
-      webviews.forEach(webview => webview.reload());
-      announceToScreenReader('Alle Webviews werden neu geladen');
-    },
-    onNavigate: (index) => {
-      if (navigationItems[index]) {
-        handleNavigationClick(navigationItems[index].id, false);
-      }
-    },
+    webViewRef: webViewRef.current,
+    enabled: true,
   });
 
   // ============================================================================

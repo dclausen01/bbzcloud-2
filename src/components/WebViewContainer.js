@@ -16,39 +16,71 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Expose navigation methods through ref
   React.useImperativeHandle(ref, () => ({
     goBack: () => {
-      const webview = activeWebView && (
-        webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`)
-      );
-      if (webview && webview.canGoBack()) {
-        webview.goBack();
+      if (!activeWebView) return;
+      
+      const webview = webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`);
+      
+      if (webview && webview.src && webview.getWebContentsId) {
+        try {
+          // Check if webview is ready and can go back
+          if (typeof webview.canGoBack === 'function' && webview.canGoBack()) {
+            webview.goBack();
+          }
+        } catch (error) {
+          console.warn('Error navigating back:', error);
+        }
       }
     },
     goForward: () => {
-      const webview = activeWebView && (
-        webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`)
-      );
-      if (webview && webview.canGoForward()) {
-        webview.goForward();
+      if (!activeWebView) return;
+      
+      const webview = webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`);
+      
+      if (webview && webview.src && webview.getWebContentsId) {
+        try {
+          // Check if webview is ready and can go forward
+          if (typeof webview.canGoForward === 'function' && webview.canGoForward()) {
+            webview.goForward();
+          }
+        } catch (error) {
+          console.warn('Error navigating forward:', error);
+        }
       }
     },
     reload: () => {
-      const webview = activeWebView && (
-        webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`)
-      );
-      if (webview) {
-        webview.reload();
+      if (!activeWebView) return;
+      
+      const webview = webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`);
+      
+      if (webview && webview.src) {
+        try {
+          // Check if webview is ready before reloading
+          if (typeof webview.reload === 'function') {
+            webview.reload();
+          }
+        } catch (error) {
+          console.warn('Error reloading webview:', error);
+        }
       }
     },
     print: () => {
-      const webview = activeWebView && (
-        webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`)
-      );
-      if (webview) {
-        webview.print();
+      if (!activeWebView) return;
+      
+      const webview = webviewRefs.current[activeWebView.id]?.current ||
+        document.querySelector(`#wv-${activeWebView.id}`);
+      
+      if (webview && webview.src && webview.getWebContentsId) {
+        try {
+          // Check if webview is ready before printing
+          if (typeof webview.print === 'function') {
+            webview.print();
+          }
+        } catch (error) {
+          console.warn('Error printing webview:', error);
+        }
       }
     }
   }));
