@@ -194,33 +194,59 @@ function App() {
         // Add delay to ensure Electron main process is ready
         await sleep(1000);
         
+        // Check if Electron APIs are available
+        if (!window.electron) {
+          console.warn('Electron APIs not available, using default values');
+          setIsLoadingEmail(false);
+          return;
+        }
+        
         // Load all credentials in parallel for better performance
         const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'email'
+          }).catch(error => {
+            console.warn('Error loading email credential:', error);
+            return { success: false };
           }),
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'password'
+          }).catch(error => {
+            console.warn('Error loading password credential:', error);
+            return { success: false };
           }),
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'bbbPassword'
+          }).catch(error => {
+            console.warn('Error loading BBB password credential:', error);
+            return { success: false };
           }),
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'webuntisEmail'
+          }).catch(error => {
+            console.warn('Error loading WebUntis email credential:', error);
+            return { success: false };
           }),
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'webuntisPassword'
+          }).catch(error => {
+            console.warn('Error loading WebUntis password credential:', error);
+            return { success: false };
           })
         ]);
 
         // Load database path for user information
-        const path = await window.electron.getDatabasePath();
-        setDbPath(path);
+        try {
+          const path = await window.electron.getDatabasePath();
+          setDbPath(path);
+        } catch (error) {
+          console.warn('Error loading database path:', error);
+        }
 
         // Set credentials if they exist
         if (emailResult.success && emailResult.password) {
@@ -364,11 +390,19 @@ function App() {
    * This allows users to right-click on text and add it as a todo
    */
   useEffect(() => {
-    const unsubscribe = window.electron.onAddTodo((text) => {
-      setContextMenuText(text);
-      onTodoOpen();
-    });
-    return () => unsubscribe();
+    if (!window.electron || !window.electron.onAddTodo) {
+      return;
+    }
+    
+    try {
+      const unsubscribe = window.electron.onAddTodo((text) => {
+        setContextMenuText(text);
+        onTodoOpen();
+      });
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn('Error setting up todo context menu listener:', error);
+    }
   }, [onTodoOpen]);
 
   /**
@@ -385,24 +419,36 @@ function App() {
    * Shows a red dot on settings button when updates are available
    */
   useEffect(() => {
-    const unsubscribe = window.electron.onUpdateStatus((status) => {
-      const isUpdateAvailable = status.includes('verfügbar') || status.includes('heruntergeladen');
-      setHasUpdate(isUpdateAvailable);
-    });
+    if (!window.electron || !window.electron.onUpdateStatus) {
+      return;
+    }
+    
+    try {
+      const unsubscribe = window.electron.onUpdateStatus((status) => {
+        const isUpdateAvailable = status.includes('verfügbar') || status.includes('heruntergeladen');
+        setHasUpdate(isUpdateAvailable);
+      });
 
-    return () => unsubscribe();
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn('Error setting up update status listener:', error);
+    }
   }, []);
 
   /**
    * Load application icon for the header
    */
   useEffect(() => {
+    if (!window.electron || !window.electron.getAssetPath) {
+      return;
+    }
+    
     const loadAppIcon = async () => {
       try {
         const iconPath = await window.electron.getAssetPath('icon.png');
         setAppIconPath(iconPath);
       } catch (error) {
-        console.error('Fehler beim Laden des App-Icons:', error);
+        console.warn('Error loading app icon:', error);
       }
     };
     loadAppIcon();
@@ -412,12 +458,20 @@ function App() {
    * Listen for database changes and reload webviews accordingly
    */
   useEffect(() => {
-    const unsubscribe = window.electron.on('database-changed', () => {
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
-    });
-    return () => unsubscribe();
+    if (!window.electron || !window.electron.on) {
+      return;
+    }
+    
+    try {
+      const unsubscribe = window.electron.on('database-changed', () => {
+        if (webViewRef.current) {
+          webViewRef.current.reload();
+        }
+      });
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn('Error setting up database change listener:', error);
+    }
   }, []);
 
   /**

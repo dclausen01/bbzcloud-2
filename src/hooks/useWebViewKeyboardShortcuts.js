@@ -241,10 +241,77 @@ export const useWebViewKeyboardShortcuts = (handlers = {}, enabled = true) => {
  * @param {boolean} enabled - Whether shortcuts are enabled
  */
 export const useEnhancedWebViewShortcuts = (handlers = {}, enabled = true) => {
-  // Method 1: Use the webview-aware shortcuts
-  useWebViewKeyboardShortcuts(handlers, enabled);
+  const handlersRef = useRef(handlers);
+  const registeredShortcutsRef = useRef(new Set());
 
-  // Method 2: Fallback to document-level event listener with higher priority
+  // Update handlers ref when props change
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
+
+  // Method 1: Electron global shortcuts (if available)
+  useEffect(() => {
+    if (!enabled || !window.electron) {
+      return;
+    }
+
+    // Define shortcuts that should work globally
+    const globalShortcuts = {
+      [KEYBOARD_SHORTCUTS.COMMAND_PALETTE]: handlers.onOpenCommandPalette,
+      [KEYBOARD_SHORTCUTS.TOGGLE_TODO]: handlers.onToggleTodo,
+      [KEYBOARD_SHORTCUTS.TOGGLE_SECURE_DOCS]: handlers.onToggleSecureDocs,
+      [KEYBOARD_SHORTCUTS.OPEN_SETTINGS]: handlers.onOpenSettings,
+      [KEYBOARD_SHORTCUTS.RELOAD_CURRENT]: handlers.onReloadCurrent,
+      [KEYBOARD_SHORTCUTS.RELOAD_ALL]: handlers.onReloadAll,
+      // Navigation shortcuts
+      [KEYBOARD_SHORTCUTS.NAV_APP_1]: () => handlers.onNavigate?.(0),
+      [KEYBOARD_SHORTCUTS.NAV_APP_2]: () => handlers.onNavigate?.(1),
+      [KEYBOARD_SHORTCUTS.NAV_APP_3]: () => handlers.onNavigate?.(2),
+      [KEYBOARD_SHORTCUTS.NAV_APP_4]: () => handlers.onNavigate?.(3),
+      [KEYBOARD_SHORTCUTS.NAV_APP_5]: () => handlers.onNavigate?.(4),
+      [KEYBOARD_SHORTCUTS.NAV_APP_6]: () => handlers.onNavigate?.(5),
+      [KEYBOARD_SHORTCUTS.NAV_APP_7]: () => handlers.onNavigate?.(6),
+      [KEYBOARD_SHORTCUTS.NAV_APP_8]: () => handlers.onNavigate?.(7),
+      [KEYBOARD_SHORTCUTS.NAV_APP_9]: () => handlers.onNavigate?.(8),
+    };
+
+    // Register shortcuts with main process (if available)
+    const registerShortcuts = async () => {
+      try {
+        if (window.electron.registerGlobalShortcut) {
+          for (const [shortcut, handler] of Object.entries(globalShortcuts)) {
+            if (handler && typeof handler === 'function') {
+              const success = await window.electron.registerGlobalShortcut(shortcut, handler);
+              if (success) {
+                registeredShortcutsRef.current.add(shortcut);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Global shortcuts not available:', error);
+      }
+    };
+
+    registerShortcuts();
+
+    // Cleanup function
+    return () => {
+      // Unregister global shortcuts
+      registeredShortcutsRef.current.forEach(shortcut => {
+        if (window.electron && window.electron.unregisterGlobalShortcut) {
+          try {
+            window.electron.unregisterGlobalShortcut(shortcut);
+          } catch (error) {
+            console.warn('Error unregistering shortcut:', error);
+          }
+        }
+      });
+      registeredShortcutsRef.current.clear();
+    };
+  }, [handlers, enabled]);
+
+  // Method 2: Document-level event listener with higher priority
   useEffect(() => {
     if (!enabled) return;
 
@@ -326,6 +393,136 @@ export const useEnhancedWebViewShortcuts = (handlers = {}, enabled = true) => {
       document.removeEventListener('keydown', handleDocumentKeydown, true);
     };
   }, [handlers, enabled]);
+
+  // Method 3: WebView script injection (if available)
+  useEffect(() => {
+    if (!enabled || !window.electron) {
+      return;
+    }
+
+    // Setup webview keyboard event injection
+    const setupWebViewKeyboardHandling = () => {
+      // Listen for webview ready events
+      const handleWebViewReady = (webviewId) => {
+        const webview = document.querySelector(`#wv-${webviewId}`);
+        if (webview && webview.executeJavaScript) {
+          // Inject keyboard event handler into webview
+          webview.executeJavaScript(`
+            (function() {
+              // Prevent multiple injections
+              if (window.__bbzcloudKeyboardHandlerInjected) return;
+              window.__bbzcloudKeyboardHandlerInjected = true;
+
+              // Define shortcuts that should be captured
+              const shortcuts = {
+                'ctrl+shift+p': 'COMMAND_PALETTE',
+                'ctrl+shift+t': 'TOGGLE_TODO',
+                'ctrl+d': 'TOGGLE_SECURE_DOCS',
+                'ctrl+comma': 'OPEN_SETTINGS',
+                'ctrl+r': 'RELOAD_CURRENT',
+                'ctrl+shift+r': 'RELOAD_ALL',
+                'ctrl+1': 'NAV_APP_1',
+                'ctrl+2': 'NAV_APP_2',
+                'ctrl+3': 'NAV_APP_3',
+                'ctrl+4': 'NAV_APP_4',
+                'ctrl+5': 'NAV_APP_5',
+                'ctrl+6': 'NAV_APP_6',
+                'ctrl+7': 'NAV_APP_7',
+                'ctrl+8': 'NAV_APP_8',
+                'ctrl+9': 'NAV_APP_9'
+              };
+
+              // Function to convert keyboard event to shortcut string
+              function getShortcutString(event) {
+                const parts = [];
+                if (event.ctrlKey || event.metaKey) parts.push('ctrl');
+                if (event.altKey) parts.push('alt');
+                if (event.shiftKey) parts.push('shift');
+                
+                let key = event.key.toLowerCase();
+                if (key === ',') key = 'comma';
+                parts.push(key);
+                
+                return parts.join('+');
+              }
+
+              // Add keyboard event listener
+              document.addEventListener('keydown', function(event) {
+                const shortcutString = getShortcutString(event);
+                const shortcutAction = shortcuts[shortcutString];
+                
+                if (shortcutAction) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  
+                  // Send message to main process (if available)
+                  if (window.electronAPI && window.electronAPI.sendShortcut) {
+                    window.electronAPI.sendShortcut(shortcutAction);
+                  }
+                }
+              }, true); // Use capture phase to catch events early
+            })();
+          `).catch(error => {
+            console.warn('Error injecting keyboard handler into webview:', error);
+          });
+        }
+      };
+
+      // Listen for webview dom-ready events
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            if (node.tagName === 'WEBVIEW') {
+              node.addEventListener('dom-ready', () => {
+                const webviewId = node.id.replace('wv-', '');
+                handleWebViewReady(webviewId);
+              });
+            }
+          });
+        });
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
+      // Handle existing webviews
+      document.querySelectorAll('webview').forEach(webview => {
+        const webviewId = webview.id.replace('wv-', '');
+        if (webview.src) {
+          handleWebViewReady(webviewId);
+        } else {
+          webview.addEventListener('dom-ready', () => {
+            handleWebViewReady(webviewId);
+          });
+        }
+      });
+
+      return () => observer.disconnect();
+    };
+
+    const cleanupWebViewHandling = setupWebViewKeyboardHandling();
+
+    return () => {
+      if (cleanupWebViewHandling) {
+        cleanupWebViewHandling();
+      }
+    };
+  }, [handlers, enabled]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (window.electron && window.electron.unregisterAllGlobalShortcuts) {
+        try {
+          window.electron.unregisterAllGlobalShortcuts();
+        } catch (error) {
+          console.warn('Error cleaning up global shortcuts:', error);
+        }
+      }
+    };
+  }, []);
 };
 
 export default useWebViewKeyboardShortcuts;
