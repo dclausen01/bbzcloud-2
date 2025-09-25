@@ -182,6 +182,10 @@ export function SettingsProvider({ children }) {
 
   // Function to load custom apps
   const loadCustomApps = useCallback(async () => {
+    if (!window.electron) {
+      console.warn('Electron API not available, using default custom apps');
+      return;
+    }
     try {
       const result = await window.electron.getCustomApps();
       if (result.success) {
@@ -195,6 +199,11 @@ export function SettingsProvider({ children }) {
   // Function to load settings that can be called from outside
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
+    if (!window.electron) {
+      console.warn('Electron API not available, using default settings');
+      setIsLoading(false);
+      return;
+    }
     try {
       const result = await window.electron.getSettings();
       if (result.success && result.settings) {
@@ -246,6 +255,10 @@ export function SettingsProvider({ children }) {
     };
     init();
 
+    if (!window.electron) {
+      return;
+    }
+
     const handleDatabaseChange = async () => {
       console.log('Database changed, reloading data...');
       await loadSettings();
@@ -262,7 +275,7 @@ export function SettingsProvider({ children }) {
 
   useEffect(() => {
     const saveSettings = async () => {
-      if (!isLoading) {
+      if (!isLoading && window.electron) {
         try {
           const result = await window.electron.saveSettings(settings);
           if (!result.success) {
@@ -326,6 +339,10 @@ export function SettingsProvider({ children }) {
     };
 
     const addCustomApp = async (app) => {
+      if (!window.electron) {
+        console.warn('Electron API not available, cannot add custom app');
+        return;
+      }
       try {
         const result = await window.electron.saveCustomApps([
           ...customApps,
@@ -345,6 +362,10 @@ export function SettingsProvider({ children }) {
     };
 
     const removeCustomApp = async (appId) => {
+      if (!window.electron) {
+        console.warn('Electron API not available, cannot remove custom app');
+        return;
+      }
       try {
         const result = await window.electron.saveCustomApps(
           customApps.filter(app => app.id !== appId)
@@ -410,6 +431,9 @@ export function SettingsProvider({ children }) {
 
   // Listen for update status changes
   useEffect(() => {
+    if (!window.electron) {
+      return;
+    }
     const unsubscribe = window.electron.onUpdateStatus((status) => {
       setUpdateStatus(status);
     });

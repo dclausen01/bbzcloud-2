@@ -299,6 +299,9 @@ export const useEnhancedWebViewShortcuts = (handlers = {}, enabled = true) => {
             handlers.onReloadAll();
           }
           break;
+        default:
+          // No action for unrecognized shortcuts
+          break;
       }
     };
 

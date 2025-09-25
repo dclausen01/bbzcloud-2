@@ -79,10 +79,6 @@ import {
   useModalShortcuts, 
   useWebViewShortcuts 
 } from './hooks/useKeyboardShortcuts';
-import { 
-  useGlobalAppShortcuts, 
-  useGlobalNavigationShortcuts 
-} from './hooks/useGlobalKeyboardShortcuts';
 import { useEnhancedWebViewShortcuts } from './hooks/useWebViewKeyboardShortcuts';
 import { 
   SUCCESS_MESSAGES, 

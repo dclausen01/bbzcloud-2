@@ -28,7 +28,6 @@ import {
   Box,
   useColorModeValue,
   Kbd,
-  Icon,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
 
