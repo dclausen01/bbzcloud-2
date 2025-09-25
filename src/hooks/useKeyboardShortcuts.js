@@ -339,6 +339,7 @@ export const useAppShortcuts = (handlers = {}, enabled = true) => {
     onToggleTodo,        // Function to open/close todo drawer
     onToggleSecureDocs,  // Function to open/close secure documents drawer
     onOpenSettings,      // Function to open settings panel
+    onOpenCommandPalette, // Function to open command palette
     onReloadCurrent,     // Function to reload current webview
     onReloadAll,         // Function to reload all webviews
     onToggleFullscreen,  // Function to toggle fullscreen mode
@@ -357,6 +358,10 @@ export const useAppShortcuts = (handlers = {}, enabled = true) => {
   
   if (onOpenSettings) {
     shortcuts[KEYBOARD_SHORTCUTS.OPEN_SETTINGS] = onOpenSettings;
+  }
+  
+  if (onOpenCommandPalette) {
+    shortcuts[KEYBOARD_SHORTCUTS.COMMAND_PALETTE] = onOpenCommandPalette;
   }
   
   if (onReloadCurrent) {

@@ -70,6 +70,7 @@ import CustomAppsMenu from './components/CustomAppsMenu';
 import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
+import CommandPalette from './components/CommandPalette';
 
 // Custom Hooks and Utilities
 import { 
@@ -78,6 +79,10 @@ import {
   useModalShortcuts, 
   useWebViewShortcuts 
 } from './hooks/useKeyboardShortcuts';
+import { 
+  useGlobalAppShortcuts, 
+  useGlobalNavigationShortcuts 
+} from './hooks/useGlobalKeyboardShortcuts';
 import { 
   SUCCESS_MESSAGES, 
   ERROR_MESSAGES, 
@@ -158,6 +163,12 @@ function App() {
     isOpen: isSecureDocsOpen,
     onOpen: onSecureDocsOpen,
     onClose: onSecureDocsClose
+  } = useDisclosure();
+
+  const {
+    isOpen: isCommandPaletteOpen,
+    onOpen: onCommandPaletteOpen,
+    onClose: onCommandPaletteClose
   } = useDisclosure();
 
   // ============================================================================
@@ -448,6 +459,7 @@ function App() {
     onToggleTodo: onTodoOpen,
     onToggleSecureDocs: onSecureDocsOpen,
     onOpenSettings: onSettingsOpen,
+    onOpenCommandPalette: onCommandPaletteOpen,
     onReloadCurrent: () => {
       if (webViewRef.current) {
         webViewRef.current.reload();
@@ -474,6 +486,30 @@ function App() {
   useModalShortcuts(onSettingsClose, isSettingsOpen);
   useModalShortcuts(onTodoClose, isTodoOpen);
   useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
+
+  // Global shortcuts that work even when webview has focus
+  useGlobalAppShortcuts({
+    onOpenCommandPalette: onCommandPaletteOpen,
+    onToggleTodo: onTodoOpen,
+    onToggleSecureDocs: onSecureDocsOpen,
+    onOpenSettings: onSettingsOpen,
+    onReloadCurrent: () => {
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+    },
+    onReloadAll: () => {
+      const webviews = document.querySelectorAll('webview');
+      webviews.forEach(webview => webview.reload());
+      announceToScreenReader('Alle Webviews werden neu geladen');
+    },
+  });
+
+  // Global navigation shortcuts that work even when webview has focus
+  useGlobalNavigationShortcuts(
+    (item) => handleNavigationClick(item.id, false),
+    navigationItems
+  );
 
   // ============================================================================
   // ACCESSIBILITY FEATURES
@@ -845,6 +881,29 @@ function App() {
           </Box>
         </Flex>
       </Box>
+
+      {/* ========================================================================
+          COMMAND PALETTE
+          ======================================================================== */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={onCommandPaletteClose}
+        navigationButtons={filteredNavigationButtons}
+        onNavigate={handleNavigationClick}
+        onOpenSettings={onSettingsOpen}
+        onToggleTodo={onTodoOpen}
+        onToggleSecureDocs={onSecureDocsOpen}
+        onReloadCurrent={() => {
+          if (webViewRef.current) {
+            webViewRef.current.reload();
+          }
+        }}
+        onReloadAll={() => {
+          const webviews = document.querySelectorAll('webview');
+          webviews.forEach(webview => webview.reload());
+          announceToScreenReader('Alle Webviews werden neu geladen');
+        }}
+      />
 
       {/* ========================================================================
           WELCOME MODAL - FIRST-TIME USER SETUP
