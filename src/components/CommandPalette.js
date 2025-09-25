@@ -91,6 +91,8 @@ const CommandPalette = ({
   const selectedBg = useColorModeValue('blue.100', 'blue.900');
   const textColor = useColorModeValue('gray.800', 'white');
   const mutedTextColor = useColorModeValue('gray.600', 'gray.400');
+  const categoryHeaderBg = useColorModeValue('gray.50', 'gray.900');
+  const footerBg = useColorModeValue('gray.50', 'gray.900');
 
   // Generate all available commands
   const allCommands = useMemo(() => {
@@ -319,7 +321,7 @@ const CommandPalette = ({
                       <Box
                         px={4}
                         py={2}
-                        bg={useColorModeValue('gray.50', 'gray.900')}
+                        bg={categoryHeaderBg}
                         borderBottom="1px"
                         borderColor={borderColor}
                       >
@@ -391,7 +393,7 @@ const CommandPalette = ({
             <Box
               px={4}
               py={2}
-              bg={useColorModeValue('gray.50', 'gray.900')}
+              bg={footerBg}
               borderTop="1px"
               borderColor={borderColor}
             >
