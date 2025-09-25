@@ -126,7 +126,7 @@ export const SUCCESS_MESSAGES = {
  */
 export const KEYBOARD_SHORTCUTS = {
   // Global application shortcuts
-  TOGGLE_TODO: 'ctrl+shift+o',     // Open/close todo drawer
+  TOGGLE_TODO: 'ctrl+shift+t',     // Open/close todo drawer
   TOGGLE_SECURE_DOCS: 'ctrl+d',    // Open/close secure documents drawer
   OPEN_SETTINGS: 'ctrl+comma',     // Open settings panel
   RELOAD_CURRENT: 'ctrl+r',        // Reload current webview

@@ -104,14 +104,14 @@ const CommandPalette = ({
         commands.push({
           id: `nav-${id}`,
           title: config.title,
-          description: `Navigate to ${config.title}`,
+          description: `Zu ${config.title} navigieren`,
           category: 'Navigation',
           icon: '🔗',
           action: () => {
             onNavigate?.(id, false);
             onClose();
           },
-          shortcut: commands.length < 9 ? `Ctrl+${commands.length + 1}` : null,
+          shortcut: commands.length < 9 ? `Strg+${commands.length + 1}` : null,
         });
       }
     });
@@ -120,63 +120,63 @@ const CommandPalette = ({
     const appCommands = [
       {
         id: 'open-settings',
-        title: 'Open Settings',
-        description: 'Open the settings panel',
-        category: 'Application',
+        title: 'Einstellungen öffnen',
+        description: 'Das Einstellungsmenü öffnen',
+        category: 'Anwendung',
         icon: '⚙️',
         action: () => {
           onOpenSettings?.();
           onClose();
         },
-        shortcut: 'Ctrl+,',
+        shortcut: 'Strg+,',
       },
       {
         id: 'toggle-todo',
-        title: 'Toggle Todo List',
-        description: 'Open or close the todo list drawer',
-        category: 'Application',
+        title: 'Todo-Liste umschalten',
+        description: 'Todo-Liste öffnen oder schließen',
+        category: 'Anwendung',
         icon: '📝',
         action: () => {
           onToggleTodo?.();
           onClose();
         },
-        shortcut: 'Ctrl+Shift+O',
+        shortcut: 'Strg+Shift+T',
       },
       {
         id: 'toggle-secure-docs',
-        title: 'Toggle Secure Documents',
-        description: 'Open or close the secure documents drawer',
-        category: 'Application',
+        title: 'Sichere Dokumente umschalten',
+        description: 'Sichere Dokumente öffnen oder schließen',
+        category: 'Anwendung',
         icon: '🔒',
         action: () => {
           onToggleSecureDocs?.();
           onClose();
         },
-        shortcut: 'Ctrl+D',
+        shortcut: 'Strg+D',
       },
       {
         id: 'reload-current',
-        title: 'Reload Current Page',
-        description: 'Reload the currently active webview',
+        title: 'Aktuelle Seite neu laden',
+        description: 'Die aktuell aktive Webansicht neu laden',
         category: 'WebView',
         icon: '🔄',
         action: () => {
           onReloadCurrent?.();
           onClose();
         },
-        shortcut: 'Ctrl+R',
+        shortcut: 'Strg+R',
       },
       {
         id: 'reload-all',
-        title: 'Reload All Pages',
-        description: 'Reload all webviews in the application',
+        title: 'Alle Seiten neu laden',
+        description: 'Alle Webansichten in der Anwendung neu laden',
         category: 'WebView',
         icon: '🔄',
         action: () => {
           onReloadAll?.();
           onClose();
         },
-        shortcut: 'Ctrl+Shift+R',
+        shortcut: 'Strg+Shift+R',
       },
     ];
 
@@ -188,8 +188,8 @@ const CommandPalette = ({
         commands.push({
           id: `custom-${app.id}`,
           title: app.title,
-          description: `Navigate to ${app.title}`,
-          category: 'Custom Apps',
+          description: `Zu ${app.title} navigieren`,
+          category: 'Benutzerdefinierte Apps',
           icon: '🚀',
           action: () => {
             onNavigate?.(app.id, false);

@@ -83,6 +83,7 @@ import {
   useGlobalAppShortcuts, 
   useGlobalNavigationShortcuts 
 } from './hooks/useGlobalKeyboardShortcuts';
+import { useEnhancedWebViewShortcuts } from './hooks/useWebViewKeyboardShortcuts';
 import { 
   SUCCESS_MESSAGES, 
   ERROR_MESSAGES, 
@@ -487,8 +488,8 @@ function App() {
   useModalShortcuts(onTodoClose, isTodoOpen);
   useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
 
-  // Global shortcuts that work even when webview has focus
-  useGlobalAppShortcuts({
+  // Enhanced webview shortcuts that work even when webview has focus
+  useEnhancedWebViewShortcuts({
     onOpenCommandPalette: onCommandPaletteOpen,
     onToggleTodo: onTodoOpen,
     onToggleSecureDocs: onSecureDocsOpen,
@@ -503,13 +504,12 @@ function App() {
       webviews.forEach(webview => webview.reload());
       announceToScreenReader('Alle Webviews werden neu geladen');
     },
+    onNavigate: (index) => {
+      if (navigationItems[index]) {
+        handleNavigationClick(navigationItems[index].id, false);
+      }
+    },
   });
-
-  // Global navigation shortcuts that work even when webview has focus
-  useGlobalNavigationShortcuts(
-    (item) => handleNavigationClick(item.id, false),
-    navigationItems
-  );
 
   // ============================================================================
   // ACCESSIBILITY FEATURES
