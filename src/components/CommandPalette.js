@@ -81,6 +81,8 @@ const CommandPalette = ({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
+  const selectedItemRef = useRef(null);
   const { settings } = useSettings();
 
   // Color mode values
@@ -226,6 +228,26 @@ const CommandPalette = ({
     }
   }, [isOpen]);
 
+  // Scroll selected item into view
+  useEffect(() => {
+    if (selectedItemRef.current && listRef.current) {
+      const selectedElement = selectedItemRef.current;
+      const listElement = listRef.current;
+      
+      const selectedRect = selectedElement.getBoundingClientRect();
+      const listRect = listElement.getBoundingClientRect();
+      
+      // Check if the selected item is outside the visible area
+      if (selectedRect.top < listRect.top) {
+        // Item is above the visible area
+        selectedElement.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } else if (selectedRect.bottom > listRect.bottom) {
+        // Item is below the visible area
+        selectedElement.scrollIntoView({ block: 'end', behavior: 'smooth' });
+      }
+    }
+  }, [selectedIndex]);
+
   // Handle keyboard navigation
   const handleKeyDown = (e) => {
     switch (e.key) {
@@ -307,7 +329,7 @@ const CommandPalette = ({
             </Box>
 
             {/* Commands List */}
-            <Box maxH="50vh" overflowY="auto">
+            <Box ref={listRef} maxH="50vh" overflowY="auto">
               {Object.keys(groupedCommands).length === 0 ? (
                 <Box p={8} textAlign="center">
                   <Text color={mutedTextColor}>No commands found</Text>
@@ -343,6 +365,7 @@ const CommandPalette = ({
                         return (
                           <Box
                             key={command.id}
+                            ref={isSelected ? selectedItemRef : null}
                             px={4}
                             py={3}
                             bg={isSelected ? selectedBg : 'transparent'}

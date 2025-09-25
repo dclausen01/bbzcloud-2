@@ -89,7 +89,8 @@ export const useConsolidatedKeyboardShortcuts = ({
       activeElement.tagName === 'INPUT' ||
       activeElement.tagName === 'TEXTAREA' ||
       activeElement.contentEditable === 'true' ||
-      activeElement.isContentEditable
+      activeElement.isContentEditable ||
+      activeElement.tagName === 'WEBVIEW' // Add webview check
     );
   }, []);
 
@@ -311,60 +312,105 @@ export const useConsolidatedKeyboardShortcuts = ({
     const injectKeyboardHandler = (webview) => {
       if (!webview.executeJavaScript) return;
 
-      webview.executeJavaScript(`
-        (function() {
-          if (window.__bbzcloudKeyboardHandlerInjected) return;
-          window.__bbzcloudKeyboardHandlerInjected = true;
+      // Add a small delay to ensure webview is fully ready
+      setTimeout(() => {
+        webview.executeJavaScript(`
+          (function() {
+            if (window.__bbzcloudKeyboardHandlerInjected) return;
+            window.__bbzcloudKeyboardHandlerInjected = true;
 
-          const shortcuts = {
-            'ctrl+shift+p': 'COMMAND_PALETTE',
-            'ctrl+shift+t': 'TOGGLE_TODO',
-            'ctrl+d': 'TOGGLE_SECURE_DOCS',
-            'ctrl+comma': 'OPEN_SETTINGS',
-            'ctrl+r': 'RELOAD_CURRENT',
-            'ctrl+shift+r': 'RELOAD_ALL',
-            'ctrl+1': 'NAV_1', 'ctrl+2': 'NAV_2', 'ctrl+3': 'NAV_3',
-            'ctrl+4': 'NAV_4', 'ctrl+5': 'NAV_5', 'ctrl+6': 'NAV_6',
-            'ctrl+7': 'NAV_7', 'ctrl+8': 'NAV_8', 'ctrl+9': 'NAV_9'
-          };
+            const shortcuts = {
+              'ctrl+shift+p': 'COMMAND_PALETTE',
+              'ctrl+shift+t': 'TOGGLE_TODO',
+              'ctrl+d': 'TOGGLE_SECURE_DOCS',
+              'ctrl+comma': 'OPEN_SETTINGS',
+              'ctrl+r': 'RELOAD_CURRENT',
+              'ctrl+shift+r': 'RELOAD_ALL',
+              'ctrl+1': 'NAV_1', 'ctrl+2': 'NAV_2', 'ctrl+3': 'NAV_3',
+              'ctrl+4': 'NAV_4', 'ctrl+5': 'NAV_5', 'ctrl+6': 'NAV_6',
+              'ctrl+7': 'NAV_7', 'ctrl+8': 'NAV_8', 'ctrl+9': 'NAV_9'
+            };
 
-          function getShortcutString(event) {
-            const parts = [];
-            if (event.ctrlKey || event.metaKey) parts.push('ctrl');
-            if (event.altKey) parts.push('alt');
-            if (event.shiftKey) parts.push('shift');
-            
-            let key = event.key.toLowerCase();
-            if (key === ',') key = 'comma';
-            parts.push(key);
-            
-            return parts.join('+');
-          }
-
-          document.addEventListener('keydown', function(event) {
-            const shortcutString = getShortcutString(event);
-            const shortcutAction = shortcuts[shortcutString];
-            
-            if (shortcutAction) {
-              event.preventDefault();
-              event.stopPropagation();
+            function getShortcutString(event) {
+              const parts = [];
+              if (event.ctrlKey || event.metaKey) parts.push('ctrl');
+              if (event.altKey) parts.push('alt');
+              if (event.shiftKey) parts.push('shift');
               
-              // Send message to parent window
-              try {
-                window.parent.postMessage({
-                  type: 'keyboard-shortcut',
-                  action: shortcutAction,
-                  shortcut: shortcutString
-                }, '*');
-              } catch (e) {
-                console.warn('Could not send keyboard shortcut message:', e);
-              }
+              let key = event.key.toLowerCase();
+              if (key === ',') key = 'comma';
+              parts.push(key);
+              
+              return parts.join('+');
             }
-          }, true);
-        })();
-      `).catch(error => {
-        console.warn('Error injecting keyboard handler into webview:', error);
-      });
+
+            function isTypingInInput() {
+              const activeElement = document.activeElement;
+              return activeElement && (
+                activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.contentEditable === 'true' ||
+                activeElement.isContentEditable
+              );
+            }
+
+            // Add event listener with high priority (capture phase)
+            document.addEventListener('keydown', function(event) {
+              // Don't handle shortcuts when typing in input fields
+              if (isTypingInInput() && event.key !== 'Escape') return;
+              
+              const shortcutString = getShortcutString(event);
+              const shortcutAction = shortcuts[shortcutString];
+              
+              if (shortcutAction) {
+                event.preventDefault();
+                event.stopPropagation();
+                
+                // Send message to parent window with multiple fallback methods
+                try {
+                  // Method 1: PostMessage to parent
+                  if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                      type: 'keyboard-shortcut',
+                      action: shortcutAction,
+                      shortcut: shortcutString
+                    }, '*');
+                  }
+                  
+                  // Method 2: Try to access parent directly (if same origin)
+                  if (window.parent && window.parent.handleWebViewShortcut) {
+                    window.parent.handleWebViewShortcut(shortcutAction, shortcutString);
+                  }
+                  
+                  // Method 3: Custom event on document
+                  const customEvent = new CustomEvent('bbzcloud-shortcut', {
+                    detail: { action: shortcutAction, shortcut: shortcutString }
+                  });
+                  document.dispatchEvent(customEvent);
+                  
+                } catch (e) {
+                  console.warn('Could not send keyboard shortcut message:', e);
+                }
+              }
+            }, true); // Use capture phase for higher priority
+            
+            // Also listen for focus events to re-inject if needed
+            window.addEventListener('focus', function() {
+              if (!window.__bbzcloudKeyboardHandlerInjected) {
+                window.__bbzcloudKeyboardHandlerInjected = true;
+              }
+            });
+            
+            console.log('BBZCloud keyboard shortcuts injected successfully');
+          })();
+        `).catch(error => {
+          console.warn('Error injecting keyboard handler into webview:', error);
+          // Retry injection after a delay
+          setTimeout(() => {
+            injectKeyboardHandler(webview);
+          }, 1000);
+        });
+      }, 500);
     };
 
     // Listen for messages from webviews
