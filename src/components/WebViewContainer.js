@@ -1098,30 +1098,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           const interval = setInterval(checkLoginForm, 2000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
         } else if (id === 'schulcloud') {
-          // For schul.cloud, check for login forms periodically
+          // For schul.cloud, check for login forms periodically using exact selectors
           const checkSchulCloudLogin = async () => {
             try {
               const needsLogin = await webview.executeJavaScript(`
                 (function() {
-                  // Look for email or password inputs with various selectors
-                  const emailInput = document.querySelector('input[type="email"]') || 
-                                   document.querySelector('input[placeholder*="E-Mail"]') ||
-                                   document.querySelector('input[placeholder*="email"]') ||
-                                   document.querySelector('input[name*="email"]') ||
-                                   document.querySelector('input[id*="email"]');
+                  // Use exact same selectors as injection function
+                  const emailInput = document.querySelector('input#username[type="text"]');
+                  const passwordInput = document.querySelector('input[type="password"]');
                   
-                  const passwordInput = document.querySelector('input[type="password"]') ||
-                                      document.querySelector('input[placeholder*="Passwort"]') ||
-                                      document.querySelector('input[placeholder*="password"]') ||
-                                      document.querySelector('input[name*="password"]');
-                  
-                  // Check if already logged in
+                  // Check if already logged in or on encryption/auth page
                   const loggedIn = document.querySelector('.user-menu') ||
                                  document.querySelector('.dashboard') ||
                                  document.querySelector('.main-content') ||
-                                 document.querySelector('[data-testid="user-menu"]') ||
-                                 document.querySelector('.navigation') ||
-                                 document.body.textContent.includes('Abmelden');
+                                 document.body.textContent.includes('Abmelden') ||
+                                 document.body.textContent.includes('Verschlüsselungspasswort') ||
+                                 document.body.textContent.includes('Smartphone');
                   
                   // We need login if we see login forms and not logged in
                   return (emailInput || passwordInput) && !loggedIn;
@@ -1129,6 +1121,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               `);
               
               if (needsLogin) {
+                console.log('schul.cloud periodic check: Login needed, triggering injection');
                 setCredsAreSet(prev => ({ ...prev, [id]: false }));
                 await injectCredentials(webview, id);
               }
