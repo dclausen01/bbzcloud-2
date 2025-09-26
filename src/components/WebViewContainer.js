@@ -494,6 +494,193 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             webview.reload();
           }
           break;
+
+        case 'schulcloud':
+          try {
+            // Check if we're on the initial email input page
+            const isEmailPage = await webview.executeJavaScript(`
+              (function() {
+                const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
+                const weiterButton = document.querySelector('button:contains("Weiter"), input[value="Weiter"]');
+                const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
+                
+                // We're on email page if email input exists and no password input
+                return emailInput && !passwordInput;
+              })()
+            `);
+
+            // Check if we're on the password page
+            const isPasswordPage = await webview.executeJavaScript(`
+              (function() {
+                const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
+                const loginButton = document.querySelector('button:contains("Anmelden mit Passwort"), input[value*="Anmelden"]');
+                
+                return passwordInput && loginButton;
+              })()
+            `);
+
+            if (isEmailPage) {
+              // Fill email and click Weiter
+              await webview.executeJavaScript(`
+                (function() {
+                  const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
+                  const weiterButton = document.querySelector('button');
+                  
+                  if (emailInput && weiterButton) {
+                    emailInput.value = "${emailAddress}";
+                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    // Wait a bit then click Weiter
+                    setTimeout(() => {
+                      weiterButton.click();
+                    }, 500);
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+            } else if (isPasswordPage) {
+              // Fill password, check "Login merken", and submit
+              await webview.executeJavaScript(`
+                (function() {
+                  const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
+                  const loginButton = document.querySelector('button');
+                  const rememberCheckbox = document.querySelector('input[type="checkbox"]');
+                  
+                  if (passwordInput && loginButton) {
+                    passwordInput.value = "${password}";
+                    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    // Check "Login merken" checkbox if it exists and is not already checked
+                    if (rememberCheckbox && !rememberCheckbox.checked) {
+                      rememberCheckbox.checked = true;
+                      rememberCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    
+                    // Wait a bit then click login
+                    setTimeout(() => {
+                      loginButton.click();
+                    }, 500);
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+            }
+          } catch (error) {
+            console.error('Error during schul.cloud login:', error);
+          }
+          break;
+
+        case 'office':
+          try {
+            // Check if we're on Microsoft login page (email step)
+            const isMicrosoftEmailPage = await webview.executeJavaScript(`
+              (function() {
+                const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
+                const weiterButton = document.querySelector('input[type="submit"][value="Weiter"], button:contains("Weiter")');
+                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
+                
+                return emailInput && weiterButton && microsoftLogo;
+              })()
+            `);
+
+            // Check if we're on Microsoft password page
+            const isMicrosoftPasswordPage = await webview.executeJavaScript(`
+              (function() {
+                const passwordInput = document.querySelector('input[type="password"]');
+                const signInButton = document.querySelector('input[type="submit"][value*="Anmelden"], button:contains("Anmelden")');
+                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
+                
+                return passwordInput && signInButton && microsoftLogo;
+              })()
+            `);
+
+            // Check if we're on organization login page (after Microsoft redirect)
+            const isOrgLoginPage = await webview.executeJavaScript(`
+              (function() {
+                const emailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
+                const passwordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
+                const loginButton = document.querySelector('input[type="submit"], button[type="submit"]');
+                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
+                
+                // Organization page typically has both email and password fields visible, no Microsoft logo
+                return emailInput && passwordInput && loginButton && !microsoftLogo;
+              })()
+            `);
+
+            if (isMicrosoftEmailPage) {
+              // Fill email on Microsoft login page
+              await webview.executeJavaScript(`
+                (function() {
+                  const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
+                  const weiterButton = document.querySelector('input[type="submit"][value="Weiter"], button');
+                  
+                  if (emailInput && weiterButton) {
+                    emailInput.value = "${emailAddress}";
+                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    setTimeout(() => {
+                      weiterButton.click();
+                    }, 500);
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+            } else if (isMicrosoftPasswordPage) {
+              // Fill password on Microsoft password page
+              await webview.executeJavaScript(`
+                (function() {
+                  const passwordInput = document.querySelector('input[type="password"]');
+                  const signInButton = document.querySelector('input[type="submit"], button');
+                  
+                  if (passwordInput && signInButton) {
+                    passwordInput.value = "${password}";
+                    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    setTimeout(() => {
+                      signInButton.click();
+                    }, 500);
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+            } else if (isOrgLoginPage) {
+              // Fill both email and password on organization login page
+              await webview.executeJavaScript(`
+                (function() {
+                  const emailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
+                  const passwordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
+                  const loginButton = document.querySelector('input[type="submit"], button[type="submit"]');
+                  
+                  if (emailInput && passwordInput && loginButton) {
+                    emailInput.value = "${emailAddress}";
+                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    passwordInput.value = "${password}";
+                    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    setTimeout(() => {
+                      loginButton.click();
+                    }, 500);
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+            }
+          } catch (error) {
+            console.error('Error during Office login:', error);
+          }
+          break;
       }
 
       setCredsAreSet(prev => ({ ...prev, [id]: true }));
@@ -804,6 +991,81 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // Set up periodic check
           const interval = setInterval(checkLoginForm, 2000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
+        } else if (id === 'schulcloud') {
+          // For schul.cloud, check for login forms periodically
+          const checkSchulCloudLogin = async () => {
+            try {
+              const needsLogin = await webview.executeJavaScript(`
+                (function() {
+                  // Check if we're on email input page
+                  const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
+                  const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
+                  
+                  // Check if we're already logged in (look for dashboard elements)
+                  const dashboard = document.querySelector('.dashboard, .main-content, .user-menu');
+                  
+                  // We need login if we see login forms and no dashboard
+                  return (emailInput || passwordInput) && !dashboard;
+                })()
+              `);
+              
+              if (needsLogin) {
+                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                await injectCredentials(webview, id);
+              }
+            } catch (error) {
+              // Silent fail - page might not be ready
+            }
+          };
+
+          // Initial check
+          await checkSchulCloudLogin();
+          
+          // Set up periodic check every 5 seconds
+          const interval = setInterval(checkSchulCloudLogin, 5000);
+          eventCleanups.get(webview)?.push(() => clearInterval(interval));
+        } else if (id === 'office') {
+          // For Office, check for Microsoft login forms periodically
+          const checkOfficeLogin = async () => {
+            try {
+              const needsLogin = await webview.executeJavaScript(`
+                (function() {
+                  // Check for Microsoft login forms
+                  const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
+                  const passwordInput = document.querySelector('input[type="password"]');
+                  const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
+                  
+                  // Check for organization login forms
+                  const orgEmailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
+                  const orgPasswordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
+                  const orgLoginButton = document.querySelector('input[type="submit"], button[type="submit"]');
+                  
+                  // Check if we're already logged in (look for Office apps or user menu)
+                  const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
+                  
+                  // We need login if we see login forms and no Office interface
+                  const hasMicrosoftLogin = (emailInput || passwordInput) && microsoftLogo;
+                  const hasOrgLogin = orgEmailInput && orgPasswordInput && orgLoginButton && !microsoftLogo;
+                  
+                  return (hasMicrosoftLogin || hasOrgLogin) && !officeApps;
+                })()
+              `);
+              
+              if (needsLogin) {
+                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                await injectCredentials(webview, id);
+              }
+            } catch (error) {
+              // Silent fail - page might not be ready
+            }
+          };
+
+          // Initial check
+          await checkOfficeLogin();
+          
+          // Set up periodic check every 5 seconds
+          const interval = setInterval(checkOfficeLogin, 5000);
+          eventCleanups.get(webview)?.push(() => clearInterval(interval));
         } else {
           await injectCredentials(webview, id);
         }
@@ -872,6 +1134,55 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           if (isLoginPage) {
             setCredsAreSet(prev => ({ ...prev, [id]: false }));
             await injectCredentials(webview, id);
+          }
+        } else if (id === 'schulcloud') {
+          // For schul.cloud, check for login forms after navigation
+          try {
+            const needsLogin = await webview.executeJavaScript(`
+              (function() {
+                const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
+                const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
+                const dashboard = document.querySelector('.dashboard, .main-content, .user-menu');
+                
+                return (emailInput || passwordInput) && !dashboard;
+              })()
+            `);
+            
+            if (needsLogin) {
+              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              await injectCredentials(webview, id);
+            }
+          } catch (error) {
+            // Silent fail - page might not be ready
+          }
+        } else if (id === 'office') {
+          // For Office, check for login forms after navigation
+          try {
+            const needsLogin = await webview.executeJavaScript(`
+              (function() {
+                const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
+                const passwordInput = document.querySelector('input[type="password"]');
+                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
+                
+                const orgEmailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
+                const orgPasswordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
+                const orgLoginButton = document.querySelector('input[type="submit"], button[type="submit"]');
+                
+                const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
+                
+                const hasMicrosoftLogin = (emailInput || passwordInput) && microsoftLogo;
+                const hasOrgLogin = orgEmailInput && orgPasswordInput && orgLoginButton && !microsoftLogo;
+                
+                return (hasMicrosoftLogin || hasOrgLogin) && !officeApps;
+              })()
+            `);
+            
+            if (needsLogin) {
+              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              await injectCredentials(webview, id);
+            }
+          } catch (error) {
+            // Silent fail - page might not be ready
           }
         }
       });
