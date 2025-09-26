@@ -574,13 +574,33 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               // Password page - fill password, check remember me, and submit
               const result = await webview.executeJavaScript(`
                 (function() {
-                  const passwordInput = document.querySelector('input[type="password"]');
+                  // Find password input but exclude encryption password field
+                  const allPasswordInputs = document.querySelectorAll('input[type="password"]');
+                  let passwordInput = null;
+                  
+                  // Filter out encryption password field
+                  for (const input of allPasswordInputs) {
+                    const parentAppLabel = input.closest('app-label-input');
+                    const hasEncryptionTestId = parentAppLabel && parentAppLabel.getAttribute('data-test-id') === 'set-private-key-password_pass_if';
+                    const hasEncryptionLabel = parentAppLabel && parentAppLabel.textContent.includes('Verschlüsselungskennwort');
+                    
+                    // Skip if this is the encryption password field
+                    if (hasEncryptionTestId || hasEncryptionLabel) {
+                      console.log('Skipping encryption password field');
+                      continue;
+                    }
+                    
+                    // This should be the regular login password
+                    passwordInput = input;
+                    break;
+                  }
+                  
                   const rememberCheckbox = document.querySelector('app-icon[icon="check"]');
                   const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
                                     Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Anmelden mit Passwort'));
                   
                   if (passwordInput) {
-                    console.log('Filling password');
+                    console.log('Filling login password (not encryption password)');
                     passwordInput.value = "${password}";
                     passwordInput.focus();
                     
@@ -612,8 +632,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     }, 1000);
                     
                     return true;
+                  } else {
+                    console.log('No valid login password field found (encryption password excluded)');
+                    return false;
                   }
-                  return false;
                 })()
               `);
               
