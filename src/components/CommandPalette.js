@@ -188,12 +188,14 @@ const CommandPalette = ({
       settings.customApps.forEach((app) => {
         commands.push({
           id: `custom-${app.id}`,
-          title: app.title,
-          description: `Zu ${app.title} navigieren`,
+          title: `${app.title} in neuem Fenster öffnen`,
+          description: `${app.title} in einem neuen Fenster öffnen`,
           category: 'Benutzerdefinierte Apps',
           icon: '🚀',
           action: () => {
-            onNavigate?.(app.id, false);
+            if (window.electron && window.electron.openExternalWindow) {
+              window.electron.openExternalWindow({ url: app.url, title: app.title });
+            }
             onClose();
           },
         });

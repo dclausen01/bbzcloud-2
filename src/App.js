@@ -676,6 +676,67 @@ function App() {
     }
   };
 
+  /**
+   * Handle keyboard shortcuts from WebViews
+   * This function is called by the injected WebView scripts
+   * 
+   * @param {string} action - The shortcut action to perform
+   * @param {string} shortcut - The shortcut string that was pressed
+   */
+  const handleWebViewShortcut = useCallback((action, shortcut) => {
+    switch (action) {
+      case 'COMMAND_PALETTE':
+        onCommandPaletteOpen();
+        break;
+      case 'TOGGLE_TODO':
+        onTodoOpen();
+        break;
+      case 'TOGGLE_SECURE_DOCS':
+        onSecureDocsOpen();
+        break;
+      case 'OPEN_SETTINGS':
+        onSettingsOpen();
+        break;
+      case 'RELOAD_CURRENT':
+        if (webViewRef.current) {
+          webViewRef.current.reload();
+        }
+        break;
+      case 'RELOAD_ALL':
+        const webviews = document.querySelectorAll('webview');
+        webviews.forEach(webview => webview.reload());
+        announceToScreenReader('Alle Webviews werden neu geladen');
+        break;
+      case 'TOGGLE_FULLSCREEN':
+        if (window.electron && window.electron.toggleFullscreen) {
+          window.electron.toggleFullscreen();
+        }
+        break;
+      default:
+        if (action.startsWith('NAV_')) {
+          const index = parseInt(action.split('_')[1]) - 1;
+          const filteredButtons = filterNavigationButtons();
+          const navigationItems = Object.entries(filteredButtons)
+            .filter(([_, config]) => config.visible)
+            .map(([id, config]) => ({ id, ...config }));
+          
+          if (navigationItems[index]) {
+            handleNavigationClick(navigationItems[index].id, false);
+          }
+        }
+        break;
+    }
+  }, [onCommandPaletteOpen, onTodoOpen, onSecureDocsOpen, onSettingsOpen, webViewRef, filterNavigationButtons, handleNavigationClick]);
+
+  // Make handleWebViewShortcut available globally for WebView scripts
+  useEffect(() => {
+    window.handleWebViewShortcut = handleWebViewShortcut;
+    
+    return () => {
+      delete window.handleWebViewShortcut;
+    };
+  }, [handleWebViewShortcut]);
+
   // ============================================================================
   // RENDER
   // ============================================================================
