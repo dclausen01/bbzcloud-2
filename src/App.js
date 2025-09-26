@@ -73,7 +73,7 @@ import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
 
 // Custom Hooks and Utilities
-import { useConsolidatedKeyboardShortcuts } from './hooks/useConsolidatedKeyboardShortcuts';
+import { useStreamlinedKeyboardShortcuts } from './hooks/useStreamlinedKeyboardShortcuts';
 import { 
   SUCCESS_MESSAGES, 
   ERROR_MESSAGES, 
@@ -511,8 +511,8 @@ function App() {
     .filter(([_, config]) => config.visible)
     .map(([id, config]) => ({ id, ...config }));
 
-  // Consolidated keyboard shortcuts to prevent conflicts and black screen issues
-  useConsolidatedKeyboardShortcuts({
+  // Streamlined keyboard shortcuts to prevent conflicts and improve performance
+  useStreamlinedKeyboardShortcuts({
     handlers: {
       onToggleTodo: onTodoOpen,
       onToggleSecureDocs: onSecureDocsOpen,
@@ -532,6 +532,12 @@ function App() {
         const webviews = document.querySelectorAll('webview');
         webviews.forEach(webview => webview.reload());
         announceToScreenReader('Alle Webviews werden neu geladen');
+      },
+      onToggleFullscreen: () => {
+        // Toggle fullscreen mode
+        if (window.electron && window.electron.toggleFullscreen) {
+          window.electron.toggleFullscreen();
+        }
       },
       onNavigate: (item) => handleNavigationClick(item.id, false),
     },
