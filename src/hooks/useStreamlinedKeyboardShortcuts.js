@@ -324,6 +324,11 @@ export const useStreamlinedKeyboardShortcuts = ({
           }
         }
         break;
+
+      default:
+        // Handle any unrecognized shortcuts - no action needed
+        // This prevents the switch statement from falling through
+        break;
     }
 
     // If we handled the shortcut, stop propagation
@@ -451,30 +456,43 @@ export const useStreamlinedKeyboardShortcuts = ({
                 event.preventDefault();
                 event.stopPropagation();
                 
-                // Send message to parent window with multiple fallback methods
+                // Send message to main process via IPC with fallbacks
                 try {
-                  // Method 1: PostMessage to parent
-                  if (window.parent && window.parent !== window) {
+                  // Method 1: Use electronAPI (simple API for webview content)
+                  if (window.electronAPI && window.electronAPI.sendShortcut) {
+                    window.electronAPI.sendShortcut(shortcutAction);
+                    console.log('[WebView Shortcut] Sent via electronAPI:', shortcutAction);
+                  }
+                  // Method 2: Use full electron API
+                  else if (window.electron && window.electron.sendShortcut) {
+                    window.electron.sendShortcut(shortcutAction, shortcutString);
+                    console.log('[WebView Shortcut] Sent via electron API:', shortcutAction);
+                  }
+                  // Method 3: PostMessage to parent (fallback)
+                  else if (window.parent && window.parent !== window) {
                     window.parent.postMessage({
                       type: 'keyboard-shortcut',
                       action: shortcutAction,
                       shortcut: shortcutString
                     }, '*');
+                    console.log('[WebView Shortcut] Sent via postMessage:', shortcutAction);
                   }
-                  
-                  // Method 2: Try to access parent directly (if same origin)
-                  if (window.parent && window.parent.handleWebViewShortcut) {
+                  // Method 4: Try to access parent directly (if same origin)
+                  else if (window.parent && window.parent.handleWebViewShortcut) {
                     window.parent.handleWebViewShortcut(shortcutAction, shortcutString);
+                    console.log('[WebView Shortcut] Sent via parent function:', shortcutAction);
                   }
-                  
-                  // Method 3: Custom event on document
-                  const customEvent = new CustomEvent('bbzcloud-shortcut', {
-                    detail: { action: shortcutAction, shortcut: shortcutString }
-                  });
-                  document.dispatchEvent(customEvent);
+                  // Method 5: Custom event on document (last resort)
+                  else {
+                    const customEvent = new CustomEvent('bbzcloud-shortcut', {
+                      detail: { action: shortcutAction, shortcut: shortcutString }
+                    });
+                    document.dispatchEvent(customEvent);
+                    console.log('[WebView Shortcut] Sent via custom event:', shortcutAction);
+                  }
                   
                 } catch (e) {
-                  console.warn('Could not send keyboard shortcut message:', e);
+                  console.warn('[WebView Shortcut] Could not send keyboard shortcut message:', e);
                 }
               }
             }, true); // Use capture phase for higher priority
@@ -548,6 +566,48 @@ export const useStreamlinedKeyboardShortcuts = ({
       }
     };
 
+    // Listen for shortcut events from main process (IPC)
+    let unsubscribeShortcutListener;
+    if (window.electron && window.electron.onShortcut) {
+      unsubscribeShortcutListener = window.electron.onShortcut(({ action, shortcut }) => {
+        console.log('[Streamlined Shortcuts] Received IPC shortcut:', { action, shortcut });
+        const currentHandlers = handlersRef.current;
+        const currentNavigationItems = navigationItemsRef.current;
+
+        switch (action) {
+          case 'COMMAND_PALETTE':
+            currentHandlers.onOpenCommandPalette?.();
+            break;
+          case 'TOGGLE_TODO':
+            currentHandlers.onToggleTodo?.();
+            break;
+          case 'TOGGLE_SECURE_DOCS':
+            currentHandlers.onToggleSecureDocs?.();
+            break;
+          case 'OPEN_SETTINGS':
+            currentHandlers.onOpenSettings?.();
+            break;
+          case 'RELOAD_CURRENT':
+            currentHandlers.onReloadCurrent?.();
+            break;
+          case 'RELOAD_ALL':
+            currentHandlers.onReloadAll?.();
+            break;
+          case 'TOGGLE_FULLSCREEN':
+            currentHandlers.onToggleFullscreen?.();
+            break;
+          default:
+            if (action.startsWith('NAV_')) {
+              const index = parseInt(action.split('_')[1]) - 1;
+              if (currentNavigationItems[index] && currentHandlers.onNavigate) {
+                currentHandlers.onNavigate(currentNavigationItems[index]);
+              }
+            }
+            break;
+        }
+      });
+    }
+
     window.addEventListener('message', handleMessage);
     const cleanupWebViewHandling = setupWebViewKeyboardHandling();
 
@@ -555,6 +615,9 @@ export const useStreamlinedKeyboardShortcuts = ({
       window.removeEventListener('message', handleMessage);
       if (cleanupWebViewHandling) {
         cleanupWebViewHandling();
+      }
+      if (unsubscribeShortcutListener) {
+        unsubscribeShortcutListener();
       }
     };
   }, [enabled]);

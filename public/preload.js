@@ -254,6 +254,54 @@ contextBridge.exposeInMainWorld('electron', {
   },
   offMessage: (callback) => {
     ipcRenderer.removeListener('webview-message', callback);
+  },
+
+  // Keyboard shortcut communication
+  sendShortcut: (action, shortcut) => {
+    ipcRenderer.send('keyboard-shortcut', { action, shortcut });
+  },
+  
+  // Global shortcut registration (for main window)
+  registerGlobalShortcut: async (shortcut, handler) => {
+    try {
+      const success = await ipcRenderer.invoke('register-global-shortcut', { shortcut });
+      if (success && handler) {
+        // Store handler for when shortcut is triggered
+        ipcRenderer.on(`global-shortcut-${shortcut}`, handler);
+      }
+      return success;
+    } catch (error) {
+      console.error('Error registering global shortcut:', error);
+      return false;
+    }
+  },
+  
+  unregisterGlobalShortcut: async (shortcut) => {
+    try {
+      const success = await ipcRenderer.invoke('unregister-global-shortcut', { shortcut });
+      // Remove all listeners for this shortcut
+      ipcRenderer.removeAllListeners(`global-shortcut-${shortcut}`);
+      return success;
+    } catch (error) {
+      console.error('Error unregistering global shortcut:', error);
+      return false;
+    }
+  },
+  
+  unregisterAllGlobalShortcuts: async () => {
+    try {
+      return await ipcRenderer.invoke('unregister-all-global-shortcuts');
+    } catch (error) {
+      console.error('Error unregistering all global shortcuts:', error);
+      return false;
+    }
+  },
+  
+  // Listen for shortcut events from main process
+  onShortcut: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('shortcut-triggered', handler);
+    return () => ipcRenderer.removeListener('shortcut-triggered', handler);
   }
 });
 

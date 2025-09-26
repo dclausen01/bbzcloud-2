@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor, screen, globalShortcut } = require('electron');
 const path = require('path');
 const zlib = require('zlib');
 const util = require('util');
@@ -1132,6 +1132,87 @@ ipcMain.on('showContextMenu', (event, data) => {
 // Handle webview messages
 ipcMain.on('webview-message', (event, message) => {
   console.log('[WebView Debug]', message);
+});
+
+// Global shortcut management
+const registeredShortcuts = new Map();
+
+// Handle keyboard shortcut messages from webviews
+ipcMain.on('keyboard-shortcut', (event, { action, shortcut }) => {
+  console.log('[Keyboard Shortcut]', { action, shortcut });
+  
+  // Forward the shortcut to the main window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('shortcut-triggered', { action, shortcut });
+  }
+});
+
+// Global shortcut registration
+ipcMain.handle('register-global-shortcut', async (event, { shortcut }) => {
+  try {
+    if (registeredShortcuts.has(shortcut)) {
+      console.log(`[Global Shortcut] Shortcut ${shortcut} already registered`);
+      return true;
+    }
+
+    const success = globalShortcut.register(shortcut, () => {
+      console.log(`[Global Shortcut] Triggered: ${shortcut}`);
+      
+      // Send to main window
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('shortcut-triggered', { action: shortcut, shortcut });
+      }
+      
+      // Also send to the requesting webview if available
+      const senderWebContents = event.sender;
+      if (senderWebContents && !senderWebContents.isDestroyed()) {
+        senderWebContents.send(`global-shortcut-${shortcut}`);
+      }
+    });
+
+    if (success) {
+      registeredShortcuts.set(shortcut, true);
+      console.log(`[Global Shortcut] Successfully registered: ${shortcut}`);
+    } else {
+      console.warn(`[Global Shortcut] Failed to register: ${shortcut}`);
+    }
+
+    return success;
+  } catch (error) {
+    console.error(`[Global Shortcut] Error registering ${shortcut}:`, error);
+    return false;
+  }
+});
+
+// Global shortcut unregistration
+ipcMain.handle('unregister-global-shortcut', async (event, { shortcut }) => {
+  try {
+    if (!registeredShortcuts.has(shortcut)) {
+      console.log(`[Global Shortcut] Shortcut ${shortcut} not registered`);
+      return true;
+    }
+
+    globalShortcut.unregister(shortcut);
+    registeredShortcuts.delete(shortcut);
+    console.log(`[Global Shortcut] Successfully unregistered: ${shortcut}`);
+    return true;
+  } catch (error) {
+    console.error(`[Global Shortcut] Error unregistering ${shortcut}:`, error);
+    return false;
+  }
+});
+
+// Unregister all global shortcuts
+ipcMain.handle('unregister-all-global-shortcuts', async () => {
+  try {
+    globalShortcut.unregisterAll();
+    registeredShortcuts.clear();
+    console.log('[Global Shortcut] All shortcuts unregistered');
+    return true;
+  } catch (error) {
+    console.error('[Global Shortcut] Error unregistering all shortcuts:', error);
+    return false;
+  }
 });
 
 // Global dialog state
