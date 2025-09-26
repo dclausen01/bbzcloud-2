@@ -497,77 +497,127 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'schulcloud':
           try {
-            // Check if we're on the initial email input page
-            const isEmailPage = await webview.executeJavaScript(`
+            // Detect login state using exact schul.cloud selectors
+            const loginState = await webview.executeJavaScript(`
               (function() {
-                const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
-                const weiterButton = document.querySelector('button:contains("Weiter"), input[value="Weiter"]');
-                const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
+                // Look for specific schul.cloud elements
+                const emailInput = document.querySelector('input#username[type="text"]');
+                const passwordInput = document.querySelector('input[type="password"]');
+                const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
+                const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
+                                  Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
+                                  document.querySelector('[title*="Anmelden"]');
                 
-                // We're on email page if email input exists and no password input
-                return emailInput && !passwordInput;
+                // Check for remember login checkbox (look for the SVG icon structure)
+                const rememberCheckbox = document.querySelector('app-icon[icon="check"]');
+                
+                // Check if already logged in or on encryption/auth page
+                const loggedIn = document.querySelector('.user-menu') ||
+                               document.querySelector('.dashboard') ||
+                               document.querySelector('.main-content') ||
+                               document.body.textContent.includes('Abmelden') ||
+                               document.body.textContent.includes('Verschlüsselungspasswort') ||
+                               document.body.textContent.includes('Smartphone');
+                
+                return {
+                  emailInput: !!emailInput,
+                  passwordInput: !!passwordInput,
+                  weiterButton: !!weiterButton,
+                  loginButton: !!loginButton,
+                  rememberCheckbox: !!rememberCheckbox,
+                  loggedIn: !!loggedIn,
+                  url: window.location.href,
+                  title: document.title
+                };
               })()
             `);
 
-            // Check if we're on the password page
-            const isPasswordPage = await webview.executeJavaScript(`
-              (function() {
-                const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
-                const loginButton = document.querySelector('button:contains("Anmelden mit Passwort"), input[value*="Anmelden"]');
-                
-                return passwordInput && loginButton;
-              })()
-            `);
+            console.log('schul.cloud login state:', loginState);
 
-            if (isEmailPage) {
-              // Fill email and click Weiter
-              await webview.executeJavaScript(`
+            if (loginState.loggedIn) {
+              // Already logged in or on post-login page, no action needed
+              return;
+            }
+
+            if (loginState.emailInput && !loginState.passwordInput) {
+              // Email page - fill email and click Weiter
+              const result = await webview.executeJavaScript(`
                 (function() {
-                  const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
-                  const weiterButton = document.querySelector('button');
+                  const emailInput = document.querySelector('input#username[type="text"]');
+                  const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
                   
                   if (emailInput && weiterButton) {
+                    console.log('Filling email:', "${emailAddress}");
                     emailInput.value = "${emailAddress}";
+                    emailInput.focus();
+                    
+                    // Trigger Angular events
                     emailInput.dispatchEvent(new Event('input', { bubbles: true }));
                     emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    emailInput.dispatchEvent(new Event('blur', { bubbles: true }));
                     
-                    // Wait a bit then click Weiter
+                    // Wait then click Weiter button
                     setTimeout(() => {
+                      console.log('Clicking Weiter button');
                       weiterButton.click();
-                    }, 500);
+                    }, 1000);
+                    
                     return true;
                   }
                   return false;
                 })()
               `);
-            } else if (isPasswordPage) {
-              // Fill password, check "Login merken", and submit
-              await webview.executeJavaScript(`
+              
+              console.log('Email injection result:', result);
+              
+            } else if (loginState.passwordInput) {
+              // Password page - fill password, check remember me, and submit
+              const result = await webview.executeJavaScript(`
                 (function() {
-                  const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
-                  const loginButton = document.querySelector('button');
-                  const rememberCheckbox = document.querySelector('input[type="checkbox"]');
+                  const passwordInput = document.querySelector('input[type="password"]');
+                  const rememberCheckbox = document.querySelector('app-icon[icon="check"]');
+                  const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
+                                    Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Anmelden mit Passwort'));
                   
-                  if (passwordInput && loginButton) {
+                  if (passwordInput) {
+                    console.log('Filling password');
                     passwordInput.value = "${password}";
+                    passwordInput.focus();
+                    
+                    // Trigger Angular events
                     passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
                     passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    passwordInput.dispatchEvent(new Event('blur', { bubbles: true }));
                     
-                    // Check "Login merken" checkbox if it exists and is not already checked
-                    if (rememberCheckbox && !rememberCheckbox.checked) {
-                      rememberCheckbox.checked = true;
-                      rememberCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    // Click remember login checkbox if available
+                    if (rememberCheckbox) {
+                      console.log('Clicking remember login checkbox');
+                      rememberCheckbox.click();
                     }
                     
-                    // Wait a bit then click login
+                    // Wait then click login button
                     setTimeout(() => {
-                      loginButton.click();
-                    }, 500);
+                      if (loginButton) {
+                        console.log('Clicking login button');
+                        loginButton.click();
+                      } else {
+                        // Try to find the parent button element
+                        const parentButton = document.querySelector('button:contains("Anmelden")') ||
+                                           document.querySelector('button[type="submit"]');
+                        if (parentButton) {
+                          console.log('Clicking parent login button');
+                          parentButton.click();
+                        }
+                      }
+                    }, 1000);
+                    
                     return true;
                   }
                   return false;
                 })()
               `);
+              
+              console.log('Password injection result:', result);
             }
           } catch (error) {
             console.error('Error during schul.cloud login:', error);
@@ -576,106 +626,162 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'office':
           try {
-            // Check if we're on Microsoft login page (email step)
-            const isMicrosoftEmailPage = await webview.executeJavaScript(`
+            // Detect Office.com login state using exact selectors
+            const loginState = await webview.executeJavaScript(`
               (function() {
-                const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
-                const weiterButton = document.querySelector('input[type="submit"][value="Weiter"], button:contains("Weiter")');
-                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
+                // Look for specific Office.com elements
+                const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
+                const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
+                const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
+                const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
+                const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
                 
-                return emailInput && weiterButton && microsoftLogo;
+                // Check for account selection tile
+                const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
+                
+                // Check if already logged in (look for Office apps or user menu)
+                const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]') ||
+                                 document.body.textContent.includes('Office') ||
+                                 document.body.textContent.includes('Microsoft 365');
+                
+                return {
+                  emailInput: !!emailInput,
+                  passwordInput: !!passwordInput,
+                  weiterButton: !!weiterButton,
+                  anmeldenButton: !!anmeldenButton,
+                  jaButton: !!jaButton,
+                  emailTile: !!emailTile,
+                  loggedIn: !!officeApps,
+                  url: window.location.href,
+                  title: document.title
+                };
               })()
             `);
 
-            // Check if we're on Microsoft password page
-            const isMicrosoftPasswordPage = await webview.executeJavaScript(`
-              (function() {
-                const passwordInput = document.querySelector('input[type="password"]');
-                const signInButton = document.querySelector('input[type="submit"][value*="Anmelden"], button:contains("Anmelden")');
-                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
-                
-                return passwordInput && signInButton && microsoftLogo;
-              })()
-            `);
+            console.log('Office.com login state:', loginState);
 
-            // Check if we're on organization login page (after Microsoft redirect)
-            const isOrgLoginPage = await webview.executeJavaScript(`
-              (function() {
-                const emailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
-                const passwordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
-                const loginButton = document.querySelector('input[type="submit"], button[type="submit"]');
-                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
-                
-                // Organization page typically has both email and password fields visible, no Microsoft logo
-                return emailInput && passwordInput && loginButton && !microsoftLogo;
-              })()
-            `);
+            if (loginState.loggedIn) {
+              // Already logged in, no action needed
+              return;
+            }
 
-            if (isMicrosoftEmailPage) {
-              // Fill email on Microsoft login page
-              await webview.executeJavaScript(`
+            if (loginState.emailInput && !loginState.passwordInput) {
+              // Email page - fill email and click Weiter
+              const result = await webview.executeJavaScript(`
                 (function() {
-                  const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
-                  const weiterButton = document.querySelector('input[type="submit"][value="Weiter"], button');
+                  const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
+                  const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
                   
                   if (emailInput && weiterButton) {
+                    console.log('Filling Office email:', "${emailAddress}");
                     emailInput.value = "${emailAddress}";
+                    emailInput.focus();
+                    
+                    // Trigger Microsoft form events
                     emailInput.dispatchEvent(new Event('input', { bubbles: true }));
                     emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    emailInput.dispatchEvent(new Event('blur', { bubbles: true }));
                     
+                    // Wait then click Weiter button
                     setTimeout(() => {
+                      console.log('Clicking Office Weiter button');
                       weiterButton.click();
-                    }, 500);
+                    }, 1000);
+                    
                     return true;
                   }
                   return false;
                 })()
               `);
-            } else if (isMicrosoftPasswordPage) {
-              // Fill password on Microsoft password page
-              await webview.executeJavaScript(`
+              
+              console.log('Office email injection result:', result);
+              
+            } else if (loginState.emailTile && !loginState.passwordInput) {
+              // Account selection page - click on email tile
+              const result = await webview.executeJavaScript(`
                 (function() {
-                  const passwordInput = document.querySelector('input[type="password"]');
-                  const signInButton = document.querySelector('input[type="submit"], button');
+                  const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
                   
-                  if (passwordInput && signInButton) {
+                  if (emailTile) {
+                    console.log('Clicking Office email tile');
+                    
+                    // Look for the clickable parent element
+                    let clickableElement = emailTile;
+                    let parent = emailTile.parentElement;
+                    while (parent && parent !== document.body) {
+                      if (parent.tagName === 'BUTTON' || 
+                          parent.onclick || 
+                          parent.getAttribute('role') === 'button' ||
+                          parent.style.cursor === 'pointer' ||
+                          parent.classList.contains('tile') ||
+                          parent.classList.contains('account')) {
+                        clickableElement = parent;
+                        break;
+                      }
+                      parent = parent.parentElement;
+                    }
+                    
+                    // Click the element
+                    clickableElement.click();
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+              
+              console.log('Office email tile click result:', result);
+              
+            } else if (loginState.passwordInput) {
+              // Password page - fill password and submit
+              const result = await webview.executeJavaScript(`
+                (function() {
+                  const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
+                  const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
+                  
+                  if (passwordInput && anmeldenButton) {
+                    console.log('Filling Office password');
                     passwordInput.value = "${password}";
+                    passwordInput.focus();
+                    
+                    // Trigger Microsoft form events
                     passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
                     passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    passwordInput.dispatchEvent(new Event('blur', { bubbles: true }));
                     
+                    // Wait then click Anmelden button
                     setTimeout(() => {
-                      signInButton.click();
-                    }, 500);
+                      console.log('Clicking Office Anmelden button');
+                      anmeldenButton.click();
+                    }, 1000);
+                    
                     return true;
                   }
                   return false;
                 })()
               `);
-            } else if (isOrgLoginPage) {
-              // Fill both email and password on organization login page
-              await webview.executeJavaScript(`
+              
+              console.log('Office password injection result:', result);
+              
+            } else if (loginState.jaButton) {
+              // "Stay signed in?" page - click Ja
+              const result = await webview.executeJavaScript(`
                 (function() {
-                  const emailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
-                  const passwordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
-                  const loginButton = document.querySelector('input[type="submit"], button[type="submit"]');
+                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
                   
-                  if (emailInput && passwordInput && loginButton) {
-                    emailInput.value = "${emailAddress}";
-                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    
-                    passwordInput.value = "${password}";
-                    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                  if (jaButton) {
+                    console.log('Clicking Office Ja button');
                     
                     setTimeout(() => {
-                      loginButton.click();
+                      jaButton.click();
                     }, 500);
+                    
                     return true;
                   }
                   return false;
                 })()
               `);
+              
+              console.log('Office Ja button click result:', result);
             }
           } catch (error) {
             console.error('Error during Office login:', error);
@@ -997,15 +1103,28 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             try {
               const needsLogin = await webview.executeJavaScript(`
                 (function() {
-                  // Check if we're on email input page
-                  const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
-                  const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
+                  // Look for email or password inputs with various selectors
+                  const emailInput = document.querySelector('input[type="email"]') || 
+                                   document.querySelector('input[placeholder*="E-Mail"]') ||
+                                   document.querySelector('input[placeholder*="email"]') ||
+                                   document.querySelector('input[name*="email"]') ||
+                                   document.querySelector('input[id*="email"]');
                   
-                  // Check if we're already logged in (look for dashboard elements)
-                  const dashboard = document.querySelector('.dashboard, .main-content, .user-menu');
+                  const passwordInput = document.querySelector('input[type="password"]') ||
+                                      document.querySelector('input[placeholder*="Passwort"]') ||
+                                      document.querySelector('input[placeholder*="password"]') ||
+                                      document.querySelector('input[name*="password"]');
                   
-                  // We need login if we see login forms and no dashboard
-                  return (emailInput || passwordInput) && !dashboard;
+                  // Check if already logged in
+                  const loggedIn = document.querySelector('.user-menu') ||
+                                 document.querySelector('.dashboard') ||
+                                 document.querySelector('.main-content') ||
+                                 document.querySelector('[data-testid="user-menu"]') ||
+                                 document.querySelector('.navigation') ||
+                                 document.body.textContent.includes('Abmelden');
+                  
+                  // We need login if we see login forms and not logged in
+                  return (emailInput || passwordInput) && !loggedIn;
                 })()
               `);
               
@@ -1030,24 +1149,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             try {
               const needsLogin = await webview.executeJavaScript(`
                 (function() {
-                  // Check for Microsoft login forms
-                  const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
-                  const passwordInput = document.querySelector('input[type="password"]');
-                  const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
+                  // Check for specific Office.com elements using exact selectors
+                  const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
+                  const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
+                  const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
+                  const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
+                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                  const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
                   
-                  // Check for organization login forms
-                  const orgEmailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
-                  const orgPasswordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
-                  const orgLoginButton = document.querySelector('input[type="submit"], button[type="submit"]');
+                  // Check if already logged in (look for Office apps or user menu)
+                  const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]') ||
+                                   document.body.textContent.includes('Office') ||
+                                   document.body.textContent.includes('Microsoft 365');
                   
-                  // Check if we're already logged in (look for Office apps or user menu)
-                  const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
-                  
-                  // We need login if we see login forms and no Office interface
-                  const hasMicrosoftLogin = (emailInput || passwordInput) && microsoftLogo;
-                  const hasOrgLogin = orgEmailInput && orgPasswordInput && orgLoginButton && !microsoftLogo;
-                  
-                  return (hasMicrosoftLogin || hasOrgLogin) && !officeApps;
+                  // We need login if we see any login elements and not logged in
+                  return (emailInput || passwordInput || weiterButton || anmeldenButton || jaButton || emailTile) && !officeApps;
                 })()
               `);
               
@@ -1140,11 +1256,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           try {
             const needsLogin = await webview.executeJavaScript(`
               (function() {
-                const emailInput = document.querySelector('input[placeholder*="E-Mail-Adresse"]');
-                const passwordInput = document.querySelector('input[placeholder*="Accountpasswort"]');
-                const dashboard = document.querySelector('.dashboard, .main-content, .user-menu');
+                const emailInput = document.querySelector('input#username[type="text"]');
+                const passwordInput = document.querySelector('input[type="password"]');
+                const loggedIn = document.querySelector('.user-menu') ||
+                               document.querySelector('.dashboard') ||
+                               document.querySelector('.main-content') ||
+                               document.body.textContent.includes('Abmelden') ||
+                               document.body.textContent.includes('Verschlüsselungspasswort') ||
+                               document.body.textContent.includes('Smartphone');
                 
-                return (emailInput || passwordInput) && !dashboard;
+                return (emailInput || passwordInput) && !loggedIn;
               })()
             `);
             
