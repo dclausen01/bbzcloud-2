@@ -138,7 +138,11 @@ contextBridge.exposeInMainWorld(
   'electronAPI',
   {
     sendShortcut: (action) => {
+      console.log('[WebView electronAPI] Sending shortcut:', action);
       ipcRenderer.send('keyboard-shortcut', { action });
     }
   }
 );
+
+// Debug: Log when preload script loads
+console.log('[WebView Preload] Script loaded, electronAPI exposed');

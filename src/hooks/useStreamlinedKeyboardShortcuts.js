@@ -137,7 +137,11 @@ export const useStreamlinedKeyboardShortcuts = ({
       isInInput,
       activeElement: document.activeElement?.tagName,
       hasHandlers: !!currentHandlers,
-      enabled
+      enabled,
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey
     });
 
     // Allow escape key even when typing (for closing modals)
