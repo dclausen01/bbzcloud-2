@@ -123,7 +123,7 @@ const KeyboardDebugTool = () => {
     };
     
     setKeyLogs(prev => [...prev, logEntry]);
-    addLog(`Keyboard: ${shortcut} (Key: ${event.key}, Ctrl: ${event.ctrlKey}, Shift: ${event.shiftKey}, Alt: ${event.altKey})`, 'info');
+    addLog(`Keyboard: ${shortcut} (Key: ${event.key}, Ctrl: ${event.ctrlKey ? 'true' : 'false'}, Shift: ${event.shiftKey ? 'true' : 'false'}, Alt: ${event.altKey ? 'true' : 'false'})`, 'info');
 
     // Test specific shortcuts
     if (shortcut === 'ctrl+shift+p') {

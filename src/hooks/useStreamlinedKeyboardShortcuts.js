@@ -132,17 +132,7 @@ export const useStreamlinedKeyboardShortcuts = ({
     const currentWebViewRef = webViewRefRef.current;
 
     // Debug logging for main app shortcuts
-    console.log('[Debug Main App] Key pressed:', {
-      shortcut,
-      isInInput,
-      activeElement: document.activeElement?.tagName,
-      hasHandlers: !!currentHandlers,
-      enabled,
-      key: event.key,
-      ctrlKey: event.ctrlKey,
-      shiftKey: event.shiftKey,
-      altKey: event.altKey
-    });
+    console.log(`[Debug Main App] Key pressed: ${shortcut} | Key: ${event.key} | Ctrl: ${event.ctrlKey} | Shift: ${event.shiftKey} | Alt: ${event.altKey} | InInput: ${isInInput} | Element: ${document.activeElement?.tagName} | Enabled: ${enabled}`);
 
     // Allow escape key even when typing (for closing modals)
     if (shortcut === 'escape') {
