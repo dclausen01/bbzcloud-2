@@ -256,10 +256,6 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.removeListener('webview-message', callback);
   },
 
-  // Keyboard shortcut communication
-  sendShortcut: (action, shortcut) => {
-    ipcRenderer.send('keyboard-shortcut', { action, shortcut });
-  },
   
   // Global shortcut registration (for main window)
   registerGlobalShortcut: async (shortcut, handler) => {
@@ -305,13 +301,6 @@ contextBridge.exposeInMainWorld('electron', {
   }
 });
 
-// Also expose a simpler API for consistency with webview-preload.js
-contextBridge.exposeInMainWorld('electronAPI', {
-  sendShortcut: (action) => {
-    console.log('[Main electronAPI] Sending shortcut:', action);
-    ipcRenderer.send('keyboard-shortcut', { action });
-  }
-});
 
 // Debug: Log when preload script loads
 console.log('[Main Preload] Script loaded, electron and electronAPI exposed');

@@ -285,43 +285,26 @@ export const useModalShortcuts = (onClose, isOpen = false) => {
 /**
  * Hook for webview-specific shortcuts
  * 
- * This hook provides shortcuts for controlling embedded webviews,
- * such as navigation (back/forward), reloading, and printing.
- * These shortcuts mimic standard browser shortcuts.
+ * NOTE: This hook is now deprecated in favor of webview-level keyboard capture
+ * implemented in public/webview-preload.js. The preload script approach is
+ * superior because it:
+ * - Captures events before websites can interfere
+ * - Works even when webview has focus
+ * - Cannot be blocked by remote website JavaScript
+ * - Runs in an isolated, secure context
  * 
+ * This hook is kept for backwards compatibility but should not be used.
+ * 
+ * @deprecated Use webview preload script keyboard capture instead
  * @param {Object} webViewRef - React ref pointing to the webview container
  * @param {boolean} enabled - Whether webview shortcuts are enabled
  */
 export const useWebViewShortcuts = (webViewRef, enabled = true) => {
-  const shortcuts = {
-    // Browser-style navigation shortcuts
-    [KEYBOARD_SHORTCUTS.WEBVIEW_BACK]: () => {
-      if (webViewRef.current) {
-        webViewRef.current.goBack();
-      }
-    },
-    
-    [KEYBOARD_SHORTCUTS.WEBVIEW_FORWARD]: () => {
-      if (webViewRef.current) {
-        webViewRef.current.goForward();
-      }
-    },
-    
-    [KEYBOARD_SHORTCUTS.WEBVIEW_REFRESH]: () => {
-      if (webViewRef.current) {
-        webViewRef.current.reload();
-      }
-    },
-    
-    // Utility shortcuts
-    [KEYBOARD_SHORTCUTS.PRINT]: () => {
-      if (webViewRef.current) {
-        webViewRef.current.print();
-      }
-    },
-  };
+  // This hook is now deprecated - webview shortcuts are handled by preload script
+  console.warn('[useWebViewShortcuts] This hook is deprecated. Webview shortcuts are now handled by the preload script.');
   
-  useKeyboardShortcuts(shortcuts, enabled);
+  // Return empty implementation to maintain API compatibility
+  return;
 };
 
 /**

@@ -1137,13 +1137,81 @@ ipcMain.on('webview-message', (event, message) => {
 // Global shortcut management
 const registeredShortcuts = new Map();
 
-// Handle keyboard shortcut messages from webviews
-ipcMain.on('keyboard-shortcut', (event, { action, shortcut }) => {
-  console.log('[Keyboard Shortcut]', { action, shortcut });
+// Handle keyboard shortcuts from webviews
+ipcMain.on('keyboard-shortcut', (event, shortcutData) => {
+  const { action, key, ctrlKey, altKey, shiftKey, metaKey, url } = shortcutData;
   
-  // Forward the shortcut to the main window
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('shortcut-triggered', { action, shortcut });
+  // Get the webview that sent the shortcut
+  const senderWebContents = event.sender;
+  
+  try {
+    switch (action) {
+      case 'webview-refresh':
+        senderWebContents.reload();
+        break;
+        
+      case 'webview-back':
+        if (senderWebContents.canGoBack()) {
+          senderWebContents.goBack();
+        }
+        break;
+        
+      case 'webview-forward':
+        if (senderWebContents.canGoForward()) {
+          senderWebContents.goForward();
+        }
+        break;
+        
+      case 'webview-print':
+        senderWebContents.print();
+        break;
+        
+      case 'webview-find':
+        // Send find command to the webview
+        senderWebContents.executeJavaScript(`
+          if (window.find) {
+            const searchTerm = prompt('Suchen nach:');
+            if (searchTerm) {
+              window.find(searchTerm);
+            }
+          }
+        `);
+        break;
+        
+      case 'webview-zoom-in':
+        senderWebContents.getZoomFactor().then(currentZoom => {
+          const newZoom = Math.min(currentZoom + 0.1, 2.0);
+          senderWebContents.setZoomFactor(newZoom);
+        });
+        break;
+        
+      case 'webview-zoom-out':
+        senderWebContents.getZoomFactor().then(currentZoom => {
+          const newZoom = Math.max(currentZoom - 0.1, 0.5);
+          senderWebContents.setZoomFactor(newZoom);
+        });
+        break;
+        
+      case 'webview-zoom-reset':
+        senderWebContents.setZoomFactor(1.0);
+        break;
+        
+      case 'close-modal':
+        // Forward to main window to handle modal/drawer closing
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-shortcut', { action: 'close-modal' });
+        }
+        break;
+        
+      default:
+        console.log(`[Keyboard Shortcut] Unknown action: ${action}`);
+        // Forward unknown shortcuts to main window for handling
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('shortcut-triggered', { action, shortcut: shortcutData });
+        }
+    }
+  } catch (error) {
+    console.error(`[Keyboard Shortcut] Error handling ${action}:`, error);
   }
 });
 

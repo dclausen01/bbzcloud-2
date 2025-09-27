@@ -83,10 +83,6 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.removeListener('webview-message', callback);
     },
     
-    // Keyboard shortcut communication
-    sendShortcut: (action, shortcut) => {
-      ipcRenderer.send('keyboard-shortcut', { action, shortcut });
-    },
     
     // Global shortcut registration (for webviews)
     registerGlobalShortcut: async (shortcut, handler) => {
@@ -133,16 +129,126 @@ contextBridge.exposeInMainWorld(
   }
 );
 
-// Also expose a simpler API for webview content scripts
-contextBridge.exposeInMainWorld(
-  'electronAPI',
-  {
-    sendShortcut: (action) => {
-      console.log('[WebView electronAPI] Sending shortcut:', action);
-      ipcRenderer.send('keyboard-shortcut', { action });
-    }
-  }
-);
+
+// ============================================================================
+// KEYBOARD SHORTCUT CAPTURE SYSTEM
+// ============================================================================
+
+/**
+ * Keyboard shortcuts that should be captured at the webview level
+ * These shortcuts will be intercepted before remote websites can handle them
+ * Based on the shortcuts defined in src/utils/constants.js
+ */
+const WEBVIEW_SHORTCUTS = [
+  // Navigation shortcuts
+  { key: 'F5', ctrlKey: false, altKey: false, shiftKey: false, action: 'webview-refresh' },
+  { key: 'ArrowLeft', ctrlKey: false, altKey: true, shiftKey: false, action: 'webview-back' },
+  { key: 'ArrowRight', ctrlKey: false, altKey: true, shiftKey: false, action: 'webview-forward' },
+  
+  // Utility shortcuts
+  { key: 'p', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-print' },
+  { key: 'f', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-find' },
+  { key: 'r', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-refresh' },
+  
+  // Zoom shortcuts
+  { key: '+', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-zoom-in' },
+  { key: '=', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-zoom-in' }, // Alternative for +
+  { key: '-', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-zoom-out' },
+  { key: '0', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-zoom-reset' },
+  
+  // Modal/overlay shortcuts (should work even in input fields)
+  { key: 'Escape', ctrlKey: false, altKey: false, shiftKey: false, action: 'close-modal' },
+];
+
+/**
+ * Check if the current element is an input field where we should allow normal typing
+ * Some shortcuts (like Escape) should still work even in input fields
+ */
+function isInputField(element) {
+  if (!element) return false;
+  
+  const tagName = element.tagName?.toLowerCase();
+  const isContentEditable = element.contentEditable === 'true' || element.isContentEditable;
+  
+  return (
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    tagName === 'select' ||
+    isContentEditable ||
+    element.getAttribute('role') === 'textbox'
+  );
+}
+
+/**
+ * Check if a keyboard event matches a defined shortcut
+ */
+function matchesShortcut(event, shortcut) {
+  // Normalize key names for comparison
+  let eventKey = event.key;
+  if (eventKey === 'Left') eventKey = 'ArrowLeft';
+  if (eventKey === 'Right') eventKey = 'ArrowRight';
+  if (eventKey === 'Up') eventKey = 'ArrowUp';
+  if (eventKey === 'Down') eventKey = 'ArrowDown';
+  
+  return (
+    eventKey === shortcut.key &&
+    !!event.ctrlKey === !!shortcut.ctrlKey &&
+    !!event.altKey === !!shortcut.altKey &&
+    !!event.shiftKey === !!shortcut.shiftKey
+  );
+}
+
+/**
+ * Main keyboard event handler for webview shortcuts
+ * This runs in the capture phase to intercept events before websites can handle them
+ */
+function handleKeyboardShortcut(event) {
+  const activeElement = document.activeElement;
+  const isInInputField = isInputField(activeElement);
+  
+  // Find matching shortcut
+  const matchedShortcut = WEBVIEW_SHORTCUTS.find(shortcut => 
+    matchesShortcut(event, shortcut)
+  );
+  
+  if (!matchedShortcut) return;
+  
+  // Some shortcuts should work even in input fields
+  const allowedInInputs = ['close-modal'];
+  const isAllowedInInput = allowedInInputs.includes(matchedShortcut.action);
+  
+  // Don't trigger shortcuts when typing, unless it's an allowed shortcut
+  if (isInInputField && !isAllowedInInput) return;
+  
+  // Prevent the website from handling this shortcut
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  
+  // Send the shortcut to the main process
+  ipcRenderer.send('keyboard-shortcut', {
+    action: matchedShortcut.action,
+    key: event.key,
+    ctrlKey: event.ctrlKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+    metaKey: event.metaKey,
+    url: window.location.href,
+    timestamp: Date.now()
+  });
+}
+
+// Set up keyboard event listener in capture phase (runs before website handlers)
+document.addEventListener('keydown', handleKeyboardShortcut, true);
+
+// Also listen for DOM ready to ensure we capture events as early as possible
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    // Re-attach listener to ensure it's active
+    document.removeEventListener('keydown', handleKeyboardShortcut, true);
+    document.addEventListener('keydown', handleKeyboardShortcut, true);
+  });
+}
 
 // Debug: Log when preload script loads
-console.log('[WebView Preload] Script loaded, electronAPI exposed');
+console.log('[WebView Preload] Script loaded with keyboard shortcut capture, electronAPI exposed');
