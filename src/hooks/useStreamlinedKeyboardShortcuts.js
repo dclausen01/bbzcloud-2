@@ -385,11 +385,20 @@ export const useStreamlinedKeyboardShortcuts = ({
       return () => observer.disconnect();
     };
 
-    const injectKeyboardHandler = (webview) => {
-      if (!webview.executeJavaScript) return;
+    const injectKeyboardHandler = (webview, retryCount = 0) => {
+      if (!webview.executeJavaScript) {
+        console.warn('[WebView Injection] executeJavaScript not available on webview');
+        return;
+      }
 
-      // Add a small delay to ensure webview is fully ready
+      const maxRetries = 3;
+      const baseDelay = 500;
+      const retryDelay = baseDelay * Math.pow(2, retryCount); // Exponential backoff
+
+      // Add a delay to ensure webview is fully ready, with exponential backoff for retries
       setTimeout(() => {
+        console.log(`[WebView Injection] Attempting injection (attempt ${retryCount + 1}/${maxRetries + 1})`);
+        
         webview.executeJavaScript(`
           (function() {
             if (window.__bbzcloudKeyboardHandlerInjected) return;
@@ -403,9 +412,9 @@ export const useStreamlinedKeyboardShortcuts = ({
               'ctrl+r': 'RELOAD_CURRENT',
               'ctrl+shift+r': 'RELOAD_ALL',
               'f11': 'TOGGLE_FULLSCREEN',
-              'ctrl+1': 'NAV_1', 'ctrl+2': 'NAV_2', 'ctrl+3': 'NAV_3',
-              'ctrl+4': 'NAV_4', 'ctrl+5': 'NAV_5', 'ctrl+6': 'NAV_6',
-              'ctrl+7': 'NAV_7', 'ctrl+8': 'NAV_8', 'ctrl+9': 'NAV_9',
+              'ctrl+1': 'NAV_APP_1', 'ctrl+2': 'NAV_APP_2', 'ctrl+3': 'NAV_APP_3',
+              'ctrl+4': 'NAV_APP_4', 'ctrl+5': 'NAV_APP_5', 'ctrl+6': 'NAV_APP_6',
+              'ctrl+7': 'NAV_APP_7', 'ctrl+8': 'NAV_APP_8', 'ctrl+9': 'NAV_APP_9',
               'alt+left': 'WEBVIEW_BACK',
               'alt+right': 'WEBVIEW_FORWARD',
               'f5': 'WEBVIEW_REFRESH',
@@ -506,14 +515,22 @@ export const useStreamlinedKeyboardShortcuts = ({
             
             console.log('BBZCloud streamlined keyboard shortcuts injected successfully');
           })();
-        `).catch(error => {
-          console.warn('Error injecting keyboard handler into webview:', error);
-          // Retry injection after a delay
-          setTimeout(() => {
-            injectKeyboardHandler(webview);
-          }, 1000);
+        `).then(() => {
+          console.log(`[WebView Injection] Successfully injected keyboard handler (attempt ${retryCount + 1})`);
+        }).catch(error => {
+          console.warn(`[WebView Injection] Failed to inject keyboard handler (attempt ${retryCount + 1}/${maxRetries + 1}):`, error);
+          
+          // Retry injection if we haven't exceeded max retries
+          if (retryCount < maxRetries) {
+            console.log(`[WebView Injection] Retrying injection in ${retryDelay * 2}ms...`);
+            setTimeout(() => {
+              injectKeyboardHandler(webview, retryCount + 1);
+            }, retryDelay * 2);
+          } else {
+            console.error('[WebView Injection] Max retries exceeded, giving up on this webview');
+          }
         });
-      }, 500);
+      }, retryDelay);
     };
 
     // Listen for messages from webviews
@@ -555,8 +572,8 @@ export const useStreamlinedKeyboardShortcuts = ({
             // These are handled by the webview itself, no need to relay
             break;
       default:
-        if (action.startsWith('NAV_')) {
-          const index = parseInt(action.split('_')[1]) - 1;
+        if (action.startsWith('NAV_APP_')) {
+          const index = parseInt(action.split('_')[2]) - 1;
           if (currentNavigationItems[index] && currentHandlers.onNavigate) {
             currentHandlers.onNavigate(currentNavigationItems[index]);
           }
@@ -597,8 +614,8 @@ export const useStreamlinedKeyboardShortcuts = ({
             currentHandlers.onToggleFullscreen?.();
             break;
           default:
-            if (action.startsWith('NAV_')) {
-              const index = parseInt(action.split('_')[1]) - 1;
+            if (action.startsWith('NAV_APP_')) {
+              const index = parseInt(action.split('_')[2]) - 1;
               if (currentNavigationItems[index] && currentHandlers.onNavigate) {
                 currentHandlers.onNavigate(currentNavigationItems[index]);
               }
