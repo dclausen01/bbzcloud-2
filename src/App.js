@@ -71,6 +71,7 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
+import KeyboardDebugTool from './components/KeyboardDebugTool';
 
 // Custom Hooks and Utilities
 import { useStreamlinedKeyboardShortcuts } from './hooks/useStreamlinedKeyboardShortcuts';
@@ -903,6 +904,26 @@ function App() {
             }}
           />
         )}
+        
+        {/* ========================================================================
+            TEMPORARY DEBUG TOOL - REMOVE AFTER TESTING
+            ======================================================================== */}
+        <Box
+          position="absolute"
+          top="10px"
+          left="10px"
+          width="400px"
+          maxHeight="80vh"
+          overflowY="auto"
+          zIndex={9999}
+          bg={useColorModeValue('white', 'gray.800')}
+          borderRadius="md"
+          boxShadow="xl"
+          border="2px solid"
+          borderColor="red.500"
+        >
+          <KeyboardDebugTool />
+        </Box>
       </Box>
 
       {/* ========================================================================

@@ -131,6 +131,15 @@ export const useStreamlinedKeyboardShortcuts = ({
     const currentModalStates = modalStatesRef.current;
     const currentWebViewRef = webViewRefRef.current;
 
+    // Debug logging for main app shortcuts
+    console.log('[Debug Main App] Key pressed:', {
+      shortcut,
+      isInInput,
+      activeElement: document.activeElement?.tagName,
+      hasHandlers: !!currentHandlers,
+      enabled
+    });
+
     // Allow escape key even when typing (for closing modals)
     if (shortcut === 'escape') {
       // Check if any modal is open and close it (priority order)
@@ -351,7 +360,17 @@ export const useStreamlinedKeyboardShortcuts = ({
 
   // Setup webview injection for enhanced shortcuts
   useEffect(() => {
-    if (!enabled || !window.electron) return;
+    if (!enabled) {
+      console.log('[Debug] Streamlined shortcuts disabled');
+      return;
+    }
+    
+    if (!window.electron) {
+      console.log('[Debug] window.electron not available');
+      return;
+    }
+    
+    console.log('[Debug] Setting up webview keyboard handling...');
 
     const setupWebViewKeyboardHandling = () => {
       const observer = new MutationObserver((mutations) => {
@@ -537,6 +556,7 @@ export const useStreamlinedKeyboardShortcuts = ({
     const handleMessage = (event) => {
       if (event.data && event.data.type === 'keyboard-shortcut') {
         const { action, shortcut } = event.data;
+        console.log('[Debug PostMessage] Received webview shortcut:', { action, shortcut });
         const currentHandlers = handlersRef.current;
         const currentNavigationItems = navigationItemsRef.current;
 
