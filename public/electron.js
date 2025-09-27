@@ -1203,6 +1203,34 @@ ipcMain.on('keyboard-shortcut', (event, shortcutData) => {
         }
         break;
         
+      case 'command-palette':
+        // Forward command palette shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-shortcut', { action: 'command-palette' });
+        }
+        break;
+        
+      case 'toggle-todo':
+        // Forward todo toggle shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-shortcut', { action: 'toggle-todo' });
+        }
+        break;
+        
+      case 'toggle-secure-docs':
+        // Forward secure docs toggle shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-shortcut', { action: 'toggle-secure-docs' });
+        }
+        break;
+        
+      case 'open-settings':
+        // Forward settings shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-shortcut', { action: 'open-settings' });
+        }
+        break;
+        
       default:
         console.log(`[Keyboard Shortcut] Unknown action: ${action}`);
         // Forward unknown shortcuts to main window for handling

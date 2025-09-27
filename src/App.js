@@ -71,10 +71,13 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
-import KeyboardDebugTool from './components/KeyboardDebugTool';
 
 // Custom Hooks and Utilities
-import { useStreamlinedKeyboardShortcuts } from './hooks/useStreamlinedKeyboardShortcuts';
+import { 
+  useAppShortcuts, 
+  useNavigationShortcuts, 
+  useModalShortcuts 
+} from './hooks/useKeyboardShortcuts';
 import { 
   SUCCESS_MESSAGES, 
   ERROR_MESSAGES, 
@@ -512,46 +515,36 @@ function App() {
     .filter(([_, config]) => config.visible)
     .map(([id, config]) => ({ id, ...config }));
 
-  // Streamlined keyboard shortcuts to prevent conflicts and improve performance
-  useStreamlinedKeyboardShortcuts({
-    handlers: {
-      onToggleTodo: onTodoOpen,
-      onToggleSecureDocs: onSecureDocsOpen,
-      onOpenSettings: onSettingsOpen,
-      onOpenCommandPalette: onCommandPaletteOpen,
-      onSettingsClose: onSettingsClose,
-      onTodoClose: onTodoClose,
-      onSecureDocsClose: onSecureDocsClose,
-      onCommandPaletteClose: onCommandPaletteClose,
-      onReloadCurrent: () => {
-        if (webViewRef.current) {
-          webViewRef.current.reload();
-        }
-      },
-      onReloadAll: () => {
-        // Reload all webviews in the application
-        const webviews = document.querySelectorAll('webview');
-        webviews.forEach(webview => webview.reload());
-        announceToScreenReader('Alle Webviews werden neu geladen');
-      },
-      onToggleFullscreen: () => {
-        // Toggle fullscreen mode
-        if (window.electron && window.electron.toggleFullscreen) {
-          window.electron.toggleFullscreen();
-        }
-      },
-      onNavigate: (item) => handleNavigationClick(item.id, false),
+  // Application-level keyboard shortcuts
+  useAppShortcuts({
+    onToggleTodo: onTodoOpen,
+    onToggleSecureDocs: onSecureDocsOpen,
+    onOpenSettings: onSettingsOpen,
+    onOpenCommandPalette: onCommandPaletteOpen,
+    onReloadCurrent: () => {
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
     },
-    navigationItems,
-    modalStates: {
-      isSettingsOpen,
-      isTodoOpen,
-      isSecureDocsOpen,
-      isCommandPaletteOpen,
+    onReloadAll: () => {
+      // Reload all webviews in the application
+      const webviews = document.querySelectorAll('webview');
+      webviews.forEach(webview => webview.reload());
+      announceToScreenReader('Alle Webviews werden neu geladen');
     },
-    webViewRef: webViewRef.current,
-    enabled: true,
   });
+
+  // Navigation shortcuts (Ctrl+1-9 for quick app switching)
+  useNavigationShortcuts(
+    (item) => handleNavigationClick(item.id, false),
+    navigationItems
+  );
+
+  // Modal/Drawer shortcuts (Escape to close)
+  useModalShortcuts(onSettingsClose, isSettingsOpen);
+  useModalShortcuts(onTodoClose, isTodoOpen);
+  useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
+  useModalShortcuts(onCommandPaletteClose, isCommandPaletteOpen);
 
   // ============================================================================
   // ACCESSIBILITY FEATURES
@@ -738,6 +731,45 @@ function App() {
     };
   }, [handleWebViewShortcut]);
 
+  // Listen for webview shortcuts from main process
+  useEffect(() => {
+    if (!window.electron || !window.electron.onMessage) {
+      return;
+    }
+    
+    try {
+      const unsubscribe = window.electron.onMessage((message) => {
+        if (message.type === 'webview-shortcut') {
+          const { action } = message;
+          switch (action) {
+            case 'close-modal':
+              // Close any open modals/drawers
+              if (isSettingsOpen) onSettingsClose();
+              if (isTodoOpen) onTodoClose();
+              if (isSecureDocsOpen) onSecureDocsClose();
+              if (isCommandPaletteOpen) onCommandPaletteClose();
+              break;
+            case 'command-palette':
+              onCommandPaletteOpen();
+              break;
+            case 'toggle-todo':
+              onTodoOpen();
+              break;
+            case 'toggle-secure-docs':
+              onSecureDocsOpen();
+              break;
+            case 'open-settings':
+              onSettingsOpen();
+              break;
+          }
+        }
+      });
+      return () => unsubscribe();
+    } catch (error) {
+      console.warn('Error setting up webview shortcut listener:', error);
+    }
+  }, [isSettingsOpen, onSettingsClose, isTodoOpen, onTodoClose, isSecureDocsOpen, onSecureDocsClose, isCommandPaletteOpen, onCommandPaletteClose, onCommandPaletteOpen]);
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -905,25 +937,6 @@ function App() {
           />
         )}
         
-        {/* ========================================================================
-            TEMPORARY DEBUG TOOL - REMOVE AFTER TESTING
-            ======================================================================== */}
-        <Box
-          position="absolute"
-          top="10px"
-          left="10px"
-          width="400px"
-          maxHeight="80vh"
-          overflowY="auto"
-          zIndex={9999}
-          bg={useColorModeValue('white', 'gray.800')}
-          borderRadius="md"
-          boxShadow="xl"
-          border="2px solid"
-          borderColor="red.500"
-        >
-          <KeyboardDebugTool />
-        </Box>
       </Box>
 
       {/* ========================================================================

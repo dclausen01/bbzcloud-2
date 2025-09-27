@@ -302,8 +302,6 @@ contextBridge.exposeInMainWorld('electron', {
 });
 
 
-// Debug: Log when preload script loads
-console.log('[Main Preload] Script loaded, electron and electronAPI exposed');
 
 // Remove this if you don't need it
 window.addEventListener('DOMContentLoaded', () => {

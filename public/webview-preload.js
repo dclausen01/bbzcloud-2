@@ -156,6 +156,12 @@ const WEBVIEW_SHORTCUTS = [
   { key: '-', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-zoom-out' },
   { key: '0', ctrlKey: true, altKey: false, shiftKey: false, action: 'webview-zoom-reset' },
   
+  // Global shortcuts that should work from webviews
+  { key: 'p', ctrlKey: true, altKey: false, shiftKey: true, action: 'command-palette' }, // Ctrl+Shift+P
+  { key: 't', ctrlKey: true, altKey: false, shiftKey: true, action: 'toggle-todo' }, // Ctrl+Shift+T
+  { key: 'd', ctrlKey: true, altKey: false, shiftKey: false, action: 'toggle-secure-docs' }, // Ctrl+D
+  { key: ',', ctrlKey: true, altKey: false, shiftKey: false, action: 'open-settings' }, // Ctrl+,
+  
   // Modal/overlay shortcuts (should work even in input fields)
   { key: 'Escape', ctrlKey: false, altKey: false, shiftKey: false, action: 'close-modal' },
 ];
