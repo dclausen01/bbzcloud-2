@@ -212,24 +212,52 @@ function handleKeyboardShortcut(event) {
   const activeElement = document.activeElement;
   const isInInputField = isInputField(activeElement);
   
+  // Create shortcut string for debugging
+  const shortcutString = createShortcutString(event);
+  
+  // Always send debug information to main process for debug tool
+  ipcRenderer.send('webview-message', {
+    type: 'debug-keyboard-event',
+    shortcut: shortcutString,
+    key: event.key,
+    ctrlKey: event.ctrlKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+    metaKey: event.metaKey,
+    target: activeElement?.tagName || 'unknown',
+    isInInputField,
+    url: window.location.href,
+    timestamp: Date.now()
+  });
+  
   // Find matching shortcut
   const matchedShortcut = WEBVIEW_SHORTCUTS.find(shortcut => 
     matchesShortcut(event, shortcut)
   );
   
-  if (!matchedShortcut) return;
+  if (!matchedShortcut) {
+    console.log('[WebView Preload] No matching shortcut for:', shortcutString);
+    return;
+  }
+  
+  console.log('[WebView Preload] Matched shortcut:', matchedShortcut.action, 'for', shortcutString);
   
   // Some shortcuts should work even in input fields
   const allowedInInputs = ['close-modal'];
   const isAllowedInInput = allowedInInputs.includes(matchedShortcut.action);
   
   // Don't trigger shortcuts when typing, unless it's an allowed shortcut
-  if (isInInputField && !isAllowedInInput) return;
+  if (isInInputField && !isAllowedInInput) {
+    console.log('[WebView Preload] Shortcut blocked - in input field:', matchedShortcut.action);
+    return;
+  }
   
   // Prevent the website from handling this shortcut
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();
+  
+  console.log('[WebView Preload] Sending shortcut to main process:', matchedShortcut.action);
   
   // Send the shortcut to the main process
   ipcRenderer.send('keyboard-shortcut', {
@@ -242,6 +270,35 @@ function handleKeyboardShortcut(event) {
     url: window.location.href,
     timestamp: Date.now()
   });
+}
+
+/**
+ * Create a shortcut string from keyboard event (similar to debug tool)
+ */
+function createShortcutString(event) {
+  const parts = [];
+  if (event.ctrlKey || event.metaKey) parts.push('ctrl');
+  if (event.altKey) parts.push('alt');
+  if (event.shiftKey) parts.push('shift');
+  
+  let key = event.key.toLowerCase();
+  const keyMap = {
+    ' ': 'space',
+    'escape': 'escape',
+    'arrowup': 'up',
+    'arrowdown': 'down',
+    'arrowleft': 'left',
+    'arrowright': 'right',
+    '+': 'plus',
+    '-': 'minus',
+    '=': 'equal',
+    ',': 'comma',
+  };
+  
+  key = keyMap[key] || key;
+  parts.push(key);
+  
+  return parts.join('+');
 }
 
 // Set up keyboard event listener in capture phase (runs before website handlers)

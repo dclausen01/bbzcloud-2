@@ -81,8 +81,22 @@ const KeyboardDebugTool = ({ isVisible }) => {
     if (!isVisible) return;
 
     const handleKeyDown = (event) => {
+      console.log('[Debug Tool] Raw keydown event:', {
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        target: event.target.tagName
+      });
+
       const shortcutString = getShortcutString(event);
       const matchedShortcut = findMatchingShortcut(shortcutString);
+      
+      console.log('[Debug Tool] Processed shortcut:', {
+        shortcutString,
+        matchedShortcut,
+        isRecording
+      });
       
       addEvent({
         type: 'keydown',
@@ -102,8 +116,19 @@ const KeyboardDebugTool = ({ isVisible }) => {
       });
     };
 
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
+    // Add multiple event listeners to catch all possible events
+    document.addEventListener('keydown', handleKeyDown, true); // Capture phase
+    document.addEventListener('keydown', handleKeyDown, false); // Bubble phase
+    window.addEventListener('keydown', handleKeyDown, true); // Window level
+    
+    console.log('[Debug Tool] Event listeners attached');
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('keydown', handleKeyDown, false);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      console.log('[Debug Tool] Event listeners removed');
+    };
   }, [isVisible, isRecording]);
 
   // Set up IPC message listener for webview events
@@ -111,7 +136,26 @@ const KeyboardDebugTool = ({ isVisible }) => {
     if (!isVisible || !window.electron?.onMessage) return;
 
     const handleMessage = (message) => {
-      if (message.type === 'webview-shortcut' || message.type === 'keyboard-shortcut') {
+      console.log('[Debug Tool] Received IPC message:', message);
+      
+      if (message.type === 'debug-keyboard-event') {
+        // Debug event from webview preload script
+        addEvent({
+          type: 'webview-keydown',
+          source: 'webview',
+          shortcut: message.shortcut,
+          key: message.key,
+          ctrlKey: message.ctrlKey,
+          altKey: message.altKey,
+          shiftKey: message.shiftKey,
+          target: message.target,
+          isInInputField: message.isInInputField,
+          action: 'debug-capture',
+          status: 'captured',
+          url: message.url,
+        });
+      } else if (message.type === 'webview-shortcut' || message.type === 'keyboard-shortcut') {
+        // Actual shortcut execution
         addEvent({
           type: 'ipc-message',
           source: 'webview',
@@ -280,7 +324,7 @@ const KeyboardDebugTool = ({ isVisible }) => {
         {/* Quick Test Buttons */}
         <Box p={3} borderBottom="1px solid" borderColor={borderColor}>
           <Text fontSize="xs" fontWeight="bold" mb={2}>Quick Tests:</Text>
-          <HStack spacing={2} flexWrap="wrap">
+          <HStack spacing={2} flexWrap="wrap" mb={2}>
             {Object.entries(KEYBOARD_SHORTCUTS).slice(0, 6).map(([action, shortcut]) => (
               <Button
                 key={action}
@@ -292,6 +336,22 @@ const KeyboardDebugTool = ({ isVisible }) => {
               </Button>
             ))}
           </HStack>
+          <Button
+            size="xs"
+            colorScheme="blue"
+            onClick={() => {
+              console.log('[Debug Tool] Manual test button clicked');
+              addEvent({
+                type: 'manual-test',
+                source: 'debug-tool',
+                shortcut: 'test-button',
+                action: 'manual-test',
+                status: 'testing',
+              });
+            }}
+          >
+            Test Debug Tool
+          </Button>
         </Box>
 
         {/* Events List */}
