@@ -1520,7 +1520,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               ref={ref}
               id={`wv-${id}`}
               src={config.url}
-              preload="./webview-preload.js"
+              preload="./public/webview-preload.js"
               style={{
                 width: '100%',
                 height: '100%',
@@ -1584,7 +1584,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }}
             id={`wv-${activeWebView.id}`}
             src={activeWebView.url}
-            preload="./webview-preload.js"
+            preload="./public/webview-preload.js"
             style={{
               width: '100%',
               height: '100%',
