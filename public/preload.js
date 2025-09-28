@@ -298,7 +298,10 @@ contextBridge.exposeInMainWorld('electron', {
     const handler = (_, data) => callback(data);
     ipcRenderer.on('shortcut-triggered', handler);
     return () => ipcRenderer.removeListener('shortcut-triggered', handler);
-  }
+  },
+
+  // Get webview preload script path
+  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path')
 });
 
 

@@ -1087,6 +1087,10 @@ ipcMain.handle('get-asset-path', async (event, asset) => {
   }
 });
 
+ipcMain.handle('get-webview-preload-path', () => {
+  return path.join(__dirname, 'webview-preload.js');
+});
+
 autoUpdater.on('checking-for-update', () => {
   mainWindow.webContents.send('update-status', 'Suche nach Updates...');
 });
@@ -1132,6 +1136,13 @@ ipcMain.on('showContextMenu', (event, data) => {
 // Handle webview messages
 ipcMain.on('webview-message', (event, message) => {
   console.log('[WebView Debug]', message);
+  
+  // Forward debug keyboard events to main window for debug tool
+  if (message.type === 'debug-keyboard-event') {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('webview-message', message);
+    }
+  }
 });
 
 // Global shortcut management

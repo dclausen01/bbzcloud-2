@@ -13,6 +13,24 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
+  const [preloadPath, setPreloadPath] = useState('');
+
+  // Get the correct preload script path from main process
+  useEffect(() => {
+    const getPreloadPath = async () => {
+      try {
+        if (window.electron && window.electron.getWebviewPreloadPath) {
+          const path = await window.electron.getWebviewPreloadPath();
+          setPreloadPath(path);
+          console.log('[WebViewContainer] Got preload path:', path);
+        }
+      } catch (error) {
+        console.warn('Error getting webview preload path:', error);
+      }
+    };
+    getPreloadPath();
+  }, []);
+
   // Expose navigation methods through ref
   React.useImperativeHandle(ref, () => ({
     goBack: () => {
@@ -1520,7 +1538,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               ref={ref}
               id={`wv-${id}`}
               src={config.url}
-              preload="./public/webview-preload.js"
+              preload={preloadPath || undefined}
               style={{
                 width: '100%',
                 height: '100%',
@@ -1584,7 +1602,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }}
             id={`wv-${activeWebView.id}`}
             src={activeWebView.url}
-            preload="./public/webview-preload.js"
+            preload={`${window.location.origin}/webview-preload.js`}
             style={{
               width: '100%',
               height: '100%',
