@@ -257,4 +257,5 @@ if (document.readyState === 'loading') {
 }
 
 // Debug: Log when preload script loads
+console.log('[WebView Preload] Script executed!');
 console.log('[WebView Preload] Script loaded with keyboard shortcut capture, electronAPI exposed');
