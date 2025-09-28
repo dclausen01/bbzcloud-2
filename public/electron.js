@@ -1206,28 +1206,66 @@ ipcMain.on('keyboard-shortcut', (event, shortcutData) => {
       case 'command-palette':
         // Forward command palette shortcut to main window
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-shortcut', { action: 'command-palette' });
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'command-palette' });
         }
         break;
         
       case 'toggle-todo':
         // Forward todo toggle shortcut to main window
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-shortcut', { action: 'toggle-todo' });
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-todo' });
         }
         break;
         
       case 'toggle-secure-docs':
         // Forward secure docs toggle shortcut to main window
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-shortcut', { action: 'toggle-secure-docs' });
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-secure-docs' });
         }
         break;
         
       case 'open-settings':
         // Forward settings shortcut to main window
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-shortcut', { action: 'open-settings' });
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'open-settings' });
+        }
+        break;
+        
+      // Add missing shortcut handlers
+      case 'reload-current':
+        // Forward reload current shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-current' });
+        }
+        break;
+        
+      case 'reload-all':
+        // Forward reload all shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-all' });
+        }
+        break;
+        
+      case 'toggle-fullscreen':
+        // Forward fullscreen toggle shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-fullscreen' });
+        }
+        break;
+        
+      // Handle navigation shortcuts (Ctrl+1-9)
+      case 'nav-app-1':
+      case 'nav-app-2':
+      case 'nav-app-3':
+      case 'nav-app-4':
+      case 'nav-app-5':
+      case 'nav-app-6':
+      case 'nav-app-7':
+      case 'nav-app-8':
+      case 'nav-app-9':
+        // Forward navigation shortcuts to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: action });
         }
         break;
         

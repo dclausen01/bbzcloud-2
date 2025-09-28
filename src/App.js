@@ -71,6 +71,7 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
+import KeyboardDebugTool from './components/KeyboardDebugTool';
 
 // Custom Hooks and Utilities
 import { 
@@ -149,6 +150,7 @@ function App() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
   const [contextMenuText, setContextMenuText] = useState('');
+  const [isDebugMode, setIsDebugMode] = useState(false);
 
   // Refs for WebView management
   const webViewRef = useRef(null);
@@ -534,6 +536,20 @@ function App() {
     },
   });
 
+  // Debug mode shortcut (Ctrl+Shift+D)
+  useEffect(() => {
+    const handleDebugShortcut = (event) => {
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
+        event.preventDefault();
+        setIsDebugMode(!isDebugMode);
+        console.log('[Debug Mode]', isDebugMode ? 'Disabled' : 'Enabled');
+      }
+    };
+
+    document.addEventListener('keydown', handleDebugShortcut);
+    return () => document.removeEventListener('keydown', handleDebugShortcut);
+  }, [isDebugMode]);
+
   // Navigation shortcuts (Ctrl+1-9 for quick app switching)
   useNavigationShortcuts(
     (item) => handleNavigationClick(item.id, false),
@@ -760,6 +776,41 @@ function App() {
               break;
             case 'open-settings':
               onSettingsOpen();
+              break;
+            case 'reload-current':
+              if (webViewRef.current) {
+                webViewRef.current.reload();
+              }
+              break;
+            case 'reload-all':
+              const webviews = document.querySelectorAll('webview');
+              webviews.forEach(webview => webview.reload());
+              announceToScreenReader('Alle Webviews werden neu geladen');
+              break;
+            case 'toggle-fullscreen':
+              if (window.electron && window.electron.toggleFullscreen) {
+                window.electron.toggleFullscreen();
+              }
+              break;
+            // Handle navigation shortcuts
+            case 'nav-app-1':
+            case 'nav-app-2':
+            case 'nav-app-3':
+            case 'nav-app-4':
+            case 'nav-app-5':
+            case 'nav-app-6':
+            case 'nav-app-7':
+            case 'nav-app-8':
+            case 'nav-app-9':
+              const navIndex = parseInt(action.split('-')[2]) - 1;
+              const filteredButtons = filterNavigationButtons();
+              const navItems = Object.entries(filteredButtons)
+                .filter(([_, config]) => config.visible)
+                .map(([id, config]) => ({ id, ...config }));
+              
+              if (navItems[navIndex]) {
+                handleNavigationClick(navItems[navIndex].id, false);
+              }
               break;
           }
         }
@@ -1040,6 +1091,11 @@ function App() {
           announceToScreenReader('Alle Webviews werden neu geladen');
         }}
       />
+
+      {/* ========================================================================
+          KEYBOARD DEBUG TOOL
+          ======================================================================== */}
+      <KeyboardDebugTool isVisible={isDebugMode} />
 
       {/* ========================================================================
           WELCOME MODAL - FIRST-TIME USER SETUP
