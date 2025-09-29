@@ -32,6 +32,13 @@ class WebContentsViewManager {
     this.sidebarWidth = 450; // Width of sidebar drawers
     this.sidebarOpen = false; // Track if sidebar is open
     
+    // PERFORMANCE: Cache bounds to avoid unnecessary calculations
+    this.cachedBounds = null;
+    this.boundsUpdatePending = false;
+    
+    // PERFORMANCE: Track view states to prevent unnecessary operations
+    this.viewStates = new Map(); // id -> { isLoaded, lastUrl, isVisible }
+    
     // Setup event handlers
     this.setupWindowEventHandlers();
     
@@ -42,21 +49,30 @@ class WebContentsViewManager {
    * Setup window event handlers for layout management
    */
   setupWindowEventHandlers() {
+    // PERFORMANCE: Debounce bounds updates to prevent excessive calculations
+    let boundsUpdateTimeout = null;
+    
+    const debouncedBoundsUpdate = () => {
+      if (boundsUpdateTimeout) {
+        clearTimeout(boundsUpdateTimeout);
+      }
+      
+      boundsUpdateTimeout = setTimeout(() => {
+        this.updateActiveWebContentsViewBounds();
+        this.cachedBounds = null; // Invalidate cache
+      }, 16); // ~60fps
+    };
+
     // Handle window resize events
-    this.mainWindow.on('resize', () => {
-      this.updateActiveWebContentsViewBounds();
-    });
-
-    this.mainWindow.on('maximize', () => {
-      this.updateActiveWebContentsViewBounds();
-    });
-
-    this.mainWindow.on('unmaximize', () => {
-      this.updateActiveWebContentsViewBounds();
-    });
+    this.mainWindow.on('resize', debouncedBoundsUpdate);
+    this.mainWindow.on('maximize', debouncedBoundsUpdate);
+    this.mainWindow.on('unmaximize', debouncedBoundsUpdate);
 
     // Handle window close - cleanup WebContentsViews
     this.mainWindow.on('closed', () => {
+      if (boundsUpdateTimeout) {
+        clearTimeout(boundsUpdateTimeout);
+      }
       this.cleanup();
     });
   }
@@ -121,30 +137,63 @@ class WebContentsViewManager {
    * @param {string} id - The WebContentsView identifier
    */
   setupWebContentsViewEventHandlers(view, id) {
+    // Initialize view state tracking
+    this.viewStates.set(id, {
+      isLoaded: false,
+      lastUrl: null,
+      isVisible: false,
+      loadStartTime: null
+    });
+
     // Loading events
     view.webContents.on('did-start-loading', () => {
+      const state = this.viewStates.get(id);
+      state.loadStartTime = Date.now();
+      state.isLoaded = false;
+      this.viewStates.set(id, state);
+      
       console.log(`[WebContentsViewManager] ${id} started loading`);
       this.notifyRenderer('webcontentsview-loading', { id, loading: true });
     });
 
     view.webContents.on('did-stop-loading', () => {
-      console.log(`[WebContentsViewManager] ${id} stopped loading`);
+      const state = this.viewStates.get(id);
+      const loadTime = state.loadStartTime ? Date.now() - state.loadStartTime : 0;
+      
+      console.log(`[WebContentsViewManager] ${id} stopped loading (${loadTime}ms)`);
       this.notifyRenderer('webcontentsview-loading', { id, loading: false });
     });
 
     view.webContents.on('did-finish-load', () => {
-      console.log(`[WebContentsViewManager] ${id} finished loading`);
-      this.notifyRenderer('webcontentsview-loaded', { id, url: view.webContents.getURL() });
+      const state = this.viewStates.get(id);
+      const currentUrl = view.webContents.getURL();
+      const loadTime = state.loadStartTime ? Date.now() - state.loadStartTime : 0;
+      
+      // Update state
+      state.isLoaded = true;
+      state.lastUrl = currentUrl;
+      this.viewStates.set(id, state);
+      
+      console.log(`[WebContentsViewManager] ${id} finished loading (${loadTime}ms): ${currentUrl}`);
+      this.notifyRenderer('webcontentsview-loaded', { id, url: currentUrl });
     });
 
     // Navigation events
     view.webContents.on('did-navigate', (event, url) => {
+      const state = this.viewStates.get(id);
+      state.lastUrl = url;
+      this.viewStates.set(id, state);
+      
       console.log(`[WebContentsViewManager] ${id} navigated to: ${url}`);
       this.notifyRenderer('webcontentsview-navigated', { id, url });
     });
 
     // Error handling
     view.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+      const state = this.viewStates.get(id);
+      state.isLoaded = false;
+      this.viewStates.set(id, state);
+      
       console.error(`[WebContentsViewManager] ${id} failed to load:`, errorCode, errorDescription);
       this.notifyRenderer('webcontentsview-error', { 
         id, 
@@ -214,8 +263,33 @@ class WebContentsViewManager {
 
       console.log(`[WebContentsViewManager] Switching to WebContentsView ${id}`);
 
-      // Remove the currently active view from the window
-      if (this.activeWebContentsView) {
+      // ANTI-FLICKER: Set bounds for new view BEFORE adding it to prevent size jumps
+      const bounds = this.mainWindow.getContentBounds();
+      const newBounds = {
+        x: 0,
+        y: this.headerHeight,
+        width: this.sidebarOpen ? bounds.width - this.sidebarWidth : bounds.width,
+        height: bounds.height - this.headerHeight
+      };
+
+      // Pre-configure the view bounds to prevent flickering
+      try {
+        view.setBounds(newBounds);
+      } catch (error) {
+        console.warn('[WebContentsViewManager] Error pre-setting bounds:', error);
+      }
+
+      // PERFORMANCE: Add new view first, then remove old one to minimize visual gaps
+      try {
+        this.mainWindow.contentView.addChildView(view);
+        console.log(`[WebContentsViewManager] Added WebContentsView ${id} to window`);
+      } catch (error) {
+        console.error(`[WebContentsViewManager] Error adding WebContentsView to window:`, error);
+        return false;
+      }
+
+      // Remove the previously active view AFTER adding the new one
+      if (this.activeWebContentsView && this.activeWebContentsView !== view) {
         try {
           this.mainWindow.contentView.removeChildView(this.activeWebContentsView);
           console.log(`[WebContentsViewManager] Removed previous WebContentsView from window`);
@@ -227,43 +301,20 @@ class WebContentsViewManager {
       // Set the new view as active
       this.activeWebContentsView = view;
 
-      // Add the new view to the window using correct WebContentsView API
-      try {
-        this.mainWindow.contentView.addChildView(view);
-        console.log(`[WebContentsViewManager] Added WebContentsView ${id} to window`);
-      } catch (error) {
-        console.error(`[WebContentsViewManager] Error adding WebContentsView to window:`, error);
-        return false;
-      }
-      
-      // Update bounds immediately after attachment
+      // Ensure bounds are correct after attachment
       this.updateWebContentsViewBounds(view);
 
-      // Wait for proper attachment and rendering
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Focus the WebContentsView for proper input handling
-      try {
-        view.webContents.focus();
-        console.log(`[WebContentsViewManager] Focused WebContentsView ${id}`);
-      } catch (error) {
-        console.warn('[WebContentsViewManager] Error focusing view:', error);
-      }
-
-      // Verify the view is actually visible by checking if it has bounds
-      try {
-        const bounds = view.getBounds();
-        console.log(`[WebContentsViewManager] WebContentsView ${id} bounds:`, bounds);
-        
-        if (bounds.width === 0 || bounds.height === 0) {
-          console.warn(`[WebContentsViewManager] WebContentsView ${id} has zero bounds, retrying...`);
-          this.updateWebContentsViewBounds(view);
+      // PERFORMANCE: Reduce wait time and make it non-blocking
+      setImmediate(() => {
+        try {
+          view.webContents.focus();
+          console.log(`[WebContentsViewManager] Focused WebContentsView ${id}`);
+        } catch (error) {
+          console.warn('[WebContentsViewManager] Error focusing view:', error);
         }
-      } catch (error) {
-        console.warn('[WebContentsViewManager] Error checking view bounds:', error);
-      }
+      });
 
-      // Notify renderer about the active view change
+      // Notify renderer about the active view change immediately
       this.notifyRenderer('webcontentsview-activated', { id });
 
       console.log(`[WebContentsViewManager] Successfully switched to WebContentsView ${id}`);
