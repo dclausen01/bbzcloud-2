@@ -200,23 +200,41 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
     if (activeWebView && browserViewsInitialized) {
       const showBrowserView = async () => {
         try {
-          console.log('[BrowserViewController] Showing BrowserView:', activeWebView.id);
+          console.log('[BrowserViewController] Switching to BrowserView:', activeWebView.id);
+          
+          // Set loading state to provide user feedback
+          setIsLoading(prev => ({ ...prev, [activeWebView.id]: true }));
           
           const result = await window.electron.showBrowserView(activeWebView.id);
           
           if (result.success) {
             setActiveBrowserViewId(activeWebView.id);
+            console.log('[BrowserViewController] Successfully switched to BrowserView:', activeWebView.id);
             
-            // Get current URL and notify parent
-            const urlResult = await window.electron.getBrowserViewURL(activeWebView.id);
-            if (urlResult.success && urlResult.url) {
-              onNavigate(urlResult.url);
-            }
+            // Small delay to ensure the view is fully rendered
+            setTimeout(async () => {
+              try {
+                // Get current URL and notify parent
+                const urlResult = await window.electron.getBrowserViewURL(activeWebView.id);
+                if (urlResult.success && urlResult.url) {
+                  onNavigate(urlResult.url);
+                }
+                
+                // Clear loading state
+                setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
+              } catch (error) {
+                console.warn('[BrowserViewController] Error getting URL after switch:', error);
+                setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
+              }
+            }, 100);
+            
           } else {
             console.error('[BrowserViewController] Failed to show BrowserView:', result.error);
+            setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
           }
         } catch (error) {
           console.error('[BrowserViewController] Error showing BrowserView:', error);
+          setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
         }
       };
 

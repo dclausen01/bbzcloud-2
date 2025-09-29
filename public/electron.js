@@ -1127,7 +1127,7 @@ ipcMain.handle('browserview-show', async (event, { id }) => {
       throw new Error('BrowserViewManager not initialized');
     }
     
-    const success = browserViewManager.showBrowserView(id);
+    const success = await browserViewManager.showBrowserView(id);
     return { success };
   } catch (error) {
     console.error('[IPC] Error showing BrowserView:', error);
