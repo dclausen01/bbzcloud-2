@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const compress = util.promisify(zlib.gzip);
 const decompress = util.promisify(zlib.gunzip);
 
+// Import BrowserView Manager
+const BrowserViewManager = require('./BrowserViewManager');
+
 // List of webviews that need special handling on system resume
 const webviewsToReload = ['outlook', 'webuntis'];
 const isDev = require('electron-is-dev');
@@ -165,6 +168,9 @@ let mainWindow;
 let splashWindow;
 let tray;
 const windowRegistry = new Map();
+
+// BrowserView Manager instance
+let browserViewManager = null;
 
 // macOS-specific memory optimization
 let imageCache = new Map();
@@ -615,6 +621,10 @@ async function createWindow() {
     } else {
       mainWindow.minimize();
     }
+
+    // Initialize BrowserView Manager
+    browserViewManager = new BrowserViewManager(mainWindow);
+    console.log('[Main] BrowserViewManager initialized');
 
     // Close splash window after a delay to ensure smooth transition
     setTimeout(() => {
@@ -1089,6 +1099,393 @@ ipcMain.handle('get-asset-path', async (event, asset) => {
 
 ipcMain.handle('get-webview-preload-path', () => {
   return path.join(__dirname, 'webview-preload.js');
+});
+
+// ============================================================================
+// BROWSERVIEW IPC HANDLERS
+// ============================================================================
+
+// Create a new BrowserView
+ipcMain.handle('browserview-create', async (event, { id, url, options = {} }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    await browserViewManager.createBrowserView(id, url, options);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error creating BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Show a specific BrowserView
+ipcMain.handle('browserview-show', async (event, { id }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const success = browserViewManager.showBrowserView(id);
+    return { success };
+  } catch (error) {
+    console.error('[IPC] Error showing BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Hide the currently active BrowserView
+ipcMain.handle('browserview-hide', async (event) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    browserViewManager.hideActiveBrowserView();
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error hiding BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Navigate a BrowserView to a new URL
+ipcMain.handle('browserview-navigate', async (event, { id, url }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const success = await browserViewManager.navigateBrowserView(id, url);
+    return { success };
+  } catch (error) {
+    console.error('[IPC] Error navigating BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Reload a specific BrowserView
+ipcMain.handle('browserview-reload', async (event, { id }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const success = browserViewManager.reloadBrowserView(id);
+    return { success };
+  } catch (error) {
+    console.error('[IPC] Error reloading BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Execute JavaScript in a BrowserView
+ipcMain.handle('browserview-execute-js', async (event, { id, code }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const result = await browserViewManager.executeJavaScript(id, code);
+    return { success: true, result };
+  } catch (error) {
+    console.error('[IPC] Error executing JavaScript in BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get the current URL of a BrowserView
+ipcMain.handle('browserview-get-url', async (event, { id }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const url = browserViewManager.getBrowserViewURL(id);
+    return { success: true, url };
+  } catch (error) {
+    console.error('[IPC] Error getting BrowserView URL:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Initialize standard apps as BrowserViews
+ipcMain.handle('browserview-init-standard-apps', async (event, { standardApps }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    await browserViewManager.initializeStandardApps(standardApps);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error initializing standard apps:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Destroy a specific BrowserView
+ipcMain.handle('browserview-destroy', async (event, { id }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const success = browserViewManager.destroyBrowserView(id);
+    return { success };
+  } catch (error) {
+    console.error('[IPC] Error destroying BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get BrowserViewManager statistics
+ipcMain.handle('browserview-get-stats', async (event) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const stats = browserViewManager.getStats();
+    return { success: true, stats };
+  } catch (error) {
+    console.error('[IPC] Error getting BrowserView stats:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle BrowserView messages (from preload script)
+ipcMain.on('browserview-message', (event, message) => {
+  console.log('[BrowserView Message]', message);
+  
+  // Forward debug keyboard events to main window for debug tool
+  if (message.type === 'debug-keyboard-event') {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('browserview-message', message);
+    }
+  }
+});
+
+// Handle keyboard shortcuts from BrowserViews (updated to handle BrowserView shortcuts)
+ipcMain.on('keyboard-shortcut', (event, shortcutData) => {
+  const { action, key, ctrlKey, altKey, shiftKey, metaKey, url, browserViewId } = shortcutData;
+  
+  // Get the BrowserView that sent the shortcut
+  const senderWebContents = event.sender;
+  
+  try {
+    // Handle BrowserView-specific shortcuts
+    if (action.startsWith('browserview-')) {
+      if (!browserViewManager) {
+        console.error('[Keyboard Shortcut] BrowserViewManager not initialized');
+        return;
+      }
+      
+      const view = browserViewManager.getActiveBrowserView();
+      if (!view) {
+        console.error('[Keyboard Shortcut] No active BrowserView found');
+        return;
+      }
+      
+      switch (action) {
+        case 'browserview-refresh':
+          view.webContents.reload();
+          break;
+          
+        case 'browserview-back':
+          if (view.webContents.canGoBack()) {
+            view.webContents.goBack();
+          }
+          break;
+          
+        case 'browserview-forward':
+          if (view.webContents.canGoForward()) {
+            view.webContents.goForward();
+          }
+          break;
+          
+        case 'browserview-print':
+          view.webContents.print();
+          break;
+          
+        case 'browserview-find':
+          // Send find command to the BrowserView
+          view.webContents.executeJavaScript(`
+            if (window.find) {
+              const searchTerm = prompt('Suchen nach:');
+              if (searchTerm) {
+                window.find(searchTerm);
+              }
+            }
+          `);
+          break;
+          
+        case 'browserview-zoom-in':
+          view.webContents.getZoomFactor().then(currentZoom => {
+            const newZoom = Math.min(currentZoom + 0.1, 2.0);
+            view.webContents.setZoomFactor(newZoom);
+          });
+          break;
+          
+        case 'browserview-zoom-out':
+          view.webContents.getZoomFactor().then(currentZoom => {
+            const newZoom = Math.max(currentZoom - 0.1, 0.5);
+            view.webContents.setZoomFactor(newZoom);
+          });
+          break;
+          
+        case 'browserview-zoom-reset':
+          view.webContents.setZoomFactor(1.0);
+          break;
+          
+        default:
+          console.log(`[Keyboard Shortcut] Unknown BrowserView action: ${action}`);
+      }
+      return;
+    }
+    
+    // Handle global shortcuts that should be forwarded to main window
+    switch (action) {
+      case 'close-modal':
+        // Forward to main window to handle modal/drawer closing
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-shortcut', { action: 'close-modal' });
+        }
+        break;
+        
+      case 'command-palette':
+        // Forward command palette shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'command-palette' });
+        }
+        break;
+        
+      case 'toggle-todo':
+        // Forward todo toggle shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-todo' });
+        }
+        break;
+        
+      case 'toggle-secure-docs':
+        // Forward secure docs toggle shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-secure-docs' });
+        }
+        break;
+        
+      case 'open-settings':
+        // Forward settings shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'open-settings' });
+        }
+        break;
+        
+      case 'reload-current':
+        // Forward reload current shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-current' });
+        }
+        break;
+        
+      case 'reload-all':
+        // Forward reload all shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-all' });
+        }
+        break;
+        
+      case 'toggle-fullscreen':
+        // Forward fullscreen toggle shortcut to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-fullscreen' });
+        }
+        break;
+        
+      // Handle navigation shortcuts (Ctrl+1-9)
+      case 'nav-app-1':
+      case 'nav-app-2':
+      case 'nav-app-3':
+      case 'nav-app-4':
+      case 'nav-app-5':
+      case 'nav-app-6':
+      case 'nav-app-7':
+      case 'nav-app-8':
+      case 'nav-app-9':
+        // Forward navigation shortcuts to main window
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: action });
+        }
+        break;
+        
+      default:
+        console.log(`[Keyboard Shortcut] Unknown action: ${action}`);
+        // Forward unknown shortcuts to main window for handling
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('shortcut-triggered', { action, shortcut: shortcutData });
+        }
+    }
+  } catch (error) {
+    console.error(`[Keyboard Shortcut] Error handling ${action}:`, error);
+  }
+});
+
+// Handle credential injection requests from BrowserViews
+ipcMain.on('credential-request', async (event, data) => {
+  const { service, browserViewId } = data;
+  
+  try {
+    console.log(`[Credential Request] Service: ${service}, BrowserView: ${browserViewId}`);
+    
+    // Get all required credentials using keytar directly (we're in main process)
+    const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
+      keytar.getPassword('bbzcloud', 'email').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'password').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'bbbPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'webuntisEmail').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'webuntisPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false }))
+    ]);
+    
+    const credentials = {
+      email: emailResult.success ? emailResult.password : null,
+      password: passwordResult.success ? passwordResult.password : null,
+      bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : null,
+      webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : null,
+      webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : null
+    };
+    
+    // Send credentials to the requesting BrowserView
+    event.sender.send('inject-credentials', {
+      service,
+      credentials,
+      browserViewId
+    });
+    
+  } catch (error) {
+    console.error('[Credential Request] Error:', error);
+    event.sender.send('credential-response', {
+      service,
+      success: false,
+      error: error.message,
+      browserViewId
+    });
+  }
+});
+
+// Handle credential injection responses from BrowserViews
+ipcMain.on('credential-response', (event, data) => {
+  const { service, success, browserViewId } = data;
+  console.log(`[Credential Response] Service: ${service}, Success: ${success}, BrowserView: ${browserViewId}`);
+  
+  // Optionally notify the renderer about credential injection results
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('credential-injection-result', {
+      service,
+      success,
+      browserViewId
+    });
+  }
 });
 
 autoUpdater.on('checking-for-update', () => {

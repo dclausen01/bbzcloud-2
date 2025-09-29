@@ -64,7 +64,7 @@ import {
 // Context and Components
 import { useSettings } from './context/SettingsContext';
 import NavigationBar from './components/NavigationBar';
-import WebViewContainer from './components/WebViewContainer';
+import BrowserViewController from './components/BrowserViewController';
 import SettingsPanel from './components/SettingsPanel';
 import CustomAppsMenu from './components/CustomAppsMenu';
 import TodoList from './components/TodoList';
@@ -972,7 +972,7 @@ function App() {
           ======================================================================== */}
       <Box flex="1" position="relative" overflow="hidden">
         {!isLoadingEmail && (
-          <WebViewContainer
+          <BrowserViewController
             ref={webViewRef}
             activeWebView={activeWebView}
             standardApps={filteredNavigationButtons}

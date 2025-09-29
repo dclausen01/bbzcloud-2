@@ -301,7 +301,186 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // Get webview preload script path
-  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path')
+  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path'),
+
+  // ============================================================================
+  // BROWSERVIEW IPC METHODS
+  // ============================================================================
+
+  // Create a new BrowserView
+  createBrowserView: async (id, url, options = {}) => {
+    try {
+      return await ipcRenderer.invoke('browserview-create', { id, url, options });
+    } catch (error) {
+      console.error('Error creating BrowserView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Show a specific BrowserView
+  showBrowserView: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-show', { id });
+    } catch (error) {
+      console.error('Error showing BrowserView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Hide the currently active BrowserView
+  hideBrowserView: async () => {
+    try {
+      return await ipcRenderer.invoke('browserview-hide');
+    } catch (error) {
+      console.error('Error hiding BrowserView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Navigate a BrowserView to a new URL
+  navigateBrowserView: async (id, url) => {
+    try {
+      return await ipcRenderer.invoke('browserview-navigate', { id, url });
+    } catch (error) {
+      console.error('Error navigating BrowserView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Reload a specific BrowserView
+  reloadBrowserView: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-reload', { id });
+    } catch (error) {
+      console.error('Error reloading BrowserView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Execute JavaScript in a BrowserView
+  executeBrowserViewJS: async (id, code) => {
+    try {
+      return await ipcRenderer.invoke('browserview-execute-js', { id, code });
+    } catch (error) {
+      console.error('Error executing JavaScript in BrowserView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Get the current URL of a BrowserView
+  getBrowserViewURL: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-get-url', { id });
+    } catch (error) {
+      console.error('Error getting BrowserView URL:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Initialize standard apps as BrowserViews
+  initStandardAppsBrowserViews: async (standardApps) => {
+    try {
+      return await ipcRenderer.invoke('browserview-init-standard-apps', { standardApps });
+    } catch (error) {
+      console.error('Error initializing standard apps as BrowserViews:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Destroy a specific BrowserView
+  destroyBrowserView: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-destroy', { id });
+    } catch (error) {
+      console.error('Error destroying BrowserView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Get BrowserViewManager statistics
+  getBrowserViewStats: async () => {
+    try {
+      return await ipcRenderer.invoke('browserview-get-stats');
+    } catch (error) {
+      console.error('Error getting BrowserView stats:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Listen for BrowserView events
+  onBrowserViewLoading: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('browserview-loading', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-loading', subscription);
+    };
+  },
+
+  onBrowserViewLoaded: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('browserview-loaded', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-loaded', subscription);
+    };
+  },
+
+  onBrowserViewNavigated: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('browserview-navigated', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-navigated', subscription);
+    };
+  },
+
+  onBrowserViewError: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('browserview-error', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-error', subscription);
+    };
+  },
+
+  onBrowserViewActivated: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('browserview-activated', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-activated', subscription);
+    };
+  },
+
+  onBrowserViewNewWindow: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('browserview-new-window', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-new-window', subscription);
+    };
+  },
+
+  onBrowserViewContextMenu: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('browserview-context-menu', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-context-menu', subscription);
+    };
+  },
+
+  // Listen for BrowserView messages (including debug keyboard events)
+  onBrowserViewMessage: (callback) => {
+    const subscription = (event, message) => callback(message);
+    ipcRenderer.on('browserview-message', subscription);
+    return () => {
+      ipcRenderer.removeListener('browserview-message', subscription);
+    };
+  },
+
+  // Listen for credential injection results
+  onCredentialInjectionResult: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('credential-injection-result', subscription);
+    return () => {
+      ipcRenderer.removeListener('credential-injection-result', subscription);
+    };
+  }
 });
 
 
