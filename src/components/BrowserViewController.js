@@ -388,6 +388,40 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
     return !Object.keys(standardApps).includes(id.toLowerCase());
   };
 
+  // Handle dynamic BrowserView creation for dropdown apps
+  useEffect(() => {
+    const createDynamicBrowserView = async () => {
+      if (!activeWebView || !isDropdownApp(activeWebView.id) || !browserViewsInitialized) {
+        return;
+      }
+
+      try {
+        console.log('[BrowserViewController] Creating dynamic BrowserView for:', activeWebView.id);
+        
+        const result = await window.electron.createBrowserView(
+          activeWebView.id, 
+          activeWebView.url, 
+          { title: activeWebView.title }
+        );
+        
+        if (result.success) {
+          // Show the newly created BrowserView
+          const showResult = await window.electron.showBrowserView(activeWebView.id);
+          if (showResult.success) {
+            setActiveBrowserViewId(activeWebView.id);
+            console.log('[BrowserViewController] Dynamic BrowserView created and shown:', activeWebView.id);
+          }
+        } else {
+          console.error('[BrowserViewController] Failed to create dynamic BrowserView:', result.error);
+        }
+      } catch (error) {
+        console.error('[BrowserViewController] Error creating dynamic BrowserView:', error);
+      }
+    };
+
+    createDynamicBrowserView();
+  }, [activeWebView, browserViewsInitialized]);
+
   // Show overview image when no active view
   if (!activeWebView && !Object.keys(standardApps).length) {
     return (
@@ -436,40 +470,6 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       </Flex>
     );
   }
-
-  // Handle dynamic BrowserView creation for dropdown apps
-  useEffect(() => {
-    const createDynamicBrowserView = async () => {
-      if (!activeWebView || !isDropdownApp(activeWebView.id) || !browserViewsInitialized) {
-        return;
-      }
-
-      try {
-        console.log('[BrowserViewController] Creating dynamic BrowserView for:', activeWebView.id);
-        
-        const result = await window.electron.createBrowserView(
-          activeWebView.id, 
-          activeWebView.url, 
-          { title: activeWebView.title }
-        );
-        
-        if (result.success) {
-          // Show the newly created BrowserView
-          const showResult = await window.electron.showBrowserView(activeWebView.id);
-          if (showResult.success) {
-            setActiveBrowserViewId(activeWebView.id);
-            console.log('[BrowserViewController] Dynamic BrowserView created and shown:', activeWebView.id);
-          }
-        } else {
-          console.error('[BrowserViewController] Failed to create dynamic BrowserView:', result.error);
-        }
-      } catch (error) {
-        console.error('[BrowserViewController] Error creating dynamic BrowserView:', error);
-      }
-    };
-
-    createDynamicBrowserView();
-  }, [activeWebView, browserViewsInitialized]);
 
   return (
     <Box h="100%" w="100%" position="relative" overflow="hidden">
