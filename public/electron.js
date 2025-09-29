@@ -1255,6 +1255,36 @@ ipcMain.handle('browserview-get-stats', async (event) => {
   }
 });
 
+// Set sidebar state for BrowserView bounds adjustment
+ipcMain.handle('browserview-set-sidebar-state', async (event, { isOpen }) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    browserViewManager.setSidebarState(isOpen);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error setting sidebar state:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get current sidebar state
+ipcMain.handle('browserview-get-sidebar-state', async (event) => {
+  try {
+    if (!browserViewManager) {
+      throw new Error('BrowserViewManager not initialized');
+    }
+    
+    const isOpen = browserViewManager.getSidebarState();
+    return { success: true, isOpen };
+  } catch (error) {
+    console.error('[IPC] Error getting sidebar state:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Handle BrowserView messages (from preload script)
 ipcMain.on('browserview-message', (event, message) => {
   console.log('[BrowserView Message]', message);

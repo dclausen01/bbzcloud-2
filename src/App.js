@@ -603,6 +603,27 @@ function App() {
     }
   }, [isSecureDocsOpen]);
 
+  /**
+   * Communicate sidebar state to BrowserViewManager for proper bounds adjustment
+   */
+  useEffect(() => {
+    const updateSidebarState = async () => {
+      if (!window.electron || !window.electron.setBrowserViewSidebarState) {
+        return;
+      }
+      
+      try {
+        const isAnySidebarOpen = isTodoOpen || isSecureDocsOpen;
+        await window.electron.setBrowserViewSidebarState(isAnySidebarOpen);
+        console.log('[App] Updated BrowserView sidebar state:', isAnySidebarOpen);
+      } catch (error) {
+        console.warn('[App] Error updating BrowserView sidebar state:', error);
+      }
+    };
+
+    updateSidebarState();
+  }, [isTodoOpen, isSecureDocsOpen]);
+
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================

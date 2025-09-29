@@ -480,6 +480,25 @@ contextBridge.exposeInMainWorld('electron', {
     return () => {
       ipcRenderer.removeListener('credential-injection-result', subscription);
     };
+  },
+
+  // Sidebar state management for BrowserView bounds adjustment
+  setBrowserViewSidebarState: async (isOpen) => {
+    try {
+      return await ipcRenderer.invoke('browserview-set-sidebar-state', { isOpen });
+    } catch (error) {
+      console.error('Error setting BrowserView sidebar state:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  getBrowserViewSidebarState: async () => {
+    try {
+      return await ipcRenderer.invoke('browserview-get-sidebar-state');
+    } catch (error) {
+      console.error('Error getting BrowserView sidebar state:', error);
+      return { success: false, error: error.message };
+    }
   }
 });
 

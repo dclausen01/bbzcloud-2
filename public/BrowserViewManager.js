@@ -28,6 +28,8 @@ class BrowserViewManager {
     this.standardApps = new Map(); // Preloaded standard apps
     this.isInitialized = false;
     this.headerHeight = 48; // Navigation bar height
+    this.sidebarWidth = 450; // Width of sidebar drawers
+    this.sidebarOpen = false; // Track if sidebar is open
     
     // Setup event handlers
     this.setupWindowEventHandlers();
@@ -194,17 +196,34 @@ class BrowserViewManager {
         return false;
       }
 
-      console.log(`[BrowserViewManager] Showing BrowserView ${id}`);
-
-      // Hide current view if any
-      if (this.activeBrowserView && this.activeBrowserView !== view) {
-        this.mainWindow.removeBrowserView(this.activeBrowserView);
+      // If this view is already active, no need to switch
+      if (this.activeBrowserView === view) {
+        console.log(`[BrowserViewManager] BrowserView ${id} is already active`);
+        return true;
       }
 
-      // Show new view
+      console.log(`[BrowserViewManager] Showing BrowserView ${id}`);
+
+      // Set new view first to avoid flicker
       this.mainWindow.setBrowserView(view);
       this.updateBrowserViewBounds(view);
+      
+      // Now remove the old view if it exists
+      if (this.activeBrowserView && this.activeBrowserView !== view) {
+        // Small delay to ensure smooth transition
+        setTimeout(() => {
+          try {
+            this.mainWindow.removeBrowserView(this.activeBrowserView);
+          } catch (error) {
+            console.warn('[BrowserViewManager] Error removing old view:', error);
+          }
+        }, 50);
+      }
+
       this.activeBrowserView = view;
+
+      // Focus the BrowserView for proper input handling
+      view.webContents.focus();
 
       // Notify renderer about the active view change
       this.notifyRenderer('browserview-activated', { id });
@@ -244,16 +263,40 @@ class BrowserViewManager {
       const newBounds = {
         x: 0,
         y: this.headerHeight,
-        width: bounds.width,
+        width: this.sidebarOpen ? bounds.width - this.sidebarWidth : bounds.width,
         height: bounds.height - this.headerHeight
       };
 
       targetView.setBounds(newBounds);
-      console.log(`[BrowserViewManager] Updated bounds:`, newBounds);
+      console.log(`[BrowserViewManager] Updated bounds:`, newBounds, `(sidebar: ${this.sidebarOpen ? 'open' : 'closed'})`);
 
     } catch (error) {
       console.error('[BrowserViewManager] Error updating bounds:', error);
     }
+  }
+
+  /**
+   * Set sidebar state and update BrowserView bounds accordingly
+   * 
+   * @param {boolean} isOpen - Whether the sidebar is open
+   */
+  setSidebarState(isOpen) {
+    if (this.sidebarOpen !== isOpen) {
+      this.sidebarOpen = isOpen;
+      console.log(`[BrowserViewManager] Sidebar state changed: ${isOpen ? 'open' : 'closed'}`);
+      
+      // Update bounds of active BrowserView
+      this.updateActiveBrowserViewBounds();
+    }
+  }
+
+  /**
+   * Get current sidebar state
+   * 
+   * @returns {boolean} - Whether the sidebar is open
+   */
+  getSidebarState() {
+    return this.sidebarOpen;
   }
 
   /**
