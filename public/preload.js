@@ -407,69 +407,135 @@ contextBridge.exposeInMainWorld('electron', {
     }
   },
 
-  // Listen for BrowserView events
+  // Listen for WebContentsView events (updated for WebContentsView migration)
+  onWebContentsViewLoading: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('webcontentsview-loading', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-loading', subscription);
+    };
+  },
+
+  onWebContentsViewLoaded: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('webcontentsview-loaded', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-loaded', subscription);
+    };
+  },
+
+  onWebContentsViewNavigated: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('webcontentsview-navigated', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-navigated', subscription);
+    };
+  },
+
+  onWebContentsViewError: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('webcontentsview-error', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-error', subscription);
+    };
+  },
+
+  onWebContentsViewActivated: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('webcontentsview-activated', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-activated', subscription);
+    };
+  },
+
+  onWebContentsViewNewWindow: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('webcontentsview-new-window', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-new-window', subscription);
+    };
+  },
+
+  onWebContentsViewContextMenu: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('webcontentsview-context-menu', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-context-menu', subscription);
+    };
+  },
+
+  // Listen for WebContentsView messages (including debug keyboard events)
+  onWebContentsViewMessage: (callback) => {
+    const subscription = (event, message) => callback(message);
+    ipcRenderer.on('webcontentsview-message', subscription);
+    return () => {
+      ipcRenderer.removeListener('webcontentsview-message', subscription);
+    };
+  },
+
+  // Backward compatibility: Keep old BrowserView event handlers that delegate to WebContentsView
   onBrowserViewLoading: (callback) => {
     const subscription = (event, data) => callback(data);
-    ipcRenderer.on('browserview-loading', subscription);
+    ipcRenderer.on('webcontentsview-loading', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-loading', subscription);
+      ipcRenderer.removeListener('webcontentsview-loading', subscription);
     };
   },
 
   onBrowserViewLoaded: (callback) => {
     const subscription = (event, data) => callback(data);
-    ipcRenderer.on('browserview-loaded', subscription);
+    ipcRenderer.on('webcontentsview-loaded', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-loaded', subscription);
+      ipcRenderer.removeListener('webcontentsview-loaded', subscription);
     };
   },
 
   onBrowserViewNavigated: (callback) => {
     const subscription = (event, data) => callback(data);
-    ipcRenderer.on('browserview-navigated', subscription);
+    ipcRenderer.on('webcontentsview-navigated', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-navigated', subscription);
+      ipcRenderer.removeListener('webcontentsview-navigated', subscription);
     };
   },
 
   onBrowserViewError: (callback) => {
     const subscription = (event, data) => callback(data);
-    ipcRenderer.on('browserview-error', subscription);
+    ipcRenderer.on('webcontentsview-error', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-error', subscription);
+      ipcRenderer.removeListener('webcontentsview-error', subscription);
     };
   },
 
   onBrowserViewActivated: (callback) => {
     const subscription = (event, data) => callback(data);
-    ipcRenderer.on('browserview-activated', subscription);
+    ipcRenderer.on('webcontentsview-activated', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-activated', subscription);
+      ipcRenderer.removeListener('webcontentsview-activated', subscription);
     };
   },
 
   onBrowserViewNewWindow: (callback) => {
     const subscription = (event, data) => callback(data);
-    ipcRenderer.on('browserview-new-window', subscription);
+    ipcRenderer.on('webcontentsview-new-window', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-new-window', subscription);
+      ipcRenderer.removeListener('webcontentsview-new-window', subscription);
     };
   },
 
   onBrowserViewContextMenu: (callback) => {
     const subscription = (event, data) => callback(data);
-    ipcRenderer.on('browserview-context-menu', subscription);
+    ipcRenderer.on('webcontentsview-context-menu', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-context-menu', subscription);
+      ipcRenderer.removeListener('webcontentsview-context-menu', subscription);
     };
   },
 
-  // Listen for BrowserView messages (including debug keyboard events)
+  // Listen for BrowserView messages (backward compatibility)
   onBrowserViewMessage: (callback) => {
     const subscription = (event, message) => callback(message);
-    ipcRenderer.on('browserview-message', subscription);
+    ipcRenderer.on('webcontentsview-message', subscription);
     return () => {
-      ipcRenderer.removeListener('browserview-message', subscription);
+      ipcRenderer.removeListener('webcontentsview-message', subscription);
     };
   },
 

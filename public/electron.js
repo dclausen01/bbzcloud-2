@@ -6,8 +6,8 @@ const crypto = require('crypto');
 const compress = util.promisify(zlib.gzip);
 const decompress = util.promisify(zlib.gunzip);
 
-// Import BrowserView Manager
-const BrowserViewManager = require('./BrowserViewManager');
+// Import WebContentsView Manager (modern replacement for deprecated BrowserView)
+const WebContentsViewManager = require('./WebContentsViewManager');
 
 // List of webviews that need special handling on system resume
 const webviewsToReload = ['outlook', 'webuntis'];
@@ -169,8 +169,8 @@ let splashWindow;
 let tray;
 const windowRegistry = new Map();
 
-// BrowserView Manager instance
-let browserViewManager = null;
+// WebContentsView Manager instance (modern replacement for deprecated BrowserView)
+let webContentsViewManager = null;
 
 // macOS-specific memory optimization
 let imageCache = new Map();
@@ -610,9 +610,9 @@ async function createWindow() {
     return false;
   });
 
-  // Initialize BrowserView Manager IMMEDIATELY after window creation
-  browserViewManager = new BrowserViewManager(mainWindow);
-  console.log('[Main] BrowserViewManager initialized early');
+  // Initialize WebContentsView Manager IMMEDIATELY after window creation
+  webContentsViewManager = new WebContentsViewManager(mainWindow);
+  console.log('[Main] WebContentsViewManager initialized early');
 
   mainWindow.once('ready-to-show', async () => {
     const startMinimized = shouldStartMinimized || process.argv.includes('--minimized');
@@ -1102,122 +1102,122 @@ ipcMain.handle('get-webview-preload-path', () => {
 });
 
 // ============================================================================
-// BROWSERVIEW IPC HANDLERS
+// WEBCONTENTSVIEW IPC HANDLERS (Modern replacement for deprecated BrowserView)
 // ============================================================================
 
-// Create a new BrowserView
+// Create a new WebContentsView
 ipcMain.handle('browserview-create', async (event, { id, url, options = {} }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    await browserViewManager.createBrowserView(id, url, options);
+    await webContentsViewManager.createWebContentsView(id, url, options);
     return { success: true };
   } catch (error) {
-    console.error('[IPC] Error creating BrowserView:', error);
+    console.error('[IPC] Error creating WebContentsView:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Show a specific BrowserView
+// Show a specific WebContentsView
 ipcMain.handle('browserview-show', async (event, { id }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const success = await browserViewManager.showBrowserView(id);
+    const success = await webContentsViewManager.showWebContentsView(id);
     return { success };
   } catch (error) {
-    console.error('[IPC] Error showing BrowserView:', error);
+    console.error('[IPC] Error showing WebContentsView:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Hide the currently active BrowserView
+// Hide the currently active WebContentsView
 ipcMain.handle('browserview-hide', async (event) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    browserViewManager.hideActiveBrowserView();
+    webContentsViewManager.hideActiveWebContentsView();
     return { success: true };
   } catch (error) {
-    console.error('[IPC] Error hiding BrowserView:', error);
+    console.error('[IPC] Error hiding WebContentsView:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Navigate a BrowserView to a new URL
+// Navigate a WebContentsView to a new URL
 ipcMain.handle('browserview-navigate', async (event, { id, url }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const success = await browserViewManager.navigateBrowserView(id, url);
+    const success = await webContentsViewManager.navigateWebContentsView(id, url);
     return { success };
   } catch (error) {
-    console.error('[IPC] Error navigating BrowserView:', error);
+    console.error('[IPC] Error navigating WebContentsView:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Reload a specific BrowserView
+// Reload a specific WebContentsView
 ipcMain.handle('browserview-reload', async (event, { id }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const success = browserViewManager.reloadBrowserView(id);
+    const success = webContentsViewManager.reloadWebContentsView(id);
     return { success };
   } catch (error) {
-    console.error('[IPC] Error reloading BrowserView:', error);
+    console.error('[IPC] Error reloading WebContentsView:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Execute JavaScript in a BrowserView
+// Execute JavaScript in a WebContentsView
 ipcMain.handle('browserview-execute-js', async (event, { id, code }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const result = await browserViewManager.executeJavaScript(id, code);
+    const result = await webContentsViewManager.executeJavaScript(id, code);
     return { success: true, result };
   } catch (error) {
-    console.error('[IPC] Error executing JavaScript in BrowserView:', error);
+    console.error('[IPC] Error executing JavaScript in WebContentsView:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Get the current URL of a BrowserView
+// Get the current URL of a WebContentsView
 ipcMain.handle('browserview-get-url', async (event, { id }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const url = browserViewManager.getBrowserViewURL(id);
+    const url = webContentsViewManager.getWebContentsViewURL(id);
     return { success: true, url };
   } catch (error) {
-    console.error('[IPC] Error getting BrowserView URL:', error);
+    console.error('[IPC] Error getting WebContentsView URL:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Initialize standard apps as BrowserViews
+// Initialize standard apps as WebContentsViews
 ipcMain.handle('browserview-init-standard-apps', async (event, { standardApps }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    await browserViewManager.initializeStandardApps(standardApps);
+    await webContentsViewManager.initializeStandardApps(standardApps);
     return { success: true };
   } catch (error) {
     console.error('[IPC] Error initializing standard apps:', error);
@@ -1225,44 +1225,44 @@ ipcMain.handle('browserview-init-standard-apps', async (event, { standardApps })
   }
 });
 
-// Destroy a specific BrowserView
+// Destroy a specific WebContentsView
 ipcMain.handle('browserview-destroy', async (event, { id }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const success = browserViewManager.destroyBrowserView(id);
+    const success = webContentsViewManager.destroyWebContentsView(id);
     return { success };
   } catch (error) {
-    console.error('[IPC] Error destroying BrowserView:', error);
+    console.error('[IPC] Error destroying WebContentsView:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Get BrowserViewManager statistics
+// Get WebContentsViewManager statistics
 ipcMain.handle('browserview-get-stats', async (event) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const stats = browserViewManager.getStats();
+    const stats = webContentsViewManager.getStats();
     return { success: true, stats };
   } catch (error) {
-    console.error('[IPC] Error getting BrowserView stats:', error);
+    console.error('[IPC] Error getting WebContentsView stats:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Set sidebar state for BrowserView bounds adjustment
+// Set sidebar state for WebContentsView bounds adjustment
 ipcMain.handle('browserview-set-sidebar-state', async (event, { isOpen }) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    browserViewManager.setSidebarState(isOpen);
+    webContentsViewManager.setSidebarState(isOpen);
     return { success: true };
   } catch (error) {
     console.error('[IPC] Error setting sidebar state:', error);
@@ -1273,11 +1273,11 @@ ipcMain.handle('browserview-set-sidebar-state', async (event, { isOpen }) => {
 // Get current sidebar state
 ipcMain.handle('browserview-get-sidebar-state', async (event) => {
   try {
-    if (!browserViewManager) {
-      throw new Error('BrowserViewManager not initialized');
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
     }
     
-    const isOpen = browserViewManager.getSidebarState();
+    const isOpen = webContentsViewManager.getSidebarState();
     return { success: true, isOpen };
   } catch (error) {
     console.error('[IPC] Error getting sidebar state:', error);

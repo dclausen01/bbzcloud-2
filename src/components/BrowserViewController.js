@@ -242,39 +242,39 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
     }
   }, [activeWebView, browserViewsInitialized, onNavigate]);
 
-  // Set up BrowserView event listeners
+  // Set up WebContentsView event listeners (updated for WebContentsView migration)
   useEffect(() => {
     if (!window.electron) return;
 
     // Loading state listeners
-    const unsubscribeLoading = window.electron.onBrowserViewLoading((data) => {
+    const unsubscribeLoading = window.electron.onWebContentsViewLoading?.((data) => {
       const { id, loading } = data;
       setIsLoading(prev => ({ ...prev, [id]: loading }));
       console.log(`[BrowserViewController] ${id} loading state:`, loading);
-    });
+    }) || (() => {});
 
-    const unsubscribeLoaded = window.electron.onBrowserViewLoaded((data) => {
+    const unsubscribeLoaded = window.electron.onWebContentsViewLoaded?.((data) => {
       const { id, url } = data;
       setIsLoading(prev => ({ ...prev, [id]: false }));
       console.log(`[BrowserViewController] ${id} loaded:`, url);
       
-      // Update URL if this is the active BrowserView
+      // Update URL if this is the active WebContentsView
       if (activeWebView && activeWebView.id === id) {
         onNavigate(url);
       }
-    });
+    }) || (() => {});
 
-    const unsubscribeNavigated = window.electron.onBrowserViewNavigated((data) => {
+    const unsubscribeNavigated = window.electron.onWebContentsViewNavigated?.((data) => {
       const { id, url } = data;
       console.log(`[BrowserViewController] ${id} navigated to:`, url);
       
-      // Update URL if this is the active BrowserView
+      // Update URL if this is the active WebContentsView
       if (activeWebView && activeWebView.id === id) {
         onNavigate(url);
       }
-    });
+    }) || (() => {});
 
-    const unsubscribeError = window.electron.onBrowserViewError((data) => {
+    const unsubscribeError = window.electron.onWebContentsViewError?.((data) => {
       const { id, error } = data;
       setIsLoading(prev => ({ ...prev, [id]: false }));
       
@@ -311,44 +311,44 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
           isClosable: true,
         });
       }
-    });
+    }) || (() => {});
 
-    const unsubscribeActivated = window.electron.onBrowserViewActivated((data) => {
+    const unsubscribeActivated = window.electron.onWebContentsViewActivated?.((data) => {
       const { id } = data;
       setActiveBrowserViewId(id);
-      console.log('[BrowserViewController] BrowserView activated:', id);
-    });
+      console.log('[BrowserViewController] WebContentsView activated:', id);
+    }) || (() => {});
 
-    const unsubscribeNewWindow = window.electron.onBrowserViewNewWindow((data) => {
+    const unsubscribeNewWindow = window.electron.onWebContentsViewNewWindow?.((data) => {
       const { url, title } = data;
       console.log('[BrowserViewController] New window requested:', url);
       // Handle new window creation if needed
       window.electron.openExternalWindow({ url, title });
-    });
+    }) || (() => {});
 
-    const unsubscribeContextMenu = window.electron.onBrowserViewContextMenu((data) => {
+    const unsubscribeContextMenu = window.electron.onWebContentsViewContextMenu?.((data) => {
       const { id, selectionText, x, y } = data;
       console.log('[BrowserViewController] Context menu:', { id, selectionText });
       // Handle context menu if needed
-    });
+    }) || (() => {});
 
-    // Listen for BrowserView messages (including debug keyboard events)
-    const unsubscribeMessages = window.electron.onBrowserViewMessage((message) => {
+    // Listen for WebContentsView messages (including debug keyboard events)
+    const unsubscribeMessages = window.electron.onWebContentsViewMessage?.((message) => {
       if (message.type === 'debug-keyboard-event') {
         // Forward to main window for debug tool
         console.log('[BrowserViewController] Debug keyboard event:', message);
       }
-    });
+    }) || (() => {});
 
     // Listen for credential injection results
-    const unsubscribeCredentials = window.electron.onCredentialInjectionResult((data) => {
+    const unsubscribeCredentials = window.electron.onCredentialInjectionResult?.((data) => {
       const { service, success, browserViewId } = data;
       console.log(`[BrowserViewController] Credential injection result: ${service} -> ${success} (${browserViewId})`);
       
       if (success) {
         setCredsAreSet(prev => ({ ...prev, [browserViewId]: true }));
       }
-    });
+    }) || (() => {});
 
     // Cleanup function
     return () => {
