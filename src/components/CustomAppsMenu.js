@@ -53,6 +53,7 @@ function CustomAppsMenu({ apps, standardApps, onAppClick, onNewWindow }) {
         bg={colorMode === 'light' ? 'white' : 'gray.800'}
         borderColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
         boxShadow="md"
+        zIndex={4000}
       >
         {/* Standard Apps */}
         {hasStandardApps && standardApps.map((app) => (

@@ -301,7 +301,7 @@ const CommandPalette = ({
       closeOnOverlayClick={true}
       closeOnEsc={true}
     >
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" zIndex={3000} />
       <ModalContent
         bg={bgColor}
         border="1px"
@@ -312,6 +312,7 @@ const CommandPalette = ({
         mt="10vh"
         maxH="70vh"
         overflow="hidden"
+        zIndex={3001}
       >
         <ModalBody p={0}>
           <VStack spacing={0} align="stretch">

@@ -14,7 +14,7 @@
  * BrowserViews that are managed entirely in the main process.
  * 
  * @author Dennis Clausen <dennis.clausen@bbz-rd-eck.de>
- * @version 2.0.39
+ * @version 2.1.0
  */
 
 import React, { useRef, useEffect, useState, forwardRef } from 'react';

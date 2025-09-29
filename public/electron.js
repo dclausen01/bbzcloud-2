@@ -1517,16 +1517,124 @@ ipcMain.on('credential-request', async (event, data) => {
 
 // Handle credential injection responses from BrowserViews
 ipcMain.on('credential-response', (event, data) => {
-  const { service, success, browserViewId } = data;
-  console.log(`[Credential Response] Service: ${service}, Success: ${success}, BrowserView: ${browserViewId}`);
+  const { service, success, browserViewId, webContentsViewId } = data;
+  console.log(`[Credential Response] Service: ${service}, Success: ${success}, View: ${browserViewId || webContentsViewId}`);
   
   // Optionally notify the renderer about credential injection results
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('credential-injection-result', {
       service,
       success,
-      browserViewId
+      browserViewId: browserViewId || webContentsViewId
     });
+  }
+});
+
+// ============================================================================
+// WEBCONTENTSVIEW CREDENTIAL INJECTION HANDLERS
+// ============================================================================
+
+// Handle credential injection requests from WebContentsViews (new secure system)
+ipcMain.on('credential-request', async (event, data) => {
+  const { service, webContentsViewId } = data;
+  
+  try {
+    console.log(`[WebContentsView Credential Request] Service: ${service}, WebContentsView: ${webContentsViewId}`);
+    
+    // Get all required credentials using keytar directly (we're in main process)
+    const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
+      keytar.getPassword('bbzcloud', 'email').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'password').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'bbbPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'webuntisEmail').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'webuntisPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false }))
+    ]);
+    
+    const credentials = {
+      email: emailResult.success ? emailResult.password : null,
+      password: passwordResult.success ? passwordResult.password : null,
+      bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : null,
+      webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : null,
+      webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : null
+    };
+    
+    // Send credentials to the requesting WebContentsView
+    event.sender.send('inject-credentials', {
+      service,
+      credentials,
+      webContentsViewId
+    });
+    
+  } catch (error) {
+    console.error('[WebContentsView Credential Request] Error:', error);
+    event.sender.send('credential-response', {
+      service,
+      success: false,
+      error: error.message,
+      webContentsViewId
+    });
+  }
+});
+
+// Handle automatic credential injection trigger (called from main process)
+async function triggerCredentialInjection(webContentsViewId, service) {
+  try {
+    if (!webContentsViewManager) {
+      console.error('[Credential Injection] WebContentsViewManager not initialized');
+      return;
+    }
+    
+    const view = webContentsViewManager.getWebContentsView(webContentsViewId);
+    if (!view) {
+      console.error(`[Credential Injection] WebContentsView ${webContentsViewId} not found`);
+      return;
+    }
+    
+    console.log(`[Credential Injection] Triggering injection for ${service} in ${webContentsViewId}`);
+    
+    // Get credentials from keytar
+    const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
+      keytar.getPassword('bbzcloud', 'email').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'password').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'bbbPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'webuntisEmail').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+      keytar.getPassword('bbzcloud', 'webuntisPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false }))
+    ]);
+    
+    const credentials = {
+      email: emailResult.success ? emailResult.password : null,
+      password: passwordResult.success ? passwordResult.password : null,
+      bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : null,
+      webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : null,
+      webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : null
+    };
+    
+    // Check if we have the required credentials
+    if (!credentials.email || !credentials.password) {
+      console.warn(`[Credential Injection] Missing basic credentials for ${service}`);
+      return;
+    }
+    
+    // Send credentials directly to the WebContentsView
+    view.webContents.send('inject-credentials', {
+      service,
+      credentials,
+      webContentsViewId
+    });
+    
+  } catch (error) {
+    console.error(`[Credential Injection] Error triggering injection for ${service}:`, error);
+  }
+}
+
+// IPC handler to trigger credential injection from renderer
+ipcMain.handle('trigger-credential-injection', async (event, { webContentsViewId, service }) => {
+  try {
+    await triggerCredentialInjection(webContentsViewId, service);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error triggering credential injection:', error);
+    return { success: false, error: error.message };
   }
 });
 

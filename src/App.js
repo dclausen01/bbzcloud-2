@@ -71,7 +71,6 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
-import KeyboardDebugTool from './components/KeyboardDebugTool';
 
 // Custom Hooks and Utilities
 import { 
@@ -150,7 +149,6 @@ function App() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
   const [contextMenuText, setContextMenuText] = useState('');
-  const [isDebugMode, setIsDebugMode] = useState(false);
 
   // Refs for WebView management
   const webViewRef = useRef(null);
@@ -536,19 +534,6 @@ function App() {
     },
   });
 
-  // Debug mode shortcut (Ctrl+Shift+D)
-  useEffect(() => {
-    const handleDebugShortcut = (event) => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
-        event.preventDefault();
-        setIsDebugMode(!isDebugMode);
-        console.log('[Debug Mode]', isDebugMode ? 'Disabled' : 'Enabled');
-      }
-    };
-
-    document.addEventListener('keydown', handleDebugShortcut);
-    return () => document.removeEventListener('keydown', handleDebugShortcut);
-  }, [isDebugMode]);
 
   // Navigation shortcuts (Ctrl+1-9 for quick app switching)
   useNavigationShortcuts(
@@ -1015,8 +1000,8 @@ function App() {
           SETTINGS DRAWER
           ======================================================================== */}
       <Drawer isOpen={isSettingsOpen} placement="right" onClose={onSettingsClose} size="md">
-        <DrawerOverlay />
-        <DrawerContent>
+        <DrawerOverlay zIndex={2000} />
+        <DrawerContent zIndex={2001}>
           <DrawerCloseButton aria-label="Einstellungen schließen" />
           <DrawerHeader>Einstellungen</DrawerHeader>
           <DrawerBody>
@@ -1113,10 +1098,6 @@ function App() {
         }}
       />
 
-      {/* ========================================================================
-          KEYBOARD DEBUG TOOL
-          ======================================================================== */}
-      <KeyboardDebugTool isVisible={isDebugMode} />
 
       {/* ========================================================================
           WELCOME MODAL - FIRST-TIME USER SETUP

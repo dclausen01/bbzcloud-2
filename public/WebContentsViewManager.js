@@ -164,7 +164,7 @@ class WebContentsViewManager {
       this.notifyRenderer('webcontentsview-loading', { id, loading: false });
     });
 
-    view.webContents.on('did-finish-load', () => {
+    view.webContents.on('did-finish-load', async () => {
       const state = this.viewStates.get(id);
       const currentUrl = view.webContents.getURL();
       const loadTime = state.loadStartTime ? Date.now() - state.loadStartTime : 0;
@@ -176,6 +176,13 @@ class WebContentsViewManager {
       
       console.log(`[WebContentsViewManager] ${id} finished loading (${loadTime}ms): ${currentUrl}`);
       this.notifyRenderer('webcontentsview-loaded', { id, url: currentUrl });
+      
+      // Trigger automatic credential injection after page load
+      try {
+        await this.triggerCredentialInjectionForView(id, currentUrl);
+      } catch (error) {
+        console.error(`[WebContentsViewManager] Error triggering credential injection for ${id}:`, error);
+      }
     });
 
     // Navigation events
@@ -578,6 +585,99 @@ class WebContentsViewManager {
 
     } catch (error) {
       console.error(`[WebContentsViewManager] Error destroying WebContentsView ${id}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Inject credentials into a specific WebContentsView
+   * 
+   * @param {string} id - The WebContentsView identifier
+   * @param {Object} credentials - The credentials to inject
+   * @param {string} service - The service name for credential injection
+   * @returns {Promise<boolean>} - True if successful
+   */
+  async injectCredentials(id, credentials, service) {
+    try {
+      const view = this.webContentsViews.get(id);
+      if (!view) {
+        console.error(`[WebContentsViewManager] WebContentsView ${id} not found for credential injection`);
+        return false;
+      }
+
+      console.log(`[WebContentsViewManager] Injecting credentials for ${service} in WebContentsView ${id}`);
+
+      // Send credential injection message to the WebContentsView's preload script
+      view.webContents.send('inject-credentials', {
+        webContentsViewId: id,
+        service: service,
+        credentials: credentials
+      });
+
+      return true;
+
+    } catch (error) {
+      console.error(`[WebContentsViewManager] Error injecting credentials for ${id}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Trigger credential injection for a specific view after page load
+   * This method requests credentials from the main process and injects them
+   * 
+   * @param {string} id - The WebContentsView identifier
+   * @param {string} url - The current URL
+   * @returns {Promise<boolean>} - True if injection was attempted
+   */
+  async triggerCredentialInjectionForView(id, url) {
+    try {
+      // Request credentials from main process via IPC
+      const { ipcMain } = require('electron');
+      
+      // Emit a request for credentials to the main process
+      this.notifyRenderer('request-credentials-for-injection', { id, url });
+      
+      return true;
+    } catch (error) {
+      console.error(`[WebContentsViewManager] Error requesting credentials for ${id}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Trigger automatic credential injection based on URL
+   * 
+   * @param {string} id - The WebContentsView identifier
+   * @param {string} url - The current URL
+   * @param {Object} allCredentials - All available credentials
+   * @returns {Promise<boolean>} - True if injection was attempted
+   */
+  async triggerAutoCredentialInjection(id, url, allCredentials) {
+    try {
+      // Determine service based on URL
+      let service = null;
+      
+      if (url.includes('webuntis.com') || url.includes('neilo.webuntis.com')) {
+        service = 'webuntis';
+      } else if (url.includes('schulcloud') || url.includes('dbildungscloud')) {
+        service = 'schulcloud';
+      } else if (url.includes('office.com') || url.includes('login.microsoftonline.com')) {
+        service = 'office';
+      } else if (url.includes('moodle') || url.includes('lms.bbz-rd-eck.de')) {
+        service = 'moodle';
+      }
+
+      if (!service) {
+        console.log(`[WebContentsViewManager] No credential injection needed for URL: ${url}`);
+        return false;
+      }
+
+      console.log(`[WebContentsViewManager] Auto-injecting credentials for service: ${service}`);
+      return await this.injectCredentials(id, allCredentials, service);
+
+    } catch (error) {
+      console.error(`[WebContentsViewManager] Error in auto credential injection:`, error);
       return false;
     }
   }

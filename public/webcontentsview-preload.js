@@ -578,54 +578,179 @@ const CredentialInjector = {
 // Set up keyboard event listener in capture phase
 document.addEventListener('keydown', handleKeyboardShortcut, true);
 
-// Listen for credential injection requests
-if (window.electronWebContentsView) {
-  window.electronWebContentsView.on('inject-credentials', async (data) => {
-    const { service, credentials } = data;
-    
-    console.log(`[WebContentsView Preload] Received credential injection request for: ${service}`);
-    
-    let success = false;
-    
-    switch (service.toLowerCase()) {
-      case 'webuntis':
-        success = await CredentialInjector.injectWebUntisCredentials(
-          credentials.webuntisEmail || credentials.email,
-          credentials.webuntisPassword || credentials.password
-        );
-        break;
-        
-      case 'schulcloud':
-        success = await CredentialInjector.injectSchulCloudCredentials(
-          credentials.email,
-          credentials.password
-        );
-        break;
-        
-      case 'office':
-        success = await CredentialInjector.injectOfficeCredentials(
-          credentials.email,
-          credentials.password
-        );
-        break;
-        
-      case 'moodle':
-        success = await CredentialInjector.injectMoodleCredentials(
-          credentials.email,
-          credentials.password
-        );
-        break;
-        
-      default:
-        console.warn(`[WebContentsView Preload] Unknown service for credential injection: ${service}`);
+// ============================================================================
+// SECURE CREDENTIAL INJECTION SYSTEM
+// ============================================================================
+
+/**
+ * Security utilities for credential handling
+ */
+const CredentialSecurity = {
+  /**
+   * Validate credential data structure and format
+   */
+  validateCredentials(credentials) {
+    if (!credentials || typeof credentials !== 'object') {
+      throw new Error('Invalid credentials format');
     }
     
-    // Send response back to main process
-    window.electronWebContentsView.send('credential-response', {
-      service,
-      success,
-      timestamp: Date.now()
-    });
+    if (!credentials.email || typeof credentials.email !== 'string') {
+      throw new Error('Invalid email format');
+    }
+    
+    if (!credentials.password || typeof credentials.password !== 'string') {
+      throw new Error('Invalid password format');
+    }
+    
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(credentials.email)) {
+      throw new Error('Invalid email format');
+    }
+    
+    // Password length validation (minimum security)
+    if (credentials.password.length < 1) {
+      throw new Error('Invalid password length');
+    }
+    
+    return true;
+  },
+
+  /**
+   * Sanitize data for logging (remove sensitive information)
+   */
+  sanitizeForLogging(data) {
+    const sanitized = { ...data };
+    
+    // Remove sensitive fields
+    delete sanitized.password;
+    delete sanitized.credentials;
+    delete sanitized.encryptedCredentials;
+    delete sanitized.key;
+    
+    // Mask email if present
+    if (sanitized.email) {
+      const [local, domain] = sanitized.email.split('@');
+      sanitized.email = `${local.substring(0, 2)}***@${domain}`;
+    }
+    
+    return sanitized;
+  },
+
+  /**
+   * Secure memory cleanup for credential objects
+   */
+  secureCleanup(credentials) {
+    if (credentials && typeof credentials === 'object') {
+      Object.keys(credentials).forEach(key => {
+        if (typeof credentials[key] === 'string') {
+          // Overwrite string contents with asterisks
+          credentials[key] = '*'.repeat(credentials[key].length);
+        }
+        delete credentials[key];
+      });
+    }
+  },
+
+  /**
+   * Execute credential injection with timeout
+   */
+  async injectWithTimeout(injectionFunction, credentials, timeoutMs = 30000) {
+    return Promise.race([
+      injectionFunction(credentials),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Credential injection timeout')),
+          timeoutMs
+        )
+      )
+    ]);
+  }
+};
+
+// Listen for secure credential injection requests
+if (window.electronWebContentsView) {
+  window.electronWebContentsView.on('inject-credentials', async (data) => {
+    let credentials = null;
+    
+    try {
+      // 1. Extract credentials (assuming they come directly for now - encryption can be added later)
+      credentials = data.credentials;
+      
+      // 2. Validate credentials
+      CredentialSecurity.validateCredentials(credentials);
+      
+      // 3. Sanitized logging
+      console.log('[WebContentsView Preload] Credential injection request:', 
+        CredentialSecurity.sanitizeForLogging({ 
+          service: data.service, 
+          timestamp: Date.now() 
+        }));
+      
+      // 4. Execute injection with timeout
+      const success = await CredentialSecurity.injectWithTimeout(
+        async (creds) => {
+          switch (data.service.toLowerCase()) {
+            case 'webuntis':
+              return await CredentialInjector.injectWebUntisCredentials(
+                creds.webuntisEmail || creds.email,
+                creds.webuntisPassword || creds.password
+              );
+              
+            case 'schulcloud':
+              return await CredentialInjector.injectSchulCloudCredentials(
+                creds.email,
+                creds.password
+              );
+              
+            case 'office':
+              return await CredentialInjector.injectOfficeCredentials(
+                creds.email,
+                creds.password
+              );
+              
+            case 'moodle':
+              return await CredentialInjector.injectMoodleCredentials(
+                creds.email,
+                creds.password
+              );
+              
+            default:
+              throw new Error(`Unknown service: ${data.service}`);
+          }
+        },
+        credentials
+      );
+      
+      // 5. Send success response
+      window.electronWebContentsView.send('credential-response', {
+        service: data.service,
+        success,
+        timestamp: Date.now()
+      });
+      
+    } catch (error) {
+      // 6. Secure error handling
+      console.error('[WebContentsView Preload] Credential injection failed:', 
+        CredentialSecurity.sanitizeForLogging({ 
+          service: data.service, 
+          error: error.message 
+        }));
+      
+      // Send failure response without exposing sensitive details
+      window.electronWebContentsView.send('credential-response', {
+        service: data.service,
+        success: false,
+        error: 'Credential injection failed',
+        timestamp: Date.now()
+      });
+      
+    } finally {
+      // 7. Secure cleanup
+      if (credentials) {
+        CredentialSecurity.secureCleanup(credentials);
+      }
+    }
   });
 }
 

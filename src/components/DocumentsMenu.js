@@ -46,6 +46,7 @@ function DocumentsMenu({ onNavigate, reminderCount = 0 }) {
         bg={colorMode === 'light' ? 'white' : 'gray.800'}
         borderColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
         boxShadow="md"
+        zIndex={4000}
       >
         <MenuItem
           onClick={() => onNavigate('todo')}
