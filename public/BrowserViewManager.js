@@ -196,50 +196,73 @@ class BrowserViewManager {
         return false;
       }
 
-      // If this view is already active, no need to switch
+      // If this view is already active, just ensure it's visible and focused
       if (this.activeBrowserView === view) {
-        console.log(`[BrowserViewManager] BrowserView ${id} is already active`);
-        // Still update bounds and focus in case something changed
-        this.updateBrowserViewBounds(view);
-        view.webContents.focus();
+        console.log(`[BrowserViewManager] BrowserView ${id} is already active, ensuring visibility`);
+        
+        // Make sure the view is actually attached to the window
+        try {
+          this.mainWindow.setBrowserView(view);
+          this.updateBrowserViewBounds(view);
+          view.webContents.focus();
+        } catch (error) {
+          console.warn('[BrowserViewManager] Error ensuring view visibility:', error);
+        }
+        
         return true;
       }
 
       console.log(`[BrowserViewManager] Switching to BrowserView ${id}`);
 
-      // Store reference to old view for cleanup
-      const oldView = this.activeBrowserView;
-
-      // CRITICAL: Remove old view FIRST to prevent conflicts
-      if (oldView) {
-        try {
-          this.mainWindow.removeBrowserView(oldView);
-          console.log(`[BrowserViewManager] Removed old BrowserView`);
-        } catch (error) {
-          console.warn('[BrowserViewManager] Error removing old view:', error);
-        }
+      // CRITICAL: Clear any existing BrowserView first
+      try {
+        // Remove ALL BrowserViews from the window to ensure clean state
+        this.mainWindow.setBrowserView(null);
+        console.log(`[BrowserViewManager] Cleared all BrowserViews from window`);
+      } catch (error) {
+        console.warn('[BrowserViewManager] Error clearing BrowserViews:', error);
       }
 
-      // Wait a tick to ensure the old view is fully removed
-      await new Promise(resolve => setImmediate(resolve));
+      // Wait for the window to be in a clean state
+      await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Set the new view as active BEFORE adding it to the window
+      // Set the new view as active
       this.activeBrowserView = view;
 
       // Add the new view to the window
-      this.mainWindow.setBrowserView(view);
+      try {
+        this.mainWindow.setBrowserView(view);
+        console.log(`[BrowserViewManager] Added BrowserView ${id} to window`);
+      } catch (error) {
+        console.error(`[BrowserViewManager] Error adding BrowserView to window:`, error);
+        return false;
+      }
       
-      // Update bounds immediately
+      // Update bounds immediately after attachment
       this.updateBrowserViewBounds(view);
 
-      // Wait for the view to be properly attached
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // Wait for proper attachment and rendering
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Focus the BrowserView for proper input handling
       try {
         view.webContents.focus();
+        console.log(`[BrowserViewManager] Focused BrowserView ${id}`);
       } catch (error) {
         console.warn('[BrowserViewManager] Error focusing view:', error);
+      }
+
+      // Verify the view is actually visible by checking if it has bounds
+      try {
+        const bounds = view.getBounds();
+        console.log(`[BrowserViewManager] BrowserView ${id} bounds:`, bounds);
+        
+        if (bounds.width === 0 || bounds.height === 0) {
+          console.warn(`[BrowserViewManager] BrowserView ${id} has zero bounds, retrying...`);
+          this.updateBrowserViewBounds(view);
+        }
+      } catch (error) {
+        console.warn('[BrowserViewManager] Error checking view bounds:', error);
       }
 
       // Notify renderer about the active view change

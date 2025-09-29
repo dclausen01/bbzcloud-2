@@ -63,7 +63,7 @@ async function prepareForUpdate() {
   for (const webview of webviews) {
     try {
       const url = webview.getURL();
-      if (url.includes('exchange.bbz-rd-eck.de/owa')) {
+      if (url.includes('exchangkerin
         await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
       } else if (url.includes('webuntis.com')) {
         await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
@@ -610,6 +610,10 @@ async function createWindow() {
     return false;
   });
 
+  // Initialize BrowserView Manager IMMEDIATELY after window creation
+  browserViewManager = new BrowserViewManager(mainWindow);
+  console.log('[Main] BrowserViewManager initialized early');
+
   mainWindow.once('ready-to-show', async () => {
     const startMinimized = shouldStartMinimized || process.argv.includes('--minimized');
     
@@ -621,10 +625,6 @@ async function createWindow() {
     } else {
       mainWindow.minimize();
     }
-
-    // Initialize BrowserView Manager
-    browserViewManager = new BrowserViewManager(mainWindow);
-    console.log('[Main] BrowserViewManager initialized');
 
     // Close splash window after a delay to ensure smooth transition
     setTimeout(() => {
