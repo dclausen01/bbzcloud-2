@@ -2437,6 +2437,81 @@ app.on('window-all-closed', () => {
   }
 });
 
+// ============================================================================
+// WEBCONTENTSVIEW IPC HANDLERS (Additional handlers for BrowserViewController compatibility)
+// ============================================================================
+
+// Additional WebContentsView handlers that BrowserViewController expects
+ipcMain.handle('initStandardAppsWebContentsViews', async (event, standardApps) => {
+  try {
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
+    }
+    
+    await webContentsViewManager.initializeStandardApps(standardApps);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error initializing standard apps as WebContentsViews:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('showWebContentsView', async (event, id) => {
+  try {
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
+    }
+    
+    const success = await webContentsViewManager.showWebContentsView(id);
+    return { success };
+  } catch (error) {
+    console.error('[IPC] Error showing WebContentsView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('createWebContentsView', async (event, id, url, options = {}) => {
+  try {
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
+    }
+    
+    await webContentsViewManager.createWebContentsView(id, url, options);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error creating WebContentsView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('getWebContentsViewURL', async (event, id) => {
+  try {
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
+    }
+    
+    const url = webContentsViewManager.getWebContentsViewURL(id);
+    return { success: true, url };
+  } catch (error) {
+    console.error('[IPC] Error getting WebContentsView URL:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('reloadWebContentsView', async (event, id) => {
+  try {
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
+    }
+    
+    const success = webContentsViewManager.reloadWebContentsView(id);
+    return { success };
+  } catch (error) {
+    console.error('[IPC] Error reloading WebContentsView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Handle zoom factor changes
 ipcMain.handle('set-zoom-factor', async (event, { webContentsId, zoomFactor }) => {
   try {

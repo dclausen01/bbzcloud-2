@@ -1,23 +1,23 @@
 /**
- * BBZCloud - BrowserView Controller
+ * BBZCloud - WebContentsView Controller
  * 
  * This component replaces the WebViewContainer and acts as a "remote control"
- * for BrowserViews managed in the main process. It handles:
- * - BrowserView initialization and lifecycle management
+ * for WebContentsViews managed in the main process. It handles:
+ * - WebContentsView initialization and lifecycle management
  * - State synchronization between React and main process
  * - Loading indicators and error handling
  * - Navigation controls and URL updates
- * - Credential injection coordination
+ * - Credential injection coordination (ported from WebViewContainer)
  * 
  * Unlike WebViewContainer, this component doesn't render actual webview DOM elements.
- * Instead, it communicates with the BrowserViewManager via IPC to control
- * BrowserViews that are managed entirely in the main process.
+ * Instead, it communicates with the WebContentsViewManager via IPC to control
+ * WebContentsViews that are managed entirely in the main process.
  * 
  * @author Dennis Clausen <dennis.clausen@bbz-rd-eck.de>
- * @version 2.1.0
+ * @version 2.2.0
  */
 
-import React, { useRef, useEffect, useState, forwardRef } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useCallback } from 'react';
 import {
   Box,
   Flex,
@@ -31,23 +31,23 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
-  // State management for BrowserViews
+  // State management for WebContentsViews
   const [isLoading, setIsLoading] = useState({});
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
   const [imageError, setImageError] = useState(false);
   const [credsAreSet, setCredsAreSet] = useState({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
-  const [failedBrowserViews, setFailedBrowserViews] = useState({});
-  const [browserViewsInitialized, setBrowserViewsInitialized] = useState(false);
-  const [activeBrowserViewId, setActiveBrowserViewId] = useState(null);
+  const [failedWebContentsViews, setFailedWebContentsViews] = useState({});
+  const [webContentsViewsInitialized, setWebContentsViewsInitialized] = useState(false);
+  const [activeWebContentsViewId, setActiveWebContentsViewId] = useState(null);
 
   const toast = useToast();
   const { colorMode } = useColorMode();
   const { settings, isLoading: isSettingsLoading } = useSettings();
 
-  // Refs for tracking BrowserViews (for compatibility with existing code)
-  const browserViewRefs = useRef({});
+  // Refs for tracking WebContentsViews (for compatibility with existing code)
+  const webContentsViewRefs = useRef({});
 
   console.log('[BrowserViewController] Rendering with activeWebView:', activeWebView);
 
@@ -57,10 +57,10 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       if (!activeWebView) return;
       
       try {
-        // Use BrowserView navigation instead of webview methods
-        const view = await window.electron.getBrowserViewStats();
-        if (view.success && view.stats.activeBrowserView === 'active') {
-          // For BrowserViews, we need to handle navigation through the main process
+        // Use WebContentsView navigation instead of webview methods
+        const view = await window.electron.getWebContentsViewStats();
+        if (view.success && view.stats.activeWebContentsView === 'active') {
+          // For WebContentsViews, we need to handle navigation through the main process
           // This will be handled by keyboard shortcuts or navigation buttons
           console.log('[BrowserViewController] goBack called for:', activeWebView.id);
         }
@@ -73,8 +73,8 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       if (!activeWebView) return;
       
       try {
-        const view = await window.electron.getBrowserViewStats();
-        if (view.success && view.stats.activeBrowserView === 'active') {
+        const view = await window.electron.getWebContentsViewStats();
+        if (view.success && view.stats.activeWebContentsView === 'active') {
           console.log('[BrowserViewController] goForward called for:', activeWebView.id);
         }
       } catch (error) {
@@ -86,14 +86,14 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       if (!activeWebView) return;
       
       try {
-        const result = await window.electron.reloadBrowserView(activeWebView.id);
+        const result = await window.electron.reloadWebContentsView(activeWebView.id);
         if (result.success) {
-          console.log('[BrowserViewController] Reloaded BrowserView:', activeWebView.id);
+          console.log('[BrowserViewController] Reloaded WebContentsView:', activeWebView.id);
         } else {
-          console.error('[BrowserViewController] Failed to reload BrowserView:', result.error);
+          console.error('[BrowserViewController] Failed to reload WebContentsView:', result.error);
         }
       } catch (error) {
-        console.warn('Error reloading BrowserView:', error);
+        console.warn('Error reloading WebContentsView:', error);
       }
     },
     
@@ -101,10 +101,10 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       if (!activeWebView) return;
       
       try {
-        // Printing will be handled by keyboard shortcuts in the BrowserView
+        // Printing will be handled by keyboard shortcuts in the WebContentsView
         console.log('[BrowserViewController] print called for:', activeWebView.id);
       } catch (error) {
-        console.warn('Error printing BrowserView:', error);
+        console.warn('Error printing WebContentsView:', error);
       }
     }
   }));
@@ -145,79 +145,79 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
     return () => clearTimeout(timer);
   }, []);
 
-  // Retry loading a specific BrowserView
-  const handleRetryBrowserView = async (id) => {
+  // Retry loading a specific WebContentsView
+  const handleRetryWebContentsView = async (id) => {
     try {
-      const result = await window.electron.reloadBrowserView(id);
+      const result = await window.electron.reloadWebContentsView(id);
       if (result.success) {
-        setFailedBrowserViews(prev => {
+        setFailedWebContentsViews(prev => {
           const newState = { ...prev };
           delete newState[id];
           return newState;
         });
-        console.log('[BrowserViewController] Retried BrowserView:', id);
+        console.log('[BrowserViewController] Retried WebContentsView:', id);
       }
     } catch (error) {
-      console.error('Error retrying BrowserView:', error);
+      console.error('Error retrying WebContentsView:', error);
     }
   };
 
-  // Initialize standard apps as BrowserViews
+  // Initialize standard apps as WebContentsViews
   useEffect(() => {
-    const initializeBrowserViews = async () => {
-      if (browserViewsInitialized || isSettingsLoading || !standardApps || Object.keys(standardApps).length === 0) {
+    const initializeWebContentsViews = async () => {
+      if (webContentsViewsInitialized || isSettingsLoading || !standardApps || Object.keys(standardApps).length === 0) {
         return;
       }
 
       try {
-        console.log('[BrowserViewController] Initializing standard apps as BrowserViews...');
+        console.log('[BrowserViewController] Initializing standard apps as WebContentsViews...');
         
-        const result = await window.electron.initStandardAppsBrowserViews(standardApps);
+        const result = await window.electron.initStandardAppsWebContentsViews(standardApps);
         
         if (result.success) {
-          setBrowserViewsInitialized(true);
-          console.log('[BrowserViewController] Successfully initialized standard apps as BrowserViews');
+          setWebContentsViewsInitialized(true);
+          console.log('[BrowserViewController] Successfully initialized standard apps as WebContentsViews');
           
           // Create refs for compatibility
           Object.keys(standardApps).forEach(id => {
             if (standardApps[id].visible) {
-              browserViewRefs.current[id] = { current: { id } }; // Mock ref for compatibility
+              webContentsViewRefs.current[id] = { current: { id } }; // Mock ref for compatibility
             }
           });
         } else {
           console.error('[BrowserViewController] Failed to initialize standard apps:', result.error);
         }
       } catch (error) {
-        console.error('[BrowserViewController] Error initializing BrowserViews:', error);
+        console.error('[BrowserViewController] Error initializing WebContentsViews:', error);
       }
     };
 
-    initializeBrowserViews();
-  }, [standardApps, isSettingsLoading, browserViewsInitialized]);
+    initializeWebContentsViews();
+  }, [standardApps, isSettingsLoading, webContentsViewsInitialized]);
 
-  // Handle active BrowserView changes - OPTIMIZED to prevent flickering
+  // Handle active WebContentsView changes - OPTIMIZED to prevent flickering
   useEffect(() => {
-    if (activeWebView && browserViewsInitialized) {
-      const showBrowserView = async () => {
+    if (activeWebView && webContentsViewsInitialized) {
+      const showWebContentsView = async () => {
         try {
           // ANTI-FLICKER: Skip if already active to prevent unnecessary operations
-          if (activeBrowserViewId === activeWebView.id) {
+          if (activeWebContentsViewId === activeWebView.id) {
             console.log('[BrowserViewController] View already active, skipping switch:', activeWebView.id);
             return;
           }
           
-          console.log('[BrowserViewController] Switching to BrowserView:', activeWebView.id);
+          console.log('[BrowserViewController] Switching to WebContentsView:', activeWebView.id);
           
           // PERFORMANCE: No loading state to prevent visual jumps
-          const result = await window.electron.showBrowserView(activeWebView.id);
+          const result = await window.electron.showWebContentsView(activeWebView.id);
           
           if (result.success) {
-            setActiveBrowserViewId(activeWebView.id);
-            console.log('[BrowserViewController] Successfully switched to BrowserView:', activeWebView.id);
+            setActiveWebContentsViewId(activeWebView.id);
+            console.log('[BrowserViewController] Successfully switched to WebContentsView:', activeWebView.id);
             
             // PERFORMANCE: Get URL without delay to prevent flickering
             try {
-              const urlResult = await window.electron.getBrowserViewURL(activeWebView.id);
+              const urlResult = await window.electron.getWebContentsViewURL(activeWebView.id);
               if (urlResult.success && urlResult.url) {
                 onNavigate(urlResult.url);
               }
@@ -226,16 +226,16 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
             }
             
           } else {
-            console.error('[BrowserViewController] Failed to show BrowserView:', result.error);
+            console.error('[BrowserViewController] Failed to show WebContentsView:', result.error);
           }
         } catch (error) {
-          console.error('[BrowserViewController] Error showing BrowserView:', error);
+          console.error('[BrowserViewController] Error showing WebContentsView:', error);
         }
       };
 
-      showBrowserView();
+      showWebContentsView();
     }
-  }, [activeWebView, browserViewsInitialized, onNavigate, activeBrowserViewId]);
+  }, [activeWebView, webContentsViewsInitialized, onNavigate, activeWebContentsViewId]);
 
   // Set up WebContentsView event listeners (updated for WebContentsView migration)
   useEffect(() => {
@@ -275,7 +275,7 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       
       if (!isStartupPeriod && error.code < -3) {
         const errorMessage = getErrorMessage(error);
-        setFailedBrowserViews(prev => ({
+        setFailedWebContentsViews(prev => ({
           ...prev,
           [id]: {
             error: errorMessage,
@@ -293,7 +293,7 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
               <Button 
                 size="sm" 
                 onClick={() => {
-                  handleRetryBrowserView(id);
+                  handleRetryWebContentsView(id);
                   toast.close(toastId);
                 }}
               >
@@ -308,9 +308,9 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       }
     }) || (() => {});
 
-    const unsubscribeActivated = window.electron.onBrowserViewActivated?.((data) => {
+    const unsubscribeActivated = window.electron.onWebContentsViewActivated?.((data) => {
       const { id } = data;
-      setActiveBrowserViewId(id);
+      setActiveWebContentsViewId(id);
       console.log('[BrowserViewController] WebContentsView activated:', id);
     }) || (() => {});
 
@@ -401,18 +401,18 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
     return !Object.keys(standardApps).includes(id.toLowerCase());
   };
 
-  // Handle dynamic BrowserView creation for dropdown apps - OPTIMIZED
+  // Handle dynamic WebContentsView creation for dropdown apps - OPTIMIZED
   useEffect(() => {
-    const createDynamicBrowserView = async () => {
-      if (!activeWebView || !isDropdownApp(activeWebView.id) || !browserViewsInitialized) {
+    const createDynamicWebContentsView = async () => {
+      if (!activeWebView || !isDropdownApp(activeWebView.id) || !webContentsViewsInitialized) {
         return;
       }
 
       // ANTI-FLICKER: Check if view already exists before creating
       try {
-        const existingResult = await window.electron.getBrowserViewURL(activeWebView.id);
+        const existingResult = await window.electron.getWebContentsViewURL(activeWebView.id);
         if (existingResult.success) {
-          console.log('[BrowserViewController] Dynamic BrowserView already exists:', activeWebView.id);
+          console.log('[BrowserViewController] Dynamic WebContentsView already exists:', activeWebView.id);
           return; // View already exists, no need to create
         }
       } catch (error) {
@@ -420,27 +420,27 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       }
 
       try {
-        console.log('[BrowserViewController] Creating dynamic BrowserView for:', activeWebView.id);
+        console.log('[BrowserViewController] Creating dynamic WebContentsView for:', activeWebView.id);
         
-        const result = await window.electron.createBrowserView(
+        const result = await window.electron.createWebContentsView(
           activeWebView.id, 
           activeWebView.url, 
           { title: activeWebView.title }
         );
         
         if (result.success) {
-          console.log('[BrowserViewController] Dynamic BrowserView created:', activeWebView.id);
-          // Don't call showBrowserView here - it will be handled by the main useEffect
+          console.log('[BrowserViewController] Dynamic WebContentsView created:', activeWebView.id);
+          // Don't call showWebContentsView here - it will be handled by the main useEffect
         } else {
-          console.error('[BrowserViewController] Failed to create dynamic BrowserView:', result.error);
+          console.error('[BrowserViewController] Failed to create dynamic WebContentsView:', result.error);
         }
       } catch (error) {
-        console.error('[BrowserViewController] Error creating dynamic BrowserView:', error);
+        console.error('[BrowserViewController] Error creating dynamic WebContentsView:', error);
       }
     };
 
-    createDynamicBrowserView();
-  }, [activeWebView, browserViewsInitialized]);
+    createDynamicWebContentsView();
+  }, [activeWebView, webContentsViewsInitialized]);
 
   // Show overview image when no active view
   if (!activeWebView && !Object.keys(standardApps).length) {
@@ -519,7 +519,7 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
         </Box>
       )}
 
-      {/* Loading indicators for active BrowserView */}
+      {/* Loading indicators for active WebContentsView */}
       {activeWebView && isLoading[activeWebView.id] && (
         <Progress
           size="xs"
@@ -532,8 +532,8 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
         />
       )}
 
-      {/* BrowserViews are managed in the main process - no DOM elements here */}
-      {/* This component acts as a "remote control" for BrowserViews */}
+      {/* WebContentsViews are managed in the main process - no DOM elements here */}
+      {/* This component acts as a "remote control" for WebContentsViews */}
       
       {/* Debug information */}
       {process.env.NODE_ENV === 'development' && (
@@ -548,8 +548,8 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
           fontSize="xs"
           zIndex="999"
         >
-          <Text>Active BrowserView: {activeBrowserViewId || 'none'}</Text>
-          <Text>Initialized: {browserViewsInitialized ? 'yes' : 'no'}</Text>
+          <Text>Active WebContentsView: {activeWebContentsViewId || 'none'}</Text>
+          <Text>Initialized: {webContentsViewsInitialized ? 'yes' : 'no'}</Text>
           <Text>Standard Apps: {Object.keys(standardApps).length}</Text>
         </Box>
       )}

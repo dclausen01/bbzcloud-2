@@ -7,7 +7,7 @@
  * 
  * ARCHITECTURE OVERVIEW:
  * - Uses Chakra UI for consistent, accessible UI components
- * - Implements a WebView-based architecture for embedding web applications
+ * - Implements a WebContentsView-based architecture for embedding web applications
  * - Features a responsive navigation bar with customizable app buttons
  * - Includes secure credential management via Electron's keytar
  * - Supports keyboard shortcuts for power users
@@ -64,7 +64,7 @@ import {
 // Context and Components
 import { useSettings } from './context/SettingsContext';
 import NavigationBar from './components/NavigationBar';
-import BrowserViewController from './components/BrowserViewController';
+import WebContentsViewController from './components/WebContentsViewController';
 import SettingsPanel from './components/SettingsPanel';
 import CustomAppsMenu from './components/CustomAppsMenu';
 import TodoList from './components/TodoList';
@@ -527,10 +527,11 @@ function App() {
       }
     },
     onReloadAll: () => {
-      // Reload all webviews in the application
-      const webviews = document.querySelectorAll('webview');
-      webviews.forEach(webview => webview.reload());
-      announceToScreenReader('Alle Webviews werden neu geladen');
+      // Reload all WebContentsViews in the application
+      if (webViewRef.current) {
+        webViewRef.current.reload();
+      }
+      announceToScreenReader('Alle WebContentsViews werden neu geladen');
     },
   });
 
@@ -589,20 +590,20 @@ function App() {
   }, [isSecureDocsOpen]);
 
   /**
-   * Communicate sidebar state to BrowserViewManager for proper bounds adjustment
+   * Communicate sidebar state to WebContentsViewManager for proper bounds adjustment
    */
   useEffect(() => {
     const updateSidebarState = async () => {
-      if (!window.electron || !window.electron.setBrowserViewSidebarState) {
+      if (!window.electron || !window.electron.setWebContentsViewSidebarState) {
         return;
       }
       
       try {
         const isAnySidebarOpen = isTodoOpen || isSecureDocsOpen;
-        await window.electron.setBrowserViewSidebarState(isAnySidebarOpen);
-        console.log('[App] Updated BrowserView sidebar state:', isAnySidebarOpen);
+        await window.electron.setWebContentsViewSidebarState(isAnySidebarOpen);
+        console.log('[App] Updated WebContentsView sidebar state:', isAnySidebarOpen);
       } catch (error) {
-        console.warn('[App] Error updating BrowserView sidebar state:', error);
+        console.warn('[App] Error updating WebContentsView sidebar state:', error);
       }
     };
 
@@ -719,9 +720,10 @@ function App() {
         }
         break;
       case 'RELOAD_ALL':
-        const webviews = document.querySelectorAll('webview');
-        webviews.forEach(webview => webview.reload());
-        announceToScreenReader('Alle Webviews werden neu geladen');
+        if (webViewRef.current) {
+          webViewRef.current.reload();
+        }
+        announceToScreenReader('Alle WebContentsViews werden neu geladen');
         break;
       case 'TOGGLE_FULLSCREEN':
         if (window.electron && window.electron.toggleFullscreen) {
@@ -789,9 +791,10 @@ function App() {
               }
               break;
             case 'reload-all':
-              const webviews = document.querySelectorAll('webview');
-              webviews.forEach(webview => webview.reload());
-              announceToScreenReader('Alle Webviews werden neu geladen');
+              if (webViewRef.current) {
+                webViewRef.current.reload();
+              }
+              announceToScreenReader('Alle WebContentsViews werden neu geladen');
               break;
             case 'toggle-fullscreen':
               if (window.electron && window.electron.toggleFullscreen) {
@@ -978,7 +981,7 @@ function App() {
           ======================================================================== */}
       <Box flex="1" position="relative" overflow="hidden">
         {!isLoadingEmail && (
-          <BrowserViewController
+          <WebContentsViewController
             ref={webViewRef}
             activeWebView={activeWebView}
             standardApps={filteredNavigationButtons}
@@ -1092,9 +1095,10 @@ function App() {
           }
         }}
         onReloadAll={() => {
-          const webviews = document.querySelectorAll('webview');
-          webviews.forEach(webview => webview.reload());
-          announceToScreenReader('Alle Webviews werden neu geladen');
+          if (webViewRef.current) {
+            webViewRef.current.reload();
+          }
+          announceToScreenReader('Alle WebContentsViews werden neu geladen');
         }}
       />
 
