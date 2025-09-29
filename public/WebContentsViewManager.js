@@ -84,7 +84,7 @@ class WebContentsViewManager {
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
-          preload: path.join(__dirname, 'browserview-preload.js'), // Reuse existing preload
+          preload: path.join(__dirname, 'webcontentsview-preload.js'), // Modern WebContentsView-specific preload
           webSecurity: true,
           partition: 'persist:main',
           sandbox: false, // Needed for credential injection
@@ -227,7 +227,7 @@ class WebContentsViewManager {
       // Set the new view as active
       this.activeWebContentsView = view;
 
-      // Add the new view to the window
+      // Add the new view to the window using correct WebContentsView API
       try {
         this.mainWindow.contentView.addChildView(view);
         console.log(`[WebContentsViewManager] Added WebContentsView ${id} to window`);

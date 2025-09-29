@@ -246,14 +246,14 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
   useEffect(() => {
     if (!window.electron) return;
 
-    // Loading state listeners
-    const unsubscribeLoading = window.electron.onWebContentsViewLoading?.((data) => {
+    // Use backward-compatible event listeners that delegate to WebContentsView events
+    const unsubscribeLoading = window.electron.onBrowserViewLoading?.((data) => {
       const { id, loading } = data;
       setIsLoading(prev => ({ ...prev, [id]: loading }));
       console.log(`[BrowserViewController] ${id} loading state:`, loading);
     }) || (() => {});
 
-    const unsubscribeLoaded = window.electron.onWebContentsViewLoaded?.((data) => {
+    const unsubscribeLoaded = window.electron.onBrowserViewLoaded?.((data) => {
       const { id, url } = data;
       setIsLoading(prev => ({ ...prev, [id]: false }));
       console.log(`[BrowserViewController] ${id} loaded:`, url);
@@ -264,7 +264,7 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       }
     }) || (() => {});
 
-    const unsubscribeNavigated = window.electron.onWebContentsViewNavigated?.((data) => {
+    const unsubscribeNavigated = window.electron.onBrowserViewNavigated?.((data) => {
       const { id, url } = data;
       console.log(`[BrowserViewController] ${id} navigated to:`, url);
       
@@ -274,7 +274,7 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       }
     }) || (() => {});
 
-    const unsubscribeError = window.electron.onWebContentsViewError?.((data) => {
+    const unsubscribeError = window.electron.onBrowserViewError?.((data) => {
       const { id, error } = data;
       setIsLoading(prev => ({ ...prev, [id]: false }));
       
@@ -313,27 +313,27 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
       }
     }) || (() => {});
 
-    const unsubscribeActivated = window.electron.onWebContentsViewActivated?.((data) => {
+    const unsubscribeActivated = window.electron.onBrowserViewActivated?.((data) => {
       const { id } = data;
       setActiveBrowserViewId(id);
       console.log('[BrowserViewController] WebContentsView activated:', id);
     }) || (() => {});
 
-    const unsubscribeNewWindow = window.electron.onWebContentsViewNewWindow?.((data) => {
+    const unsubscribeNewWindow = window.electron.onBrowserViewNewWindow?.((data) => {
       const { url, title } = data;
       console.log('[BrowserViewController] New window requested:', url);
       // Handle new window creation if needed
       window.electron.openExternalWindow({ url, title });
     }) || (() => {});
 
-    const unsubscribeContextMenu = window.electron.onWebContentsViewContextMenu?.((data) => {
+    const unsubscribeContextMenu = window.electron.onBrowserViewContextMenu?.((data) => {
       const { id, selectionText, x, y } = data;
       console.log('[BrowserViewController] Context menu:', { id, selectionText });
       // Handle context menu if needed
     }) || (() => {});
 
     // Listen for WebContentsView messages (including debug keyboard events)
-    const unsubscribeMessages = window.electron.onWebContentsViewMessage?.((message) => {
+    const unsubscribeMessages = window.electron.onBrowserViewMessage?.((message) => {
       if (message.type === 'debug-keyboard-event') {
         // Forward to main window for debug tool
         console.log('[BrowserViewController] Debug keyboard event:', message);

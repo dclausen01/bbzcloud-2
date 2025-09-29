@@ -63,7 +63,7 @@ async function prepareForUpdate() {
   for (const webview of webviews) {
     try {
       const url = webview.getURL();
-      if (url.includes('exchangkerin
+      if (url.includes('exchange.bbz-rd-eck.de/owa')) {
         await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
       } else if (url.includes('webuntis.com')) {
         await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
@@ -1285,14 +1285,26 @@ ipcMain.handle('browserview-get-sidebar-state', async (event) => {
   }
 });
 
-// Handle BrowserView messages (from preload script)
-ipcMain.on('browserview-message', (event, message) => {
-  console.log('[BrowserView Message]', message);
+// Handle WebContentsView messages (from preload script)
+ipcMain.on('webcontentsview-message', (event, message) => {
+  console.log('[WebContentsView Message]', message);
   
   // Forward debug keyboard events to main window for debug tool
   if (message.type === 'debug-keyboard-event') {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('browserview-message', message);
+      mainWindow.webContents.send('webcontentsview-message', message);
+    }
+  }
+});
+
+// Backward compatibility: Handle old BrowserView messages
+ipcMain.on('browserview-message', (event, message) => {
+  console.log('[BrowserView Message - Backward Compatibility]', message);
+  
+  // Forward to new handler
+  if (message.type === 'debug-keyboard-event') {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('webcontentsview-message', message);
     }
   }
 });
@@ -1305,16 +1317,16 @@ ipcMain.on('keyboard-shortcut', (event, shortcutData) => {
   const senderWebContents = event.sender;
   
   try {
-    // Handle BrowserView-specific shortcuts
+    // Handle WebContentsView-specific shortcuts
     if (action.startsWith('browserview-')) {
-      if (!browserViewManager) {
-        console.error('[Keyboard Shortcut] BrowserViewManager not initialized');
+      if (!webContentsViewManager) {
+        console.error('[Keyboard Shortcut] WebContentsViewManager not initialized');
         return;
       }
       
-      const view = browserViewManager.getActiveBrowserView();
+      const view = webContentsViewManager.getActiveWebContentsView();
       if (!view) {
-        console.error('[Keyboard Shortcut] No active BrowserView found');
+        console.error('[Keyboard Shortcut] No active WebContentsView found');
         return;
       }
       
