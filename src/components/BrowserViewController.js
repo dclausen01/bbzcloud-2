@@ -195,52 +195,47 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
     initializeBrowserViews();
   }, [standardApps, isSettingsLoading, browserViewsInitialized]);
 
-  // Handle active BrowserView changes
+  // Handle active BrowserView changes - OPTIMIZED to prevent flickering
   useEffect(() => {
     if (activeWebView && browserViewsInitialized) {
       const showBrowserView = async () => {
         try {
+          // ANTI-FLICKER: Skip if already active to prevent unnecessary operations
+          if (activeBrowserViewId === activeWebView.id) {
+            console.log('[BrowserViewController] View already active, skipping switch:', activeWebView.id);
+            return;
+          }
+          
           console.log('[BrowserViewController] Switching to BrowserView:', activeWebView.id);
           
-          // Set loading state to provide user feedback
-          setIsLoading(prev => ({ ...prev, [activeWebView.id]: true }));
-          
+          // PERFORMANCE: No loading state to prevent visual jumps
           const result = await window.electron.showBrowserView(activeWebView.id);
           
           if (result.success) {
             setActiveBrowserViewId(activeWebView.id);
             console.log('[BrowserViewController] Successfully switched to BrowserView:', activeWebView.id);
             
-            // Small delay to ensure the view is fully rendered
-            setTimeout(async () => {
-              try {
-                // Get current URL and notify parent
-                const urlResult = await window.electron.getBrowserViewURL(activeWebView.id);
-                if (urlResult.success && urlResult.url) {
-                  onNavigate(urlResult.url);
-                }
-                
-                // Clear loading state
-                setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
-              } catch (error) {
-                console.warn('[BrowserViewController] Error getting URL after switch:', error);
-                setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
+            // PERFORMANCE: Get URL without delay to prevent flickering
+            try {
+              const urlResult = await window.electron.getBrowserViewURL(activeWebView.id);
+              if (urlResult.success && urlResult.url) {
+                onNavigate(urlResult.url);
               }
-            }, 100);
+            } catch (error) {
+              console.warn('[BrowserViewController] Error getting URL after switch:', error);
+            }
             
           } else {
             console.error('[BrowserViewController] Failed to show BrowserView:', result.error);
-            setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
           }
         } catch (error) {
           console.error('[BrowserViewController] Error showing BrowserView:', error);
-          setIsLoading(prev => ({ ...prev, [activeWebView.id]: false }));
         }
       };
 
       showBrowserView();
     }
-  }, [activeWebView, browserViewsInitialized, onNavigate]);
+  }, [activeWebView, browserViewsInitialized, onNavigate, activeBrowserViewId]);
 
   // Set up WebContentsView event listeners (updated for WebContentsView migration)
   useEffect(() => {
@@ -406,11 +401,22 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
     return !Object.keys(standardApps).includes(id.toLowerCase());
   };
 
-  // Handle dynamic BrowserView creation for dropdown apps
+  // Handle dynamic BrowserView creation for dropdown apps - OPTIMIZED
   useEffect(() => {
     const createDynamicBrowserView = async () => {
       if (!activeWebView || !isDropdownApp(activeWebView.id) || !browserViewsInitialized) {
         return;
+      }
+
+      // ANTI-FLICKER: Check if view already exists before creating
+      try {
+        const existingResult = await window.electron.getBrowserViewURL(activeWebView.id);
+        if (existingResult.success) {
+          console.log('[BrowserViewController] Dynamic BrowserView already exists:', activeWebView.id);
+          return; // View already exists, no need to create
+        }
+      } catch (error) {
+        // View doesn't exist, continue with creation
       }
 
       try {
@@ -423,12 +429,8 @@ const BrowserViewController = forwardRef(({ activeWebView, onNavigate, standardA
         );
         
         if (result.success) {
-          // Show the newly created BrowserView
-          const showResult = await window.electron.showBrowserView(activeWebView.id);
-          if (showResult.success) {
-            setActiveBrowserViewId(activeWebView.id);
-            console.log('[BrowserViewController] Dynamic BrowserView created and shown:', activeWebView.id);
-          }
+          console.log('[BrowserViewController] Dynamic BrowserView created:', activeWebView.id);
+          // Don't call showBrowserView here - it will be handled by the main useEffect
         } else {
           console.error('[BrowserViewController] Failed to create dynamic BrowserView:', result.error);
         }
