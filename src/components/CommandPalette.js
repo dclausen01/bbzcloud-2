@@ -230,6 +230,13 @@ const CommandPalette = ({
     }
   }, [isOpen]);
 
+  // Notify WebContentsViewManager when overlay state changes
+  useEffect(() => {
+    if (window.electron && window.electron.setWebContentsViewOverlayState) {
+      window.electron.setWebContentsViewOverlayState(isOpen);
+    }
+  }, [isOpen]);
+
   // Scroll selected item into view
   useEffect(() => {
     if (selectedItemRef.current && listRef.current) {

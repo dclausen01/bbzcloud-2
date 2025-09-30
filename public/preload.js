@@ -672,14 +672,32 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // Sidebar state management for WebContentsView bounds adjustment
-  setWebContentsViewSidebarState: async (isOpen) => {
-    try {
-      return await ipcRenderer.invoke('browserview-set-sidebar-state', { isOpen });
-    } catch (error) {
-      console.error('Error setting WebContentsView sidebar state:', error);
-      return { success: false, error: error.message };
-    }
-  },
+    setWebContentsViewSidebarState: async (isOpen) => {
+      try {
+        return await ipcRenderer.invoke('browserview-set-sidebar-state', { isOpen });
+      } catch (error) {
+        console.error('Error setting sidebar state:', error);
+        return { success: false, error: error.message };
+      }
+    },
+    
+    setWebContentsViewOverlayState: async (isOpen) => {
+      try {
+        return await ipcRenderer.invoke('browserview-set-overlay-state', { isOpen });
+      } catch (error) {
+        console.error('Error setting overlay state:', error);
+        return { success: false, error: error.message };
+      }
+    },
+    
+    getWebContentsViewOverlayState: async () => {
+      try {
+        return await ipcRenderer.invoke('browserview-get-overlay-state');
+      } catch (error) {
+        console.error('Error getting overlay state:', error);
+        return { success: false, error: error.message };
+      }
+    },
 
   getWebContentsViewSidebarState: async () => {
     try {

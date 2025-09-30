@@ -33,6 +33,9 @@ class WebContentsViewManager {
     this.sidebarOpen = false; // Track if sidebar is open
     this.overlayOpen = false; // Track if transient overlay (Command Palette, dropdown) is open
     
+    // Notification checking for schul.cloud
+    this.notificationCheckIntervals = new Map(); // id -> interval
+    
     // PERFORMANCE: Cache bounds to avoid unnecessary calculations
     this.cachedBounds = null;
     this.boundsUpdatePending = false;
@@ -186,6 +189,11 @@ class WebContentsViewManager {
         await this.triggerCredentialInjectionDirect(view, id, currentUrl);
       } catch (error) {
         console.error(`[WebContentsViewManager] Error triggering credential injection for ${id}:`, error);
+      }
+      
+      // Setup schul.cloud notification checking if this is the schulcloud view
+      if (id === 'schulcloud' || currentUrl.includes('schul.cloud')) {
+        this.setupNotificationChecking(view, id);
       }
     });
 
@@ -899,6 +907,61 @@ class WebContentsViewManager {
   }
 
   /**
+   * Setup notification checking for schul.cloud favicon
+   * Monitors the favicon to detect when notifications are present
+   * 
+   * @param {WebContentsView} view - The WebContentsView instance
+   * @param {string} id - The WebContentsView identifier
+   */
+  setupNotificationChecking(view, id) {
+    console.log(`[WebContentsViewManager] Setting up notification checking for ${id}`);
+    
+    // Clear any existing interval for this view
+    if (this.notificationCheckIntervals.has(id)) {
+      clearInterval(this.notificationCheckIntervals.get(id));
+      this.notificationCheckIntervals.delete(id);
+    }
+
+    const checkNotifications = async () => {
+      try {
+        // Execute JavaScript to get the favicon href
+        const faviconHref = await view.webContents.executeJavaScript(`
+          (function() {
+            const favicon = document.querySelector('link[rel="icon"][type="image/png"]');
+            return favicon ? favicon.href : null;
+          })();
+        `);
+
+        if (!faviconHref) {
+          return; // No favicon found, skip check
+        }
+
+        // Check if the favicon indicates a notification
+        // schul.cloud changes the favicon when there are new notifications
+        const hasNotification = faviconHref.includes('favicon-badge') || 
+                               faviconHref.includes('notification') ||
+                               faviconHref.includes('unread');
+
+        // Send badge update to main window
+        this.notifyRenderer('update-badge', hasNotification);
+
+      } catch (error) {
+        // Silent fail - the page might not be ready yet
+        // This is expected during page loads
+      }
+    };
+
+    // Initial check after a short delay to let the page load
+    setTimeout(checkNotifications, 2000);
+
+    // Set up interval to check periodically (every 8 seconds)
+    const interval = setInterval(checkNotifications, 8000);
+    this.notificationCheckIntervals.set(id, interval);
+
+    console.log(`[WebContentsViewManager] Notification checking started for ${id}`);
+  }
+
+  /**
    * Send a message to the renderer process
    * 
    * @param {string} channel - The IPC channel
@@ -917,6 +980,13 @@ class WebContentsViewManager {
     console.log('[WebContentsViewManager] Cleaning up...');
 
     try {
+      // Clear all notification check intervals
+      for (const [id, interval] of this.notificationCheckIntervals) {
+        clearInterval(interval);
+        console.log(`[WebContentsViewManager] Cleared notification interval for ${id}`);
+      }
+      this.notificationCheckIntervals.clear();
+
       // Destroy all WebContentsViews
       for (const [id, view] of this.webContentsViews) {
         try {

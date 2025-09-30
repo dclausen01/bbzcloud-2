@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Menu,
   MenuButton,
@@ -36,7 +36,18 @@ function CustomAppsMenu({ apps, standardApps, onAppClick, onNewWindow }) {
   }
 
   return (
-    <Menu>
+    <Menu
+      onOpen={() => {
+        if (window.electron && window.electron.setWebContentsViewOverlayState) {
+          window.electron.setWebContentsViewOverlayState(true);
+        }
+      }}
+      onClose={() => {
+        if (window.electron && window.electron.setWebContentsViewOverlayState) {
+          window.electron.setWebContentsViewOverlayState(false);
+        }
+      }}
+    >
       <MenuButton
         as={Button}
         rightIcon={<span>▼</span>}

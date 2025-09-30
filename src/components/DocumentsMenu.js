@@ -15,7 +15,18 @@ function DocumentsMenu({ onNavigate, reminderCount = 0 }) {
   const { colorMode } = useColorMode();
 
   return (
-    <Menu>
+    <Menu
+      onOpen={() => {
+        if (window.electron && window.electron.setWebContentsViewOverlayState) {
+          window.electron.setWebContentsViewOverlayState(true);
+        }
+      }}
+      onClose={() => {
+        if (window.electron && window.electron.setWebContentsViewOverlayState) {
+          window.electron.setWebContentsViewOverlayState(false);
+        }
+      }}
+    >
       <MenuButton
         as={Button}
         rightIcon={<span>▼</span>}

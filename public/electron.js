@@ -1285,6 +1285,36 @@ ipcMain.handle('browserview-get-sidebar-state', async (event) => {
   }
 });
 
+// Set overlay state for transient overlays (Command Palette, dropdowns)
+ipcMain.handle('browserview-set-overlay-state', async (event, { isOpen }) => {
+  try {
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
+    }
+    
+    webContentsViewManager.setOverlayState(isOpen);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error setting overlay state:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get current overlay state
+ipcMain.handle('browserview-get-overlay-state', async (event) => {
+  try {
+    if (!webContentsViewManager) {
+      throw new Error('WebContentsViewManager not initialized');
+    }
+    
+    const isOpen = webContentsViewManager.getOverlayState();
+    return { success: true, isOpen };
+  } catch (error) {
+    console.error('[IPC] Error getting overlay state:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Handle WebContentsView messages (from preload script)
 ipcMain.on('webcontentsview-message', (event, message) => {
   console.log('[WebContentsView Message]', message);
