@@ -591,6 +591,7 @@ function App() {
 
   /**
    * Communicate sidebar state to WebContentsViewManager for proper bounds adjustment
+   * FIX: Include Settings panel to prevent it from being blocked by WebContentsView
    */
   useEffect(() => {
     const updateSidebarState = async () => {
@@ -599,7 +600,8 @@ function App() {
       }
       
       try {
-        const isAnySidebarOpen = isTodoOpen || isSecureDocsOpen;
+        // FIX: Include Settings panel in sidebar state
+        const isAnySidebarOpen = isTodoOpen || isSecureDocsOpen || isSettingsOpen;
         await window.electron.setWebContentsViewSidebarState(isAnySidebarOpen);
         console.log('[App] Updated WebContentsView sidebar state:', isAnySidebarOpen);
       } catch (error) {
@@ -608,7 +610,7 @@ function App() {
     };
 
     updateSidebarState();
-  }, [isTodoOpen, isSecureDocsOpen]);
+  }, [isTodoOpen, isSecureDocsOpen, isSettingsOpen]);
 
   // ============================================================================
   // EVENT HANDLERS

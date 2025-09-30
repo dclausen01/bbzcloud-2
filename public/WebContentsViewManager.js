@@ -177,9 +177,9 @@ class WebContentsViewManager {
       console.log(`[WebContentsViewManager] ${id} finished loading (${loadTime}ms): ${currentUrl}`);
       this.notifyRenderer('webcontentsview-loaded', { id, url: currentUrl });
       
-      // Trigger automatic credential injection after page load
+      // FIX: Trigger automatic credential injection by sending message to preload script
       try {
-        await this.triggerCredentialInjectionForView(id, currentUrl);
+        await this.triggerCredentialInjectionDirect(view, id, currentUrl);
       } catch (error) {
         console.error(`[WebContentsViewManager] Error triggering credential injection for ${id}:`, error);
       }
@@ -623,24 +623,72 @@ class WebContentsViewManager {
   }
 
   /**
-   * Trigger credential injection for a specific view after page load
-   * This method requests credentials from the main process and injects them
+   * FIX: Direct credential injection after page load (similar to old webview approach)
+   * This method gets credentials from keytar and sends them directly to the preload script
    * 
+   * @param {WebContentsView} view - The WebContentsView instance
    * @param {string} id - The WebContentsView identifier
    * @param {string} url - The current URL
    * @returns {Promise<boolean>} - True if injection was attempted
    */
-  async triggerCredentialInjectionForView(id, url) {
+  async triggerCredentialInjectionDirect(view, id, url) {
     try {
-      // Request credentials from main process via IPC
-      const { ipcMain } = require('electron');
+      const keytar = require('keytar');
       
-      // Emit a request for credentials to the main process
-      this.notifyRenderer('request-credentials-for-injection', { id, url });
-      
+      // Determine service based on URL
+      let service = null;
+      if (url.includes('webuntis.com') || url.includes('neilo.webuntis.com')) {
+        service = 'webuntis';
+      } else if (url.includes('schulcloud') || url.includes('dbildungscloud')) {
+        service = 'schulcloud';
+      } else if (url.includes('office.com') || url.includes('login.microsoftonline.com')) {
+        service = 'office';
+      } else if (url.includes('moodle') || url.includes('lms.bbz-rd-eck.de')) {
+        service = 'moodle';
+      }
+
+      if (!service) {
+        console.log(`[WebContentsViewManager] No credential injection needed for URL: ${url}`);
+        return false;
+      }
+
+      console.log(`[WebContentsViewManager] Getting credentials for service: ${service}`);
+
+      // Get all credentials from keytar
+      const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
+        keytar.getPassword('bbzcloud', 'email').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+        keytar.getPassword('bbzcloud', 'password').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+        keytar.getPassword('bbzcloud', 'bbbPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+        keytar.getPassword('bbzcloud', 'webuntisEmail').then(password => ({ success: !!password, password })).catch(() => ({ success: false })),
+        keytar.getPassword('bbzcloud', 'webuntisPassword').then(password => ({ success: !!password, password })).catch(() => ({ success: false }))
+      ]);
+
+      const credentials = {
+        email: emailResult.success ? emailResult.password : null,
+        password: passwordResult.success ? passwordResult.password : null,
+        bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : null,
+        webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : null,
+        webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : null
+      };
+
+      // Check if we have the required credentials
+      if (!credentials.email && !credentials.webuntisEmail) {
+        console.warn(`[WebContentsViewManager] Missing credentials for ${service}`);
+        return false;
+      }
+
+      console.log(`[WebContentsViewManager] Sending credentials to preload script for ${service}`);
+
+      // Send credentials directly to the WebContentsView's preload script
+      view.webContents.send('inject-credentials', {
+        service: service,
+        credentials: credentials,
+        webContentsViewId: id
+      });
+
       return true;
     } catch (error) {
-      console.error(`[WebContentsViewManager] Error requesting credentials for ${id}:`, error);
+      console.error(`[WebContentsViewManager] Error in credential injection for ${id}:`, error);
       return false;
     }
   }
