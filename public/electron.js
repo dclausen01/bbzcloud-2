@@ -644,6 +644,15 @@ async function createWindow() {
     const alt = input.alt;
     const shift = input.shift;
 
+    // Debug logging
+    console.log('[Keyboard Shortcut] Key pressed:', {
+      key,
+      ctrl,
+      alt,
+      shift,
+      raw: input.key
+    });
+
     // Helper function to check if shortcut matches
     const matchesShortcut = (expectedKey, expectedCtrl = false, expectedAlt = false, expectedShift = false) => {
       return key === expectedKey && 
@@ -656,6 +665,7 @@ async function createWindow() {
 
     // Command Palette: Ctrl+Shift+P
     if (matchesShortcut('p', true, false, true)) {
+      console.log('[Keyboard Shortcut] Matched: Command Palette');
       mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'command-palette' });
       handled = true;
     }
@@ -1315,6 +1325,185 @@ app.on('web-contents-created', (event, contents) => {
   if (contents.getType() === 'webview' && isDev) {
     contents.on('dom-ready', () => {
       contents.openDevTools();
+    });
+  }
+
+  // Register keyboard shortcuts for webviews
+  if (contents.getType() === 'webview') {
+    contents.on('before-input-event', (event, input) => {
+      // Only handle keyDown events
+      if (input.type !== 'keyDown') {
+        return;
+      }
+
+      const key = input.key.toLowerCase();
+      const ctrl = input.control || input.meta;
+      const alt = input.alt;
+      const shift = input.shift;
+
+      console.log('[Webview Keyboard] Key pressed:', {
+        key,
+        ctrl,
+        alt,
+        shift,
+        webviewURL: contents.getURL()
+      });
+
+      // Helper function to check if shortcut matches
+      const matchesShortcut = (expectedKey, expectedCtrl = false, expectedAlt = false, expectedShift = false) => {
+        return key === expectedKey && 
+               !!ctrl === expectedCtrl && 
+               !!alt === expectedAlt && 
+               !!shift === expectedShift;
+      };
+
+      let handled = false;
+
+      // Command Palette: Ctrl+Shift+P
+      if (matchesShortcut('p', true, false, true)) {
+        console.log('[Webview Keyboard] Matched: Command Palette');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'command-palette' });
+        }
+        handled = true;
+      }
+      // Toggle Todo: Ctrl+Shift+T
+      else if (matchesShortcut('t', true, false, true)) {
+        console.log('[Webview Keyboard] Matched: Toggle Todo');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-todo' });
+        }
+        handled = true;
+      }
+      // Toggle Secure Documents: Ctrl+D
+      else if (matchesShortcut('d', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Toggle Secure Docs');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-secure-docs' });
+        }
+        handled = true;
+      }
+      // Open Settings: Ctrl+Comma
+      else if (matchesShortcut(',', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Open Settings');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'open-settings' });
+        }
+        handled = true;
+      }
+      // Reload Current: Ctrl+R
+      else if (matchesShortcut('r', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Reload Current');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-current' });
+        }
+        handled = true;
+      }
+      // Reload All: Ctrl+Shift+R
+      else if (matchesShortcut('r', true, false, true)) {
+        console.log('[Webview Keyboard] Matched: Reload All');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-all' });
+        }
+        handled = true;
+      }
+      // Toggle Fullscreen: F11
+      else if (matchesShortcut('f11', false, false, false)) {
+        console.log('[Webview Keyboard] Matched: Toggle Fullscreen');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-fullscreen' });
+        }
+        handled = true;
+      }
+      // Close Modal/Drawer: Escape
+      else if (matchesShortcut('escape', false, false, false)) {
+        console.log('[Webview Keyboard] Matched: Close Modal');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'close-modal' });
+        }
+        handled = true;
+      }
+      // Navigation shortcuts: Ctrl+1 through Ctrl+9
+      else if (ctrl && !alt && !shift && key >= '1' && key <= '9') {
+        console.log('[Webview Keyboard] Matched: Navigation Ctrl+' + key);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview-message', { 
+            type: 'webview-shortcut', 
+            action: `nav-app-${key}` 
+          });
+        }
+        handled = true;
+      }
+      // WebView Refresh: F5
+      else if (matchesShortcut('f5', false, false, false)) {
+        console.log('[Webview Keyboard] Matched: Refresh F5');
+        contents.reload();
+        handled = true;
+      }
+      // WebView Back: Alt+Left
+      else if (matchesShortcut('arrowleft', false, true, false)) {
+        console.log('[Webview Keyboard] Matched: Back Alt+Left');
+        if (contents.canGoBack()) {
+          contents.goBack();
+        }
+        handled = true;
+      }
+      // WebView Forward: Alt+Right
+      else if (matchesShortcut('arrowright', false, true, false)) {
+        console.log('[Webview Keyboard] Matched: Forward Alt+Right');
+        if (contents.canGoForward()) {
+          contents.goForward();
+        }
+        handled = true;
+      }
+      // WebView Print: Ctrl+P
+      else if (matchesShortcut('p', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Print Ctrl+P');
+        contents.print();
+        handled = true;
+      }
+      // WebView Find: Ctrl+F
+      else if (matchesShortcut('f', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Find Ctrl+F');
+        contents.executeJavaScript(`
+          if (window.find) {
+            const searchTerm = prompt('Suchen nach:');
+            if (searchTerm) {
+              window.find(searchTerm);
+            }
+          }
+        `).catch(err => console.error('Error opening find dialog:', err));
+        handled = true;
+      }
+      // WebView Zoom In: Ctrl+Plus or Ctrl+Equal
+      else if (matchesShortcut('+', true, false, false) || matchesShortcut('=', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Zoom In');
+        contents.getZoomFactor().then(currentZoom => {
+          const newZoom = Math.min(currentZoom + 0.1, 2.0);
+          contents.setZoomFactor(newZoom);
+        }).catch(err => console.error('Error zooming in:', err));
+        handled = true;
+      }
+      // WebView Zoom Out: Ctrl+Minus
+      else if (matchesShortcut('-', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Zoom Out');
+        contents.getZoomFactor().then(currentZoom => {
+          const newZoom = Math.max(currentZoom - 0.1, 0.5);
+          contents.setZoomFactor(newZoom);
+        }).catch(err => console.error('Error zooming out:', err));
+        handled = true;
+      }
+      // WebView Zoom Reset: Ctrl+0
+      else if (matchesShortcut('0', true, false, false)) {
+        console.log('[Webview Keyboard] Matched: Zoom Reset');
+        contents.setZoomFactor(1.0);
+        handled = true;
+      }
+
+      // Prevent default behavior if we handled the shortcut
+      if (handled) {
+        event.preventDefault();
+      }
     });
   }
 
