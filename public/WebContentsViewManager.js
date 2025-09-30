@@ -822,8 +822,10 @@ class WebContentsViewManager {
       if (!service) {
         console.log(`[WebContentsViewManager] No credential injection needed for URL: ${url}`);
         this.notifyRenderer('debug-log', { 
-          type: 'credential-injection', 
+          type: 'credential-injection',
+          level: 'info',
           message: `No service matched for URL: ${url}`,
+          data: { url, id },
           timestamp: Date.now()
         });
         return false;
@@ -831,8 +833,10 @@ class WebContentsViewManager {
 
       console.log(`[WebContentsViewManager] Getting credentials for service: ${service} at URL: ${url}`);
       this.notifyRenderer('debug-log', { 
-        type: 'credential-injection', 
-        message: `Detected service: ${service} for URL: ${url}`,
+        type: 'credential-injection',
+        level: 'info',
+        message: `🔍 Detected service: ${service}`,
+        data: { service, url, id },
         timestamp: Date.now()
       });
 
@@ -853,13 +857,43 @@ class WebContentsViewManager {
         webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : null
       };
 
+      // Log credential fetch results
+      const credentialStatus = {
+        hasEmail: !!credentials.email,
+        hasPassword: !!credentials.password,
+        hasWebuntisEmail: !!credentials.webuntisEmail,
+        hasWebuntisPassword: !!credentials.webuntisPassword
+      };
+      
+      this.notifyRenderer('debug-log', { 
+        type: 'credential-injection',
+        level: 'info',
+        message: `📋 Fetched credentials from keytar`,
+        data: { service, credentialStatus },
+        timestamp: Date.now()
+      });
+
       // Check if we have the required credentials
       if (!credentials.email && !credentials.webuntisEmail) {
         console.warn(`[WebContentsViewManager] Missing credentials for ${service}`);
+        this.notifyRenderer('debug-log', { 
+          type: 'credential-injection',
+          level: 'warning',
+          message: `⚠️ Missing required credentials for ${service}`,
+          data: { service, credentialStatus },
+          timestamp: Date.now()
+        });
         return false;
       }
 
       console.log(`[WebContentsViewManager] Sending credentials to preload script for ${service}`);
+      this.notifyRenderer('debug-log', { 
+        type: 'credential-injection',
+        level: 'success',
+        message: `📤 Sending credentials to preload script`,
+        data: { service, id },
+        timestamp: Date.now()
+      });
 
       // Send credentials directly to the WebContentsView's preload script
       view.webContents.send('inject-credentials', {
@@ -868,9 +902,24 @@ class WebContentsViewManager {
         webContentsViewId: id
       });
 
+      this.notifyRenderer('debug-log', { 
+        type: 'credential-injection',
+        level: 'success',
+        message: `✅ IPC message sent successfully`,
+        data: { service, id, channel: 'inject-credentials' },
+        timestamp: Date.now()
+      });
+
       return true;
     } catch (error) {
       console.error(`[WebContentsViewManager] Error in credential injection for ${id}:`, error);
+      this.notifyRenderer('debug-log', { 
+        type: 'credential-injection',
+        level: 'error',
+        message: `❌ Credential injection failed: ${error.message}`,
+        data: { id, error: error.message },
+        timestamp: Date.now()
+      });
       return false;
     }
   }
