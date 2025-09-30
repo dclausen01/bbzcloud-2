@@ -623,6 +623,168 @@ async function createWindow() {
       }
     }, 3000);
   });
+
+  // ============================================================================
+  // KEYBOARD SHORTCUT HANDLING WITH before-input-event
+  // ============================================================================
+  
+  /**
+   * Handle keyboard shortcuts using before-input-event
+   * This intercepts all keyboard events before they reach any webview,
+   * allowing shortcuts to work even when focus is inside a webview
+   */
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    // Only handle keyDown events
+    if (input.type !== 'keyDown') {
+      return;
+    }
+
+    const key = input.key.toLowerCase();
+    const ctrl = input.control || input.meta; // Handle both Ctrl and Cmd (macOS)
+    const alt = input.alt;
+    const shift = input.shift;
+
+    // Helper function to check if shortcut matches
+    const matchesShortcut = (expectedKey, expectedCtrl = false, expectedAlt = false, expectedShift = false) => {
+      return key === expectedKey && 
+             !!ctrl === expectedCtrl && 
+             !!alt === expectedAlt && 
+             !!shift === expectedShift;
+    };
+
+    let handled = false;
+
+    // Command Palette: Ctrl+Shift+P
+    if (matchesShortcut('p', true, false, true)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'command-palette' });
+      handled = true;
+    }
+    
+    // Toggle Todo: Ctrl+Shift+T
+    else if (matchesShortcut('t', true, false, true)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-todo' });
+      handled = true;
+    }
+    
+    // Toggle Secure Documents: Ctrl+D
+    else if (matchesShortcut('d', true, false, false)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-secure-docs' });
+      handled = true;
+    }
+    
+    // Open Settings: Ctrl+Comma
+    else if (matchesShortcut(',', true, false, false)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'open-settings' });
+      handled = true;
+    }
+    
+    // Reload Current: Ctrl+R
+    else if (matchesShortcut('r', true, false, false)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-current' });
+      handled = true;
+    }
+    
+    // Reload All: Ctrl+Shift+R
+    else if (matchesShortcut('r', true, false, true)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-all' });
+      handled = true;
+    }
+    
+    // Toggle Fullscreen: F11
+    else if (matchesShortcut('f11', false, false, false)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-fullscreen' });
+      handled = true;
+    }
+    
+    // Close Modal/Drawer: Escape
+    else if (matchesShortcut('escape', false, false, false)) {
+      mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'close-modal' });
+      handled = true;
+    }
+    
+    // Navigation shortcuts: Ctrl+1 through Ctrl+9
+    else if (ctrl && !alt && !shift && key >= '1' && key <= '9') {
+      mainWindow.webContents.send('webview-message', { 
+        type: 'webview-shortcut', 
+        action: `nav-app-${key}` 
+      });
+      handled = true;
+    }
+    
+    // WebView-specific shortcuts (only when a webview has focus)
+    else {
+      // Check if focus is in a webview
+      const focusedWebview = webContents.getFocusedWebContents();
+      if (focusedWebview && focusedWebview !== mainWindow.webContents) {
+        // WebView Refresh: F5
+        if (matchesShortcut('f5', false, false, false)) {
+          if (focusedWebview.reload) {
+            focusedWebview.reload();
+            handled = true;
+          }
+        }
+        // WebView Back: Alt+Left
+        else if (matchesShortcut('arrowleft', false, true, false)) {
+          if (focusedWebview.canGoBack && focusedWebview.canGoBack()) {
+            focusedWebview.goBack();
+            handled = true;
+          }
+        }
+        // WebView Forward: Alt+Right
+        else if (matchesShortcut('arrowright', false, true, false)) {
+          if (focusedWebview.canGoForward && focusedWebview.canGoForward()) {
+            focusedWebview.goForward();
+            handled = true;
+          }
+        }
+        // WebView Print: Ctrl+P
+        else if (matchesShortcut('p', true, false, false)) {
+          if (focusedWebview.print) {
+            focusedWebview.print();
+            handled = true;
+          }
+        }
+        // WebView Find: Ctrl+F
+        else if (matchesShortcut('f', true, false, false)) {
+          focusedWebview.executeJavaScript(`
+            if (window.find) {
+              const searchTerm = prompt('Suchen nach:');
+              if (searchTerm) {
+                window.find(searchTerm);
+              }
+            }
+          `).catch(err => console.error('Error opening find dialog:', err));
+          handled = true;
+        }
+        // WebView Zoom In: Ctrl+Plus or Ctrl+Equal
+        else if (matchesShortcut('+', true, false, false) || matchesShortcut('=', true, false, false)) {
+          focusedWebview.getZoomFactor().then(currentZoom => {
+            const newZoom = Math.min(currentZoom + 0.1, 2.0);
+            focusedWebview.setZoomFactor(newZoom);
+          }).catch(err => console.error('Error zooming in:', err));
+          handled = true;
+        }
+        // WebView Zoom Out: Ctrl+Minus
+        else if (matchesShortcut('-', true, false, false)) {
+          focusedWebview.getZoomFactor().then(currentZoom => {
+            const newZoom = Math.max(currentZoom - 0.1, 0.5);
+            focusedWebview.setZoomFactor(newZoom);
+          }).catch(err => console.error('Error zooming out:', err));
+          handled = true;
+        }
+        // WebView Zoom Reset: Ctrl+0
+        else if (matchesShortcut('0', true, false, false)) {
+          focusedWebview.setZoomFactor(1.0);
+          handled = true;
+        }
+      }
+    }
+
+    // Prevent default behavior if we handled the shortcut
+    if (handled) {
+      event.preventDefault();
+    }
+  });
 }
 
 async function createWebviewWindow(url, title) {
@@ -1142,221 +1304,6 @@ ipcMain.on('webview-message', (event, message) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('webview-message', message);
     }
-  }
-});
-
-// Global shortcut management
-const registeredShortcuts = new Map();
-
-// Handle keyboard shortcuts from webviews
-ipcMain.on('keyboard-shortcut', (event, shortcutData) => {
-  const { action, key, ctrlKey, altKey, shiftKey, metaKey, url } = shortcutData;
-  
-  // Get the webview that sent the shortcut
-  const senderWebContents = event.sender;
-  
-  try {
-    switch (action) {
-      case 'webview-refresh':
-        senderWebContents.reload();
-        break;
-        
-      case 'webview-back':
-        if (senderWebContents.canGoBack()) {
-          senderWebContents.goBack();
-        }
-        break;
-        
-      case 'webview-forward':
-        if (senderWebContents.canGoForward()) {
-          senderWebContents.goForward();
-        }
-        break;
-        
-      case 'webview-print':
-        senderWebContents.print();
-        break;
-        
-      case 'webview-find':
-        // Send find command to the webview
-        senderWebContents.executeJavaScript(`
-          if (window.find) {
-            const searchTerm = prompt('Suchen nach:');
-            if (searchTerm) {
-              window.find(searchTerm);
-            }
-          }
-        `);
-        break;
-        
-      case 'webview-zoom-in':
-        senderWebContents.getZoomFactor().then(currentZoom => {
-          const newZoom = Math.min(currentZoom + 0.1, 2.0);
-          senderWebContents.setZoomFactor(newZoom);
-        });
-        break;
-        
-      case 'webview-zoom-out':
-        senderWebContents.getZoomFactor().then(currentZoom => {
-          const newZoom = Math.max(currentZoom - 0.1, 0.5);
-          senderWebContents.setZoomFactor(newZoom);
-        });
-        break;
-        
-      case 'webview-zoom-reset':
-        senderWebContents.setZoomFactor(1.0);
-        break;
-        
-      case 'close-modal':
-        // Forward to main window to handle modal/drawer closing
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-shortcut', { action: 'close-modal' });
-        }
-        break;
-        
-      case 'command-palette':
-        // Forward command palette shortcut to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'command-palette' });
-        }
-        break;
-        
-      case 'toggle-todo':
-        // Forward todo toggle shortcut to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-todo' });
-        }
-        break;
-        
-      case 'toggle-secure-docs':
-        // Forward secure docs toggle shortcut to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-secure-docs' });
-        }
-        break;
-        
-      case 'open-settings':
-        // Forward settings shortcut to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'open-settings' });
-        }
-        break;
-        
-      // Add missing shortcut handlers
-      case 'reload-current':
-        // Forward reload current shortcut to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-current' });
-        }
-        break;
-        
-      case 'reload-all':
-        // Forward reload all shortcut to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'reload-all' });
-        }
-        break;
-        
-      case 'toggle-fullscreen':
-        // Forward fullscreen toggle shortcut to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: 'toggle-fullscreen' });
-        }
-        break;
-        
-      // Handle navigation shortcuts (Ctrl+1-9)
-      case 'nav-app-1':
-      case 'nav-app-2':
-      case 'nav-app-3':
-      case 'nav-app-4':
-      case 'nav-app-5':
-      case 'nav-app-6':
-      case 'nav-app-7':
-      case 'nav-app-8':
-      case 'nav-app-9':
-        // Forward navigation shortcuts to main window
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview-message', { type: 'webview-shortcut', action: action });
-        }
-        break;
-        
-      default:
-        console.log(`[Keyboard Shortcut] Unknown action: ${action}`);
-        // Forward unknown shortcuts to main window for handling
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('shortcut-triggered', { action, shortcut: shortcutData });
-        }
-    }
-  } catch (error) {
-    console.error(`[Keyboard Shortcut] Error handling ${action}:`, error);
-  }
-});
-
-// Global shortcut registration
-ipcMain.handle('register-global-shortcut', async (event, { shortcut }) => {
-  try {
-    if (registeredShortcuts.has(shortcut)) {
-      console.log(`[Global Shortcut] Shortcut ${shortcut} already registered`);
-      return true;
-    }
-
-    const success = globalShortcut.register(shortcut, () => {
-      console.log(`[Global Shortcut] Triggered: ${shortcut}`);
-      
-      // Send to main window
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('shortcut-triggered', { action: shortcut, shortcut });
-      }
-      
-      // Also send to the requesting webview if available
-      const senderWebContents = event.sender;
-      if (senderWebContents && !senderWebContents.isDestroyed()) {
-        senderWebContents.send(`global-shortcut-${shortcut}`);
-      }
-    });
-
-    if (success) {
-      registeredShortcuts.set(shortcut, true);
-      console.log(`[Global Shortcut] Successfully registered: ${shortcut}`);
-    } else {
-      console.warn(`[Global Shortcut] Failed to register: ${shortcut}`);
-    }
-
-    return success;
-  } catch (error) {
-    console.error(`[Global Shortcut] Error registering ${shortcut}:`, error);
-    return false;
-  }
-});
-
-// Global shortcut unregistration
-ipcMain.handle('unregister-global-shortcut', async (event, { shortcut }) => {
-  try {
-    if (!registeredShortcuts.has(shortcut)) {
-      console.log(`[Global Shortcut] Shortcut ${shortcut} not registered`);
-      return true;
-    }
-
-    globalShortcut.unregister(shortcut);
-    registeredShortcuts.delete(shortcut);
-    console.log(`[Global Shortcut] Successfully unregistered: ${shortcut}`);
-    return true;
-  } catch (error) {
-    console.error(`[Global Shortcut] Error unregistering ${shortcut}:`, error);
-    return false;
-  }
-});
-
-// Unregister all global shortcuts
-ipcMain.handle('unregister-all-global-shortcuts', async () => {
-  try {
-    globalShortcut.unregisterAll();
-    registeredShortcuts.clear();
-    console.log('[Global Shortcut] All shortcuts unregistered');
-    return true;
-  } catch (error) {
-    console.error('[Global Shortcut] Error unregistering all shortcuts:', error);
-    return false;
   }
 });
 
