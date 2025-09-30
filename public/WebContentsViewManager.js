@@ -145,6 +145,9 @@ class WebContentsViewManager {
       loadStartTime: null
     });
 
+    // FIX: Capture global app shortcuts BEFORE websites can handle them
+    this.setupKeyboardShortcutCapture(view, id);
+
     // Loading events
     view.webContents.on('did-start-loading', () => {
       const state = this.viewStates.get(id);
@@ -237,6 +240,126 @@ class WebContentsViewManager {
         });
       }
     });
+  }
+
+  /**
+   * FIX: Setup keyboard shortcut capture using before-input-event
+   * This captures shortcuts BEFORE websites can handle them
+   * 
+   * @param {WebContentsView} view - The WebContentsView instance
+   * @param {string} id - The WebContentsView identifier
+   */
+  setupKeyboardShortcutCapture(view, id) {
+    // Define global app shortcuts that should be captured before websites
+    const GLOBAL_SHORTCUTS = [
+      // Navigation shortcuts (Ctrl+1-9)
+      { key: '1', ctrl: true, alt: false, shift: false, action: 'nav-app-1' },
+      { key: '2', ctrl: true, alt: false, shift: false, action: 'nav-app-2' },
+      { key: '3', ctrl: true, alt: false, shift: false, action: 'nav-app-3' },
+      { key: '4', ctrl: true, alt: false, shift: false, action: 'nav-app-4' },
+      { key: '5', ctrl: true, alt: false, shift: false, action: 'nav-app-5' },
+      { key: '6', ctrl: true, alt: false, shift: false, action: 'nav-app-6' },
+      { key: '7', ctrl: true, alt: false, shift: false, action: 'nav-app-7' },
+      { key: '8', ctrl: true, alt: false, shift: false, action: 'nav-app-8' },
+      { key: '9', ctrl: true, alt: false, shift: false, action: 'nav-app-9' },
+      
+      // Modal/overlay shortcuts
+      { key: 'Escape', ctrl: false, alt: false, shift: false, action: 'close-modal' },
+      
+      // App feature shortcuts
+      { key: 'p', ctrl: true, alt: false, shift: true, action: 'command-palette' },
+      { key: 't', ctrl: true, alt: false, shift: true, action: 'toggle-todo' },
+      { key: 'd', ctrl: true, alt: false, shift: false, action: 'toggle-secure-docs' },
+      { key: ',', ctrl: true, alt: false, shift: false, action: 'open-settings' },
+      
+      // Reload shortcuts
+      { key: 'F5', ctrl: true, alt: false, shift: false, action: 'reload-current' },
+      { key: 'r', ctrl: true, alt: false, shift: true, action: 'reload-all' },
+      
+      // Fullscreen
+      { key: 'F11', ctrl: false, alt: false, shift: false, action: 'toggle-fullscreen' },
+      
+      // WebContentsView navigation (these should work even in web apps)
+      { key: 'ArrowLeft', ctrl: false, alt: true, shift: false, action: 'browserview-back' },
+      { key: 'ArrowRight', ctrl: false, alt: true, shift: false, action: 'browserview-forward' },
+      { key: 'F5', ctrl: false, alt: false, shift: false, action: 'browserview-refresh' },
+      { key: 'r', ctrl: true, alt: false, shift: false, action: 'browserview-refresh' },
+    ];
+
+    view.webContents.on('before-input-event', (event, input) => {
+      // Only process keyDown events
+      if (input.type !== 'keyDown') return;
+
+      // Normalize key names
+      let key = input.key;
+      
+      // Check if this matches any global shortcut
+      const matchedShortcut = GLOBAL_SHORTCUTS.find(shortcut => {
+        const ctrlMatch = !!input.control === !!shortcut.ctrl || !!input.meta === !!shortcut.ctrl;
+        const altMatch = !!input.alt === !!shortcut.alt;
+        const shiftMatch = !!input.shift === !!shortcut.shift;
+        const keyMatch = key === shortcut.key;
+        
+        return keyMatch && ctrlMatch && altMatch && shiftMatch;
+      });
+
+      if (matchedShortcut) {
+        // Prevent the event from reaching the web page
+        event.preventDefault();
+        
+        console.log(`[WebContentsViewManager] Captured global shortcut: ${matchedShortcut.action}`);
+        
+        // Handle the shortcut based on its action
+        this.handleGlobalShortcut(view, id, matchedShortcut.action, input);
+      }
+    });
+
+    console.log(`[WebContentsViewManager] Keyboard shortcut capture setup for ${id}`);
+  }
+
+  /**
+   * Handle captured global shortcuts
+   * 
+   * @param {WebContentsView} view - The WebContentsView instance
+   * @param {string} id - The WebContentsView identifier
+   * @param {string} action - The shortcut action
+   * @param {Object} input - The input event details
+   */
+  handleGlobalShortcut(view, id, action, input) {
+    try {
+      // Handle WebContentsView-specific shortcuts locally
+      if (action.startsWith('browserview-')) {
+        switch (action) {
+          case 'browserview-refresh':
+            view.webContents.reload();
+            break;
+            
+          case 'browserview-back':
+            if (view.webContents.canGoBack()) {
+              view.webContents.goBack();
+            }
+            break;
+            
+          case 'browserview-forward':
+            if (view.webContents.canGoForward()) {
+              view.webContents.goForward();
+            }
+            break;
+        }
+        return;
+      }
+
+      // Forward all other global shortcuts to main window
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('webview-message', { 
+          type: 'webview-shortcut', 
+          action: action,
+          webContentsViewId: id
+        });
+      }
+    } catch (error) {
+      console.error(`[WebContentsViewManager] Error handling shortcut ${action}:`, error);
+    }
   }
 
   /**

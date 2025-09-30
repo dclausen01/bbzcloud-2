@@ -575,8 +575,11 @@ const CredentialInjector = {
 // EVENT LISTENERS AND INITIALIZATION
 // ============================================================================
 
-// Set up keyboard event listener in capture phase
-document.addEventListener('keydown', handleKeyboardShortcut, true);
+// DISABLED: Old keyboard shortcut handler (never worked reliably)
+// Now using before-input-event in WebContentsViewManager.js for reliable capture
+// document.addEventListener('keydown', handleKeyboardShortcut, true);
+
+console.log('[WebContentsView Preload] Keyboard shortcuts now handled by before-input-event in main process');
 
 // ============================================================================
 // SECURE CREDENTIAL INJECTION SYSTEM
@@ -754,15 +757,15 @@ if (window.electronWebContentsView) {
   });
 }
 
-// Re-attach keyboard listener after DOM ready to ensure it's active
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    document.removeEventListener('keydown', handleKeyboardShortcut, true);
-    document.addEventListener('keydown', handleKeyboardShortcut, true);
-    console.log('[WebContentsView Preload] Keyboard listener re-attached after DOM ready');
-  });
-}
+// DISABLED: Re-attachment logic for old keyboard listener (no longer needed)
+// if (document.readyState === 'loading') {
+//   document.addEventListener('DOMContentLoaded', () => {
+//     document.removeEventListener('keydown', handleKeyboardShortcut, true);
+//     document.addEventListener('keydown', handleKeyboardShortcut, true);
+//     console.log('[WebContentsView Preload] Keyboard listener re-attached after DOM ready');
+//   });
+// }
 
 // Debug logging
 console.log(`[WebContentsView Preload] Script loaded for WebContentsView: ${webContentsViewId}`);
-console.log('[WebContentsView Preload] Keyboard shortcut capture and credential injection ready');
+console.log('[WebContentsView Preload] Keyboard shortcuts handled by before-input-event, credential injection ready');
