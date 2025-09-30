@@ -71,7 +71,7 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
-import KeyboardDebugTool from './components/KeyboardDebugTool';
+import DebugConsole from './components/DebugConsole';
 
 // Custom Hooks and Utilities
 import { 
@@ -536,13 +536,13 @@ function App() {
     },
   });
 
-  // Debug mode shortcut (Ctrl+Shift+D)
+  // Debug mode shortcut (Shift+Alt+Ctrl+D)
   useEffect(() => {
     const handleDebugShortcut = (event) => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
+      if (event.ctrlKey && event.shiftKey && event.altKey && event.key.toLowerCase() === 'd') {
         event.preventDefault();
         setIsDebugMode(!isDebugMode);
-        console.log('[Debug Mode]', isDebugMode ? 'Disabled' : 'Enabled');
+        console.log('[Debug Console]', isDebugMode ? 'Disabled' : 'Enabled');
       }
     };
 
@@ -1093,9 +1093,9 @@ function App() {
       />
 
       {/* ========================================================================
-          KEYBOARD DEBUG TOOL
+          DEBUG CONSOLE
           ======================================================================== */}
-      <KeyboardDebugTool isVisible={isDebugMode} />
+      <DebugConsole isVisible={isDebugMode} />
 
       {/* ========================================================================
           WELCOME MODAL - FIRST-TIME USER SETUP
