@@ -565,6 +565,134 @@ contextBridge.exposeInMainWorld('electron', {
       console.error('Error getting BrowserView sidebar state:', error);
       return { success: false, error: error.message };
     }
+  },
+
+  // ============================================================================
+  // WEBCONTENTSVIEW IPC METHODS (New names for WebContentsView API)
+  // ============================================================================
+
+  // Create a new WebContentsView
+  createWebContentsView: async (id, url, options = {}) => {
+    try {
+      return await ipcRenderer.invoke('browserview-create', { id, url, options });
+    } catch (error) {
+      console.error('Error creating WebContentsView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Show a specific WebContentsView
+  showWebContentsView: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-show', { id });
+    } catch (error) {
+      console.error('Error showing WebContentsView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Hide the currently active WebContentsView
+  hideWebContentsView: async () => {
+    try {
+      return await ipcRenderer.invoke('browserview-hide');
+    } catch (error) {
+      console.error('Error hiding WebContentsView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Navigate a WebContentsView to a new URL
+  navigateWebContentsView: async (id, url) => {
+    try {
+      return await ipcRenderer.invoke('browserview-navigate', { id, url });
+    } catch (error) {
+      console.error('Error navigating WebContentsView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Reload a specific WebContentsView
+  reloadWebContentsView: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-reload', { id });
+    } catch (error) {
+      console.error('Error reloading WebContentsView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Execute JavaScript in a WebContentsView
+  executeWebContentsViewJS: async (id, code) => {
+    try {
+      return await ipcRenderer.invoke('browserview-execute-js', { id, code });
+    } catch (error) {
+      console.error('Error executing JavaScript in WebContentsView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Get the current URL of a WebContentsView
+  getWebContentsViewURL: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-get-url', { id });
+    } catch (error) {
+      console.error('Error getting WebContentsView URL:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Initialize standard apps as WebContentsViews
+  initStandardAppsWebContentsViews: async (standardApps) => {
+    try {
+      return await ipcRenderer.invoke('browserview-init-standard-apps', { standardApps });
+    } catch (error) {
+      console.error('Error initializing standard apps as WebContentsViews:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Destroy a specific WebContentsView
+  destroyWebContentsView: async (id) => {
+    try {
+      return await ipcRenderer.invoke('browserview-destroy', { id });
+    } catch (error) {
+      console.error('Error destroying WebContentsView:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Get WebContentsViewManager statistics
+  getWebContentsViewStats: async () => {
+    try {
+      return await ipcRenderer.invoke('browserview-get-stats');
+    } catch (error) {
+      console.error('Error getting WebContentsView stats:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Sidebar state management for WebContentsView bounds adjustment
+  setWebContentsViewSidebarState: async (isOpen) => {
+    try {
+      return await ipcRenderer.invoke('browserview-set-sidebar-state', { isOpen });
+    } catch (error) {
+      console.error('Error setting WebContentsView sidebar state:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  getWebContentsViewSidebarState: async () => {
+    try {
+      return await ipcRenderer.invoke('browserview-get-sidebar-state');
+    } catch (error) {
+      console.error('Error getting WebContentsView sidebar state:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Toggle fullscreen
+  toggleFullscreen: () => {
+    ipcRenderer.send('toggle-fullscreen');
   }
 });
 
