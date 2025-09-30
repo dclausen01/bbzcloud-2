@@ -71,6 +71,7 @@ import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
+import DebugConsole from './components/DebugConsole';
 
 // Custom Hooks and Utilities
 import { 
@@ -176,6 +177,12 @@ function App() {
     isOpen: isCommandPaletteOpen,
     onOpen: onCommandPaletteOpen,
     onClose: onCommandPaletteClose
+  } = useDisclosure();
+
+  const {
+    isOpen: isDebugConsoleOpen,
+    onOpen: onDebugConsoleOpen,
+    onClose: onDebugConsoleClose
   } = useDisclosure();
 
   // ============================================================================
@@ -547,6 +554,18 @@ function App() {
   useModalShortcuts(onTodoClose, isTodoOpen);
   useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
   useModalShortcuts(onCommandPaletteClose, isCommandPaletteOpen);
+
+  // Debug Console shortcut (Ctrl+Shift+D)
+  useEffect(() => {
+    const handleDebugShortcut = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        onDebugConsoleOpen();
+      }
+    };
+    window.addEventListener('keydown', handleDebugShortcut);
+    return () => window.removeEventListener('keydown', handleDebugShortcut);
+  }, [onDebugConsoleOpen]);
 
   // ============================================================================
   // ACCESSIBILITY FEATURES
@@ -1279,6 +1298,14 @@ function App() {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* ========================================================================
+          DEBUG CONSOLE (Ctrl+Shift+D)
+          ======================================================================== */}
+      <DebugConsole 
+        isOpen={isDebugConsoleOpen}
+        onClose={onDebugConsoleClose}
+      />
     </Box>
   );
 }

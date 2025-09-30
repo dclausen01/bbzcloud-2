@@ -191,7 +191,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Event listeners for secure file updates and database changes
   on: (channel, callback) => {
-    const validChannels = ['secure-file-updated', 'database-changed'];
+    const validChannels = ['secure-file-updated', 'database-changed', 'debug-log'];
     if (validChannels.includes(channel)) {
       const subscription = (_event, ...args) => callback(...args);
       ipcRenderer.on(channel, subscription);

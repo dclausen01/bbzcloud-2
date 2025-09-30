@@ -302,6 +302,12 @@ class WebContentsViewManager {
       // Normalize key names
       let key = input.key;
       
+      // CRITICAL FIX: When Shift is pressed with a letter, input.key is uppercase (e.g., 'P')
+      // But our shortcuts are defined with lowercase keys, so we need to normalize
+      if (key.length === 1 && key >= 'A' && key <= 'Z') {
+        key = key.toLowerCase();
+      }
+      
       // Check if this matches any global shortcut
       const matchedShortcut = GLOBAL_SHORTCUTS.find(shortcut => {
         const ctrlMatch = !!input.control === !!shortcut.ctrl || !!input.meta === !!shortcut.ctrl;
@@ -529,8 +535,10 @@ class WebContentsViewManager {
   }
 
   /**
-   * Set overlay state - temporarily hide/show WebContentsView for transient overlays
+   * Set overlay state - adjust WebContentsView bounds for transient overlays
    * (Command Palette, dropdown menus, etc.)
+   * 
+   * Better UX: Instead of hiding the view, we shrink it to not overlap with UI
    * 
    * @param {boolean} isOpen - Whether an overlay is open
    */
@@ -543,24 +551,12 @@ class WebContentsViewManager {
     console.log(`[WebContentsViewManager] Overlay state changed: ${isOpen ? 'open' : 'closed'}`);
 
     if (!this.activeWebContentsView) {
-      console.log(`[WebContentsViewManager] No active WebContentsView to hide/show`);
+      console.log(`[WebContentsViewManager] No active WebContentsView to adjust`);
       return;
     }
 
-    try {
-      if (isOpen) {
-        // Temporarily hide the WebContentsView by removing it from the window
-        this.mainWindow.contentView.removeChildView(this.activeWebContentsView);
-        console.log(`[WebContentsViewManager] Temporarily hid WebContentsView for overlay`);
-      } else {
-        // Show the WebContentsView again by re-adding it
-        this.mainWindow.contentView.addChildView(this.activeWebContentsView);
-        this.updateWebContentsViewBounds(this.activeWebContentsView);
-        console.log(`[WebContentsViewManager] Restored WebContentsView after overlay closed`);
-      }
-    } catch (error) {
-      console.error(`[WebContentsViewManager] Error toggling overlay state:`, error);
-    }
+    // Simply update bounds - when overlay is open, bounds will account for it
+    this.updateWebContentsViewBounds(this.activeWebContentsView);
   }
 
   /**
@@ -811,24 +807,34 @@ class WebContentsViewManager {
     try {
       const keytar = require('keytar');
       
-      // Determine service based on URL
+      // FIX: Corrected URL patterns for services
       let service = null;
       if (url.includes('webuntis.com') || url.includes('neilo.webuntis.com')) {
         service = 'webuntis';
-      } else if (url.includes('schulcloud') || url.includes('dbildungscloud')) {
+      } else if (url.includes('app.schul.cloud') || url.includes('schulcloud')) {
         service = 'schulcloud';
       } else if (url.includes('office.com') || url.includes('login.microsoftonline.com')) {
         service = 'office';
-      } else if (url.includes('moodle') || url.includes('lms.bbz-rd-eck.de')) {
+      } else if (url.includes('portal.bbz-rd-eck.com') || url.includes('moodle.bbz-rd-eck.de')) {
         service = 'moodle';
       }
 
       if (!service) {
         console.log(`[WebContentsViewManager] No credential injection needed for URL: ${url}`);
+        this.notifyRenderer('debug-log', { 
+          type: 'credential-injection', 
+          message: `No service matched for URL: ${url}`,
+          timestamp: Date.now()
+        });
         return false;
       }
 
-      console.log(`[WebContentsViewManager] Getting credentials for service: ${service}`);
+      console.log(`[WebContentsViewManager] Getting credentials for service: ${service} at URL: ${url}`);
+      this.notifyRenderer('debug-log', { 
+        type: 'credential-injection', 
+        message: `Detected service: ${service} for URL: ${url}`,
+        timestamp: Date.now()
+      });
 
       // Get all credentials from keytar
       const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
