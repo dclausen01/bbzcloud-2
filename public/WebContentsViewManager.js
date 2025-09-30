@@ -347,18 +347,33 @@ class WebContentsViewManager {
         switch (action) {
           case 'browserview-refresh':
             view.webContents.reload();
+            console.log(`[WebContentsViewManager] Executed refresh for ${id}`);
             break;
             
           case 'browserview-back':
             if (view.webContents.canGoBack()) {
               view.webContents.goBack();
+              console.log(`[WebContentsViewManager] Executed back navigation for ${id}`);
             }
             break;
             
           case 'browserview-forward':
             if (view.webContents.canGoForward()) {
               view.webContents.goForward();
+              console.log(`[WebContentsViewManager] Executed forward navigation for ${id}`);
             }
+            break;
+            
+          default:
+            // Unknown browserview action
+            console.warn(`[WebContentsViewManager] Unknown browserview action: ${action}`);
+            this.notifyRenderer('debug-log', {
+              type: 'keyboard',
+              level: 'warning',
+              message: `⚠️ Unknown browserview shortcut: ${action}`,
+              data: { action, id, input },
+              timestamp: Date.now()
+            });
             break;
         }
         return;
@@ -366,14 +381,32 @@ class WebContentsViewManager {
 
       // Forward all other global shortcuts to main window
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        console.log(`[WebContentsViewManager] Forwarding shortcut ${action} to main window`);
         this.mainWindow.webContents.send('webview-message', { 
           type: 'webview-shortcut', 
           action: action,
           webContentsViewId: id
         });
+      } else {
+        // Main window not available
+        console.warn(`[WebContentsViewManager] Cannot forward shortcut ${action} - main window not available`);
+        this.notifyRenderer('debug-log', {
+          type: 'keyboard',
+          level: 'error',
+          message: `❌ Cannot forward shortcut ${action} - main window unavailable`,
+          data: { action, id },
+          timestamp: Date.now()
+        });
       }
     } catch (error) {
       console.error(`[WebContentsViewManager] Error handling shortcut ${action}:`, error);
+      this.notifyRenderer('debug-log', {
+        type: 'keyboard',
+        level: 'error',
+        message: `❌ Error handling shortcut: ${error.message}`,
+        data: { action, id, error: error.message },
+        timestamp: Date.now()
+      });
     }
   }
 
