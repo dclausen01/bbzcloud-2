@@ -1002,18 +1002,36 @@ function App() {
       </Box>
 
       {/* ========================================================================
-          SETTINGS DRAWER
+          SETTINGS DRAWER (Fixed z-index like ToDo)
           ======================================================================== */}
-      <Drawer isOpen={isSettingsOpen} placement="right" onClose={onSettingsClose} size="md">
-        <DrawerOverlay zIndex={2000} />
-        <DrawerContent zIndex={2001}>
-          <DrawerCloseButton aria-label="Einstellungen schließen" />
-          <DrawerHeader>Einstellungen</DrawerHeader>
-          <DrawerBody>
+      <Box 
+        position="fixed" 
+        right={0} 
+        top="48px" 
+        bottom={0} 
+        width="450px" 
+        bg={useColorModeValue('white', 'gray.800')}
+        borderLeft="1px"
+        borderColor={useColorModeValue('gray.200', 'gray.600')}
+        display={isSettingsOpen ? 'block' : 'none'}
+        zIndex={1000}
+        boxShadow="xl"
+      >
+        <Flex direction="column" height="100%">
+          <Flex justify="space-between" align="center" p={4} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.600')}>
+            <Text fontSize="lg" fontWeight="bold">Einstellungen</Text>
+            <IconButton
+              icon={<CloseIcon />}
+              size="sm"
+              onClick={onSettingsClose}
+              aria-label="Einstellungen schließen"
+            />
+          </Flex>
+          <Box p={4} overflowY="auto" flex="1">
             <SettingsPanel onClose={onSettingsClose} />
-          </DrawerBody>
-        </DrawerContent>
-      </Drawer>
+          </Box>
+        </Flex>
+      </Box>
 
       {/* ========================================================================
           TODO DRAWER
@@ -1064,6 +1082,7 @@ function App() {
         borderColor={useColorModeValue('gray.200', 'gray.600')}
         display={isSecureDocsOpen ? 'block' : 'none'}
         zIndex={1000}
+        boxShadow="xl"
       >
         <Flex direction="column" height="100%">
           <Flex justify="flex-end" p={2} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.600')}>

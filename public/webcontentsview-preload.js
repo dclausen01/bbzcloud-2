@@ -197,6 +197,12 @@ function matchesShortcut(event, shortcut) {
   if (eventKey === 'Up') eventKey = 'ArrowUp';
   if (eventKey === 'Down') eventKey = 'ArrowDown';
   
+  // Normalize case for letter keys (important for Shift+letter combinations)
+  // When Shift is pressed, event.key is uppercase (e.g., 'P'), but shortcut keys are lowercase
+  if (eventKey.length === 1) {
+    eventKey = eventKey.toLowerCase();
+  }
+  
   return (
     eventKey === shortcut.key &&
     !!event.ctrlKey === !!shortcut.ctrlKey &&

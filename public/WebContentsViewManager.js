@@ -31,6 +31,7 @@ class WebContentsViewManager {
     this.headerHeight = 48; // Navigation bar height
     this.sidebarWidth = 450; // Width of sidebar drawers
     this.sidebarOpen = false; // Track if sidebar is open
+    this.overlayOpen = false; // Track if transient overlay (Command Palette, dropdown) is open
     
     // PERFORMANCE: Cache bounds to avoid unnecessary calculations
     this.cachedBounds = null;
@@ -517,6 +518,50 @@ class WebContentsViewManager {
    */
   getSidebarState() {
     return this.sidebarOpen;
+  }
+
+  /**
+   * Set overlay state - temporarily hide/show WebContentsView for transient overlays
+   * (Command Palette, dropdown menus, etc.)
+   * 
+   * @param {boolean} isOpen - Whether an overlay is open
+   */
+  setOverlayState(isOpen) {
+    if (this.overlayOpen === isOpen) {
+      return; // No change
+    }
+
+    this.overlayOpen = isOpen;
+    console.log(`[WebContentsViewManager] Overlay state changed: ${isOpen ? 'open' : 'closed'}`);
+
+    if (!this.activeWebContentsView) {
+      console.log(`[WebContentsViewManager] No active WebContentsView to hide/show`);
+      return;
+    }
+
+    try {
+      if (isOpen) {
+        // Temporarily hide the WebContentsView by removing it from the window
+        this.mainWindow.contentView.removeChildView(this.activeWebContentsView);
+        console.log(`[WebContentsViewManager] Temporarily hid WebContentsView for overlay`);
+      } else {
+        // Show the WebContentsView again by re-adding it
+        this.mainWindow.contentView.addChildView(this.activeWebContentsView);
+        this.updateWebContentsViewBounds(this.activeWebContentsView);
+        console.log(`[WebContentsViewManager] Restored WebContentsView after overlay closed`);
+      }
+    } catch (error) {
+      console.error(`[WebContentsViewManager] Error toggling overlay state:`, error);
+    }
+  }
+
+  /**
+   * Get current overlay state
+   * 
+   * @returns {boolean} - Whether an overlay is open
+   */
+  getOverlayState() {
+    return this.overlayOpen;
   }
 
   /**
