@@ -86,7 +86,7 @@ The application acts as a sophisticated web container with enhanced features inc
 
 ## 📸 Screenshots
 
-[[screenshot.png]]
+![BBZCloud Screenshot](screenshot.png)
 
 ---
 

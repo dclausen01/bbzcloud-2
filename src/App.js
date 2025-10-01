@@ -72,6 +72,7 @@ import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
 import CommandPalette from './components/CommandPalette';
 import DebugConsole from './components/DebugConsole';
+import ShortcutsModal from './components/ShortcutsModal';
 
 // Custom Hooks and Utilities
 import { 
@@ -182,6 +183,13 @@ function App() {
     onOpen: onCommandPaletteOpen,
     onClose: onCommandPaletteClose,
     onToggle: onCommandPaletteToggle
+  } = useDisclosure();
+
+  const {
+    isOpen: isShortcutsOpen,
+    onOpen: onShortcutsOpen,
+    onClose: onShortcutsClose,
+    onToggle: onShortcutsToggle
   } = useDisclosure();
 
   // ============================================================================
@@ -540,6 +548,19 @@ function App() {
     },
   });
 
+  // Shortcuts modal keyboard shortcut (Ctrl+?)
+  useEffect(() => {
+    const handleShortcutsShortcut = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === '?' && !event.shiftKey) {
+        event.preventDefault();
+        onShortcutsToggle();
+      }
+    };
+
+    document.addEventListener('keydown', handleShortcutsShortcut);
+    return () => document.removeEventListener('keydown', handleShortcutsShortcut);
+  }, [onShortcutsToggle]);
+
   // Debug mode shortcut (Shift+Alt+Ctrl+D)
   useEffect(() => {
     const handleDebugShortcut = (event) => {
@@ -565,6 +586,7 @@ function App() {
   useModalShortcuts(onTodoClose, isTodoOpen);
   useModalShortcuts(onSecureDocsClose, isSecureDocsOpen);
   useModalShortcuts(onCommandPaletteClose, isCommandPaletteOpen);
+  useModalShortcuts(onShortcutsClose, isShortcutsOpen);
 
   // ============================================================================
   // ACCESSIBILITY FEATURES
@@ -942,6 +964,18 @@ function App() {
               }} 
             />
 
+            {/* Shortcuts help button */}
+            <Tooltip label="Tastaturkürzel (Ctrl+?)" placement="top">
+              <IconButton
+                aria-label="Tastaturkürzel anzeigen"
+                icon={<span>⌨️</span>}
+                onClick={onShortcutsOpen}
+                variant="ghost"
+                height="28px"
+                size="sm"
+              />
+            </Tooltip>
+
             {/* Settings button with update indicator */}
             <ButtonGroup size="sm" position="relative">
               <Tooltip label="Einstellungen" placement="top">
@@ -1100,6 +1134,11 @@ function App() {
           DEBUG CONSOLE
           ======================================================================== */}
       <DebugConsole isVisible={isDebugMode} />
+
+      {/* ========================================================================
+          SHORTCUTS MODAL
+          ======================================================================== */}
+      <ShortcutsModal isOpen={isShortcutsOpen} onClose={onShortcutsClose} />
 
       {/* ========================================================================
           WELCOME MODAL - FIRST-TIME USER SETUP
