@@ -964,18 +964,6 @@ function App() {
               }} 
             />
 
-            {/* Shortcuts help button */}
-            <Tooltip label="Tastaturkürzel (Ctrl+?)" placement="top">
-              <IconButton
-                aria-label="Tastaturkürzel anzeigen"
-                icon={<span>⌨️</span>}
-                onClick={onShortcutsOpen}
-                variant="ghost"
-                height="28px"
-                size="sm"
-              />
-            </Tooltip>
-
             {/* Settings button with update indicator */}
             <ButtonGroup size="sm" position="relative">
               <Tooltip label="Einstellungen" placement="top">
@@ -1037,7 +1025,7 @@ function App() {
           <DrawerCloseButton aria-label="Einstellungen schließen" />
           <DrawerHeader>Einstellungen</DrawerHeader>
           <DrawerBody>
-            <SettingsPanel onClose={onSettingsClose} />
+            <SettingsPanel onClose={onSettingsClose} onOpenShortcuts={onShortcutsOpen} />
           </DrawerBody>
         </DrawerContent>
       </Drawer>

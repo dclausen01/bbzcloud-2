@@ -24,7 +24,7 @@ import {
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
 
-function SettingsPanel({ onClose }) {
+function SettingsPanel({ onClose, onOpenShortcuts }) {
   const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings, updateStatus } = useSettings();
   const { setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
@@ -316,6 +316,21 @@ function SettingsPanel({ onClose }) {
           </HStack>
         </Box>
       )}
+
+      <Box>
+        <Button 
+          width="100%" 
+          colorScheme="blue" 
+          variant="outline"
+          leftIcon={<span>⌨️</span>}
+          onClick={onOpenShortcuts}
+          mb={4}
+        >
+          Tastaturkürzel anzeigen (Ctrl+?)
+        </Button>
+      </Box>
+
+      <Divider />
 
       {version && (
         <Box mb={4}>
