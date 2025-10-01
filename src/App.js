@@ -159,25 +159,29 @@ function App() {
   const { 
     isOpen: isSettingsOpen, 
     onOpen: onSettingsOpen, 
-    onClose: onSettingsClose 
+    onClose: onSettingsClose,
+    onToggle: onSettingsToggle
   } = useDisclosure();
   
   const {
     isOpen: isTodoOpen,
     onOpen: onTodoOpen,
-    onClose: onTodoClose
+    onClose: onTodoClose,
+    onToggle: onTodoToggle
   } = useDisclosure();
 
   const {
     isOpen: isSecureDocsOpen,
     onOpen: onSecureDocsOpen,
-    onClose: onSecureDocsClose
+    onClose: onSecureDocsClose,
+    onToggle: onSecureDocsToggle
   } = useDisclosure();
 
   const {
     isOpen: isCommandPaletteOpen,
     onOpen: onCommandPaletteOpen,
-    onClose: onCommandPaletteClose
+    onClose: onCommandPaletteClose,
+    onToggle: onCommandPaletteToggle
   } = useDisclosure();
 
   // ============================================================================
@@ -519,10 +523,10 @@ function App() {
 
   // Application-level keyboard shortcuts
   useAppShortcuts({
-    onToggleTodo: onTodoOpen,
-    onToggleSecureDocs: onSecureDocsOpen,
-    onOpenSettings: onSettingsOpen,
-    onOpenCommandPalette: onCommandPaletteOpen,
+    onToggleTodo: onTodoToggle,
+    onToggleSecureDocs: onSecureDocsToggle,
+    onOpenSettings: onSettingsToggle,
+    onOpenCommandPalette: onCommandPaletteToggle,
     onReloadCurrent: () => {
       if (webViewRef.current) {
         webViewRef.current.reload();
@@ -696,16 +700,16 @@ function App() {
   const handleWebViewShortcut = useCallback((action, shortcut) => {
     switch (action) {
       case 'COMMAND_PALETTE':
-        onCommandPaletteOpen();
+        onCommandPaletteToggle();
         break;
       case 'TOGGLE_TODO':
-        onTodoOpen();
+        onTodoToggle();
         break;
       case 'TOGGLE_SECURE_DOCS':
-        onSecureDocsOpen();
+        onSecureDocsToggle();
         break;
       case 'OPEN_SETTINGS':
-        onSettingsOpen();
+        onSettingsToggle();
         break;
       case 'RELOAD_CURRENT':
         if (webViewRef.current) {
@@ -736,7 +740,7 @@ function App() {
         }
         break;
     }
-  }, [onCommandPaletteOpen, onTodoOpen, onSecureDocsOpen, onSettingsOpen, webViewRef, filterNavigationButtons, handleNavigationClick]);
+  }, [onCommandPaletteToggle, onTodoToggle, onSecureDocsToggle, onSettingsToggle, webViewRef, filterNavigationButtons, handleNavigationClick]);
 
   // Make handleWebViewShortcut available globally for WebView scripts
   useEffect(() => {
@@ -766,16 +770,16 @@ function App() {
               if (isCommandPaletteOpen) onCommandPaletteClose();
               break;
             case 'command-palette':
-              onCommandPaletteOpen();
+              onCommandPaletteToggle();
               break;
             case 'toggle-todo':
-              onTodoOpen();
+              onTodoToggle();
               break;
             case 'toggle-secure-docs':
-              onSecureDocsOpen();
+              onSecureDocsToggle();
               break;
             case 'open-settings':
-              onSettingsOpen();
+              onSettingsToggle();
               break;
             case 'reload-current':
               if (webViewRef.current) {
