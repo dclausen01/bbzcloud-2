@@ -75,15 +75,15 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
                 divider={<Divider borderColor={borderColor} />}
               >
                 <ShortcutItem 
-                  keys={['Ctrl', 'Shift', 'O']} 
+                  keys={['Ctrl', 'Shift', 'T']} 
                   description="Todo-Liste öffnen/schließen" 
                 />
                 <ShortcutItem 
-                  keys={['Ctrl', 'D']} 
+                  keys={['Ctrl', 'Shift', 'D']} 
                   description="Sichere Dokumente öffnen/schließen" 
                 />
                 <ShortcutItem 
-                  keys={['Ctrl', ',']} 
+                  keys={['Ctrl', 'Shift', 'O']} 
                   description="Einstellungen öffnen" 
                 />
                 <ShortcutItem 
@@ -127,7 +127,7 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
                   description="Alle WebViews neu laden" 
                 />
                 <ShortcutItem 
-                  keys={['Ctrl', 'P']} 
+                  keys={['Ctrl', 'Shift', 'P']} 
                   description="Drucken" 
                 />
                 <ShortcutItem 
@@ -155,12 +155,12 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
                 divider={<Divider borderColor={borderColor} />}
               >
                 <ShortcutItem 
-                  keys={['Ctrl', 'Shift', 'P']} 
+                  keys={['Ctrl', 'P']} 
                   description="Befehlspalette öffnen" 
                 />
                 <ShortcutItem 
-                  keys={['Ctrl', 'Shift', 'T']} 
-                  description="Neues Todo erstellen" 
+                  keys={['Ctrl', 'F']} 
+                  description="Suchen in WebView" 
                 />
               </VStack>
             </Box>
@@ -193,7 +193,7 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
                 💡 Tipp
               </Text>
               <Text fontSize="sm" color={useColorModeValue('gray.700', 'gray.300')}>
-                Drücken Sie <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>P</Kbd>, um die Befehlspalette zu öffnen. 
+                Drücken Sie <Kbd>Ctrl</Kbd>+<Kbd>P</Kbd>, um die Befehlspalette zu öffnen. 
                 Dort können Sie nach allen Funktionen suchen und diese per Tastatur ausführen.
               </Text>
             </Box>
