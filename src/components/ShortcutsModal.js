@@ -60,9 +60,7 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
         <ModalHeader>Tastaturkürzel</ModalHeader>
         <ModalCloseButton />
         <ModalBody 
-          pb={6} 
-          overflowY="auto" 
-          maxH="calc(85vh - 120px)"
+          pb={6}
           css={{
             '&::-webkit-scrollbar': {
               width: '8px',
