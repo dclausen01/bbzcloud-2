@@ -54,13 +54,15 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
   const sectionBg = useColorModeValue('gray.50', 'gray.800');
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
+    <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <ModalOverlay />
       <ModalContent maxH="85vh">
         <ModalHeader>Tastaturkürzel</ModalHeader>
         <ModalCloseButton />
         <ModalBody 
           pb={6}
+          maxH="calc(85vh - 80px)"
+          overflowY="scroll"
           css={{
             '&::-webkit-scrollbar': {
               width: '8px',
