@@ -59,7 +59,26 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
       <ModalContent maxH="85vh">
         <ModalHeader>Tastaturkürzel</ModalHeader>
         <ModalCloseButton />
-        <ModalBody pb={6}>
+        <ModalBody 
+          pb={6} 
+          overflowY="auto" 
+          maxH="calc(85vh - 120px)"
+          css={{
+            '&::-webkit-scrollbar': {
+              width: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'var(--chakra-colors-gray-100)',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'var(--chakra-colors-gray-400)',
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              background: 'var(--chakra-colors-gray-500)',
+            },
+          }}
+        >
           <VStack spacing={6} align="stretch">
             {/* Navigation Shortcuts Section */}
             <Box>

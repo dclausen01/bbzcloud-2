@@ -1032,19 +1032,73 @@ ipcMain.handle('save-todo-state', async (event, todoState) => {
   }
 });
 
+// Store active notification timeouts
+const activeNotifications = new Map();
+
 ipcMain.handle('schedule-notification', async (event, { title, body, when }) => {
   try {
-    const notification = new Notification({
-      title,
-      body,
-      silent: false
-    });
-
+    console.log('[Notification] Scheduling notification:', { title, body, when, currentTime: Date.now() });
+    
     const delay = when - Date.now();
-    if (delay > 0) {
-      setTimeout(() => {
+    
+    // If the time is in the past or very close (within 1 minute), show immediately
+    if (delay <= 60000) {
+      console.log('[Notification] Showing notification immediately (past due or very soon)');
+      const notification = new Notification({
+        title,
+        body,
+        silent: false
+      });
+      notification.show();
+      
+      // Show notification action handlers
+      notification.on('click', () => {
+        // Bring main window to focus when notification is clicked
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+          }
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+    } else {
+      // Schedule for future
+      console.log('[Notification] Scheduling for future:', `${Math.round(delay / 1000)}s from now`);
+      
+      const notificationId = `${title}-${when}`;
+      
+      // Clear any existing notification with the same ID
+      if (activeNotifications.has(notificationId)) {
+        clearTimeout(activeNotifications.get(notificationId));
+      }
+      
+      const timeoutId = setTimeout(() => {
+        console.log('[Notification] Showing scheduled notification:', title);
+        const notification = new Notification({
+          title,
+          body,
+          silent: false
+        });
         notification.show();
+        
+        notification.on('click', () => {
+          // Bring main window to focus when notification is clicked
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) {
+              mainWindow.restore();
+            }
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        });
+        
+        // Clean up from active notifications map
+        activeNotifications.delete(notificationId);
       }, delay);
+      
+      // Store the timeout ID for cleanup
+      activeNotifications.set(notificationId, timeoutId);
     }
 
     return { success: true };
@@ -1052,6 +1106,15 @@ ipcMain.handle('schedule-notification', async (event, { title, body, when }) => 
     console.error('Error scheduling notification:', error);
     return { success: false, error: error.message };
   }
+});
+
+// Clean up notifications on app quit
+app.on('before-quit', () => {
+  console.log('[Notification] Cleaning up active notifications');
+  activeNotifications.forEach((timeoutId) => {
+    clearTimeout(timeoutId);
+  });
+  activeNotifications.clear();
 });
 
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
