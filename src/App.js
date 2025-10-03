@@ -548,10 +548,10 @@ function App() {
     },
   });
 
-  // Shortcuts modal keyboard shortcut (Ctrl+?)
+  // Shortcuts modal keyboard shortcut (Ctrl+Shift+?)
   useEffect(() => {
     const handleShortcutsShortcut = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === '?' && !event.shiftKey) {
+      if ((event.ctrlKey || event.metaKey) && event.key === '?' && event.shiftKey) {
         event.preventDefault();
         onShortcutsToggle();
       }

@@ -90,11 +90,11 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
     // System
     { keys: ['Ctrl', 'R'], description: 'Aktuelle Ansicht neu laden', category: 'System' },
     { keys: ['Ctrl', 'Shift', 'R'], description: 'Alle WebViews neu laden', category: 'System' },
-    { keys: ['Ctrl', 'Shift', 'P'], description: 'Drucken', category: 'System' },
+    { keys: ['Ctrl', 'P'], description: 'Drucken', category: 'System' },
     { keys: ['F11'], description: 'Vollbildmodus umschalten', category: 'System' },
     { keys: ['Esc'], description: 'Modal/Drawer schließen', category: 'System' },
     // Erweitert
-    { keys: ['Ctrl', 'P'], description: 'Befehlspalette öffnen', category: 'Erweitert' },
+    { keys: ['Ctrl', 'Shift', 'P'], description: 'Befehlspalette öffnen', category: 'Erweitert' },
     { keys: ['Ctrl', 'F'], description: 'Suchen in WebView', category: 'Erweitert' },
   ], []);
 
@@ -250,7 +250,7 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
                 💡 Tipp
               </Text>
               <Text fontSize="sm" color={useColorModeValue('gray.700', 'gray.300')}>
-                Drücken Sie <Kbd>Ctrl</Kbd>+<Kbd>P</Kbd>, um die Befehlspalette zu öffnen. 
+                Drücken Sie <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>P</Kbd>, um die Befehlspalette zu öffnen. 
                 Dort können Sie nach allen Funktionen suchen und diese per Tastatur ausführen.
               </Text>
             </Box>

@@ -155,10 +155,10 @@ export const KEYBOARD_SHORTCUTS = {
   WEBVIEW_ZOOM_RESET: 'ctrl+0',    // Reset webview zoom
   
   // Utility shortcuts
-  PRINT: 'ctrl+shift+p',           // Print current webview content
+  PRINT: 'ctrl+p',                 // Print current webview content
   
   // Power user shortcuts
-  COMMAND_PALETTE: 'ctrl+p',       // Open command palette
+  COMMAND_PALETTE: 'ctrl+shift+p',       // Open command palette
   FOCUS_SEARCH: 'ctrl+f',          // Focus search input
 };
 
