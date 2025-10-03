@@ -173,39 +173,28 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
       isOpen={isOpen} 
       onClose={onClose} 
       size="xl" 
-      scrollBehavior="inside"
       closeOnOverlayClick={true}
       closeOnEsc={true}
     >
       <ModalOverlay />
       <ModalContent 
-        maxH="85vh"
         onKeyDown={handleKeyDown}
         tabIndex={-1}
+        maxH="85vh"
+        overflow="hidden"
       >
         <ModalHeader>Tastaturkürzel</ModalHeader>
         <ModalCloseButton />
-        <ModalBody 
-          ref={listRef}
-          pb={6}
-          overflowY="auto"
-          css={{
-            '&::-webkit-scrollbar': {
-              width: '8px',
-            },
-            '&::-webkit-scrollbar-track': {
-              background: 'var(--chakra-colors-gray-100)',
-            },
-            '&::-webkit-scrollbar-thumb': {
-              background: 'var(--chakra-colors-gray-400)',
-              borderRadius: '4px',
-            },
-            '&::-webkit-scrollbar-thumb:hover': {
-              background: 'var(--chakra-colors-gray-500)',
-            },
-          }}
-        >
-          <VStack spacing={6} align="stretch">
+        <ModalBody p={0}>
+          <Box 
+            ref={listRef}
+            maxH="60vh"
+            overflowY="auto"
+            px={6}
+            pt={0}
+            pb={6}
+          >
+            <VStack spacing={6} align="stretch" pt={2}>
             {/* Shortcut Items by Category */}
             {Object.entries(groupedShortcuts).map(([category, shortcuts]) => (
               <Box key={category}>
@@ -266,6 +255,7 @@ const ShortcutsModal = ({ isOpen, onClose }) => {
               </Text>
             </Box>
           </VStack>
+          </Box>
         </ModalBody>
 
         {/* Footer with navigation hints */}
