@@ -664,6 +664,89 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           }
           break;
 
+        case 'antraege':
+          try {
+            // Get Anträge credentials (uses WebUntis email/Lehrerkürzel and standard password)
+            const antraegeEmailResult = await window.electron.getCredentials({
+              service: 'bbzcloud',
+              account: 'webuntisEmail'
+            });
+
+            if (!antraegeEmailResult.success || !antraegeEmailResult.password) {
+              return;
+            }
+
+            const antraegeUsername = antraegeEmailResult.password;
+
+            // Inject credentials into the agorum login form
+            await webview.executeJavaScript(`
+              (async () => {
+                try {
+                  // Wait for form to be ready
+                  await new Promise((resolve) => {
+                    const checkForm = () => {
+                      const usernameField = document.querySelector('input[autocomplete="username"]');
+                      const passwordField = document.querySelector('input[autocomplete="current-password"]');
+                      if (usernameField && passwordField) {
+                        resolve();
+                      } else {
+                        setTimeout(checkForm, 100);
+                      }
+                    };
+                    checkForm();
+                  });
+
+                  // Get form elements
+                  const usernameField = document.querySelector('input[autocomplete="username"]');
+                  const passwordField = document.querySelector('input[autocomplete="current-password"]');
+                  const rememberCheckbox = document.querySelector('input.x-form-checkbox[type="button"]');
+                  const loginButton = Array.from(document.querySelectorAll('a.x-btn')).find(btn => 
+                    btn.textContent.includes('Anmelden')
+                  );
+
+                  if (!usernameField || !passwordField || !loginButton) {
+                    return false;
+                  }
+
+                  // Fill username
+                  usernameField.value = ${JSON.stringify(antraegeUsername)};
+                  usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+                  usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+
+                  // Wait a bit
+                  await new Promise(resolve => setTimeout(resolve, 200));
+
+                  // Fill password
+                  passwordField.value = ${JSON.stringify(password)};
+                  passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+                  passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+
+                  // Check "remember me" checkbox if available
+                  if (rememberCheckbox && !rememberCheckbox.closest('.x-form-cb-checked')) {
+                    rememberCheckbox.click();
+                  }
+
+                  // Wait a bit before clicking login
+                  await new Promise(resolve => setTimeout(resolve, 300));
+
+                  // Click login button
+                  if (loginButton) {
+                    loginButton.click();
+                    return true;
+                  }
+
+                  return false;
+                } catch (error) {
+                  console.error('Error during Anträge login:', error);
+                  return false;
+                }
+              })();
+            `);
+          } catch (error) {
+            console.error('Error during Anträge login:', error);
+          }
+          break;
+
         case 'office':
           try {
             // Detect Office.com login state using exact selectors
@@ -1214,6 +1297,45 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           
           // Set up periodic check every 5 seconds
           const interval = setInterval(checkOfficeLogin, 5000);
+          eventCleanups.get(webview)?.push(() => clearInterval(interval));
+        } else if (id === 'antraege') {
+          // For Anträge, check for agorum login form periodically
+          const checkAntraegeLogin = async () => {
+            try {
+              const needsLogin = await webview.executeJavaScript(`
+                (function() {
+                  // Check for agorum login form elements
+                  const usernameField = document.querySelector('input[autocomplete="username"]');
+                  const passwordField = document.querySelector('input[autocomplete="current-password"]');
+                  const loginButton = Array.from(document.querySelectorAll('a.x-btn')).find(btn => 
+                    btn.textContent.includes('Anmelden')
+                  );
+                  
+                  // Check if already logged in (look for agorum workspace elements)
+                  const loggedIn = document.querySelector('.x-workspace') ||
+                                 document.querySelector('.x-desktop') ||
+                                 document.body.textContent.includes('Abmelden');
+                  
+                  // We need login if we see login form and not logged in
+                  return (usernameField && passwordField && loginButton) && !loggedIn;
+                })()
+              `);
+              
+              if (needsLogin) {
+                console.log('Anträge periodic check: Login needed, triggering injection');
+                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                await injectCredentials(webview, id);
+              }
+            } catch (error) {
+              // Silent fail - page might not be ready
+            }
+          };
+
+          // Initial check
+          await checkAntraegeLogin();
+          
+          // Set up periodic check every 5 seconds
+          const interval = setInterval(checkAntraegeLogin, 5000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
         } else {
           await injectCredentials(webview, id);

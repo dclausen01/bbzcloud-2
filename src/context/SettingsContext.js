@@ -13,7 +13,7 @@ const standardApps = {
   "BBZHandbuch": {
     "id": "Handbuch",
     "title": "Handbuch",
-    "url": "https://viflow.bbz-rd-eck.de/viflow",
+    "url": "https://viflow.bbz-rd-eck.de/viflow/",
     "buttonVariant": "solid"
   },
   "Hubbs": {
