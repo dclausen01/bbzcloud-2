@@ -10,10 +10,10 @@ const standardApps = {
     "url": "https://portal.schule-sh.de/",
     "buttonVariant": "solid"
   },
-  "BBZHandbuch": {
-    "id": "Handbuch",
+  "BBZAntraege": {
+    "id": "Antraege",
     "title": "Anträge",
-    "url": "https://viflow.bbz-rd-eck.de/viflow/",
+    "url": "https://dms.bbz-rd-eck.de/",
     "buttonVariant": "solid"
   },
   "Hubbs": {
@@ -158,8 +158,8 @@ const defaultSettings = {
     },
     handbook: {
       visible: true,
-      url: 'https://dms.bbz-rd-eck.de/',
-      title: 'Anträge',
+      url: URLS.HANDBOOK,
+      title: 'Handbuch',
       buttonVariant: 'handbook',
       zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     }

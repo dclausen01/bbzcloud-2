@@ -65,6 +65,7 @@ export const URLS = {
   FOBIZZ: 'https://tools.fobizz.com/',                                    // Educational tools
   WIKI: 'https://wiki.bbz-rd-eck.com',                                    // Internal wiki/documentation
   HANDBOOK: 'https://viflow.bbz-rd-eck.de/viflow/',                       // Process handbook
+  ANTRAEGE: 'https://dms.bbz-rd-eck.de/',                                // Document management system
 };
 
 // ============================================================================
