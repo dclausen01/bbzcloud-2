@@ -270,6 +270,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       switch (id.toLowerCase()) {
         case 'webuntis':
           try {
+            // Check cooldown period (15 minutes) to avoid disrupting 2FA process
+            const COOLDOWN_MINUTES_WEBUNTIS = 15;
+            const lastLoginAttemptWebuntis = localStorage.getItem('webuntis_last_login_attempt');
+            const nowWebuntis = Date.now();
+            
+            if (lastLoginAttemptWebuntis) {
+              const timeSinceLastAttempt = nowWebuntis - parseInt(lastLoginAttemptWebuntis, 10);
+              const cooldownPeriod = COOLDOWN_MINUTES_WEBUNTIS * 60 * 1000; // 15 minutes in milliseconds
+              
+              if (timeSinceLastAttempt < cooldownPeriod) {
+                const remainingMinutes = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / (60 * 1000));
+                console.log(`WebUntis login cooldown active. ${remainingMinutes} minutes remaining.`);
+                return;
+              }
+            }
+
             // Get WebUntis-specific credentials
             const webuntisEmailResult = await window.electron.getCredentials({
               service: 'bbzcloud',
@@ -291,7 +307,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               return;
             }
 
-            await webview.executeJavaScript(`
+            const webuntisLoginResult = await webview.executeJavaScript(`
               (async () => {
                 try {
                   // Wait for form to be ready
@@ -416,6 +432,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 }
               })();
             `);
+
+            // Store timestamp only if login button was actually clicked
+            if (webuntisLoginResult) {
+              localStorage.setItem('webuntis_last_login_attempt', nowWebuntis.toString());
+              console.log('WebUntis login attempted. 15-minute cooldown started.');
+            }
           } catch (error) {
             console.error('Error during WebUntis login:', error);
           }
@@ -666,6 +688,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'antraege':
           try {
+            // Check cooldown period (15 minutes) to avoid disrupting 2FA process
+            const COOLDOWN_MINUTES = 15;
+            const lastLoginAttempt = localStorage.getItem('antraege_last_login_attempt');
+            const now = Date.now();
+            
+            if (lastLoginAttempt) {
+              const timeSinceLastAttempt = now - parseInt(lastLoginAttempt, 10);
+              const cooldownPeriod = COOLDOWN_MINUTES * 60 * 1000; // 15 minutes in milliseconds
+              
+              if (timeSinceLastAttempt < cooldownPeriod) {
+                const remainingMinutes = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / (60 * 1000));
+                console.log(`Anträge login cooldown active. ${remainingMinutes} minutes remaining.`);
+                return;
+              }
+            }
+
             // Get Anträge credentials (uses WebUntis email/Lehrerkürzel and standard password)
             const antraegeEmailResult = await window.electron.getCredentials({
               service: 'bbzcloud',
@@ -679,7 +717,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             const antraegeUsername = antraegeEmailResult.password;
 
             // Inject credentials into the agorum login form
-            await webview.executeJavaScript(`
+            const loginResult = await webview.executeJavaScript(`
               (async () => {
                 try {
                   // Wait for form to be ready
@@ -742,6 +780,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 }
               })();
             `);
+
+            // Store timestamp only if login button was actually clicked
+            if (loginResult) {
+              localStorage.setItem('antraege_last_login_attempt', now.toString());
+              console.log('Anträge login attempted. 15-minute cooldown started.');
+            }
           } catch (error) {
             console.error('Error during Anträge login:', error);
           }
