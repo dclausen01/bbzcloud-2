@@ -17,6 +17,7 @@ function AppIcon({ id, size = "28px" }) {
       webuntis: 'untis.svg',
       wiki: 'wiki.svg',
       handbook: 'handbook.svg',
+      antraege: 'handbook.svg',
       fobizz: 'fobizztools.svg'
     };
 
