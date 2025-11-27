@@ -156,10 +156,10 @@ const defaultSettings = {
       buttonVariant: 'wiki',
       zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
-    antraege: {
+    handbook: {
       visible: true,
-      url: URLS.ANTRAEGE,
-      title: 'Anträge',
+      url: URLS.HANDBOOK,
+      title: 'Handbuch',
       buttonVariant: 'handbook',
       zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     }

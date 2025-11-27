@@ -61,7 +61,7 @@ export const URLS = {
   TASKCARDS: 'https://bbzrdeck.taskcards.app',                           // Digital task cards
   
   // Administrative tools
-  WEBUNTIS: 'https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login', // Timetable management
+  WEBUNTIS: 'https://bbz-rd-eck.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login', // Timetable management
   FOBIZZ: 'https://tools.fobizz.com/',                                    // Educational tools
   WIKI: 'https://wiki.bbz-rd-eck.com',                                    // Internal wiki/documentation
   HANDBOOK: 'https://viflow.bbz-rd-eck.de/viflow/',                       // Process handbook
