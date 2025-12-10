@@ -272,7 +272,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           try {
             // Check cooldown period (15 minutes) to avoid disrupting 2FA process
             const COOLDOWN_MINUTES_WEBUNTIS = 15;
-            const lastLoginAttemptWebuntis = localStorage.getItem('webuntis_last_login_attempt');
+            
+            // Use hostname-specific key to allow testing on new URLs without waiting
+            let hostname = 'unknown';
+            try {
+              hostname = new URL(webview.getURL()).hostname;
+            } catch (e) { console.warn('Could not get hostname for cooldown key'); }
+            
+            const storageKey = `webuntis_last_login_attempt_${hostname}`;
+            const lastLoginAttemptWebuntis = localStorage.getItem(storageKey);
             const nowWebuntis = Date.now();
             
             if (lastLoginAttemptWebuntis) {
@@ -281,7 +289,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               
               if (timeSinceLastAttempt < cooldownPeriod) {
                 const remainingMinutes = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / (60 * 1000));
-                console.log(`WebUntis login cooldown active. ${remainingMinutes} minutes remaining.`);
+                console.log(`WebUntis login cooldown active for ${hostname}. ${remainingMinutes} minutes remaining.`);
                 return;
               }
             }
@@ -307,7 +315,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               return;
             }
 
-            const webuntisLoginResult = await webview.executeJavaScript(`
+            const loginAttemptResult = await webview.executeJavaScript(`
               (async () => {
                 try {
                   // Wait for form to be ready
@@ -433,6 +441,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 }
               })();
             `);
+
+            // Store timestamp only if login button was actually clicked
+            if (loginAttemptResult) {
+              localStorage.setItem(storageKey, nowWebuntis.toString());
+              console.log(`WebUntis login attempted for ${hostname}. 15-minute cooldown started.`);
+            }
 
           } catch (error) {
             console.error('Error during WebUntis login:', error);
