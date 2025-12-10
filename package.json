@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -8,7 +8,7 @@
     "url": "https://github.com/dclausen01/bbzcloud-2/issues"
   },
   "license": "MIT",
-  "author": {
+  "author": {u
     "name": "Dennis Clausen",
     "email": "dennis.clausen@bbz-rd-eck.de",
     "url": "https://github.com/dclausen01"

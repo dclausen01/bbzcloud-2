@@ -313,8 +313,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   // Wait for form to be ready
                   await new Promise((resolve) => {
                     const checkForm = () => {
-                      const form = document.querySelector('.un2-login-form form');
-                      if (form) {
+                      const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
+                      const passwordInput = document.querySelector('input[type="password"]');
+                      if (form || passwordInput) {
                         resolve();
                       } else {
                         setTimeout(checkForm, 100);
@@ -323,11 +324,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     checkForm();
                   });
 
-                  // Get form elements
-                  const form = document.querySelector('.un2-login-form form');
-                  const usernameField = form.querySelector('input[type="text"].un-input-group__input');
-                  const passwordField = form.querySelector('input[type="password"].un-input-group__input');
-                  const submitButton = form.querySelector('button[type="submit"]');
+                  // Get form elements - try specific selectors first, then fall back to generic ones
+                  const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
+                  const usernameField = document.querySelector('input[type="text"].un-input-group__input') || document.querySelector('input[type="text"]');
+                  const passwordField = document.querySelector('input[type="password"].un-input-group__input') || document.querySelector('input[type="password"]');
+                  const submitButton = document.querySelector('button[type="submit"]');
 
                   if (!usernameField || !passwordField || !submitButton) {
                     return false;
@@ -689,17 +690,25 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         case 'antraege':
           try {
             // Check cooldown period (15 minutes) to avoid disrupting 2FA process
-            const COOLDOWN_MINUTES = 15;
-            const lastLoginAttempt = localStorage.getItem('antraege_last_login_attempt');
-            const now = Date.now();
+            const COOLDOWN_MINUTES_WEBUNTIS = 15;
             
-            if (lastLoginAttempt) {
-              const timeSinceLastAttempt = now - parseInt(lastLoginAttempt, 10);
-              const cooldownPeriod = COOLDOWN_MINUTES * 60 * 1000; // 15 minutes in milliseconds
+            // Use hostname-specific key to allow testing on new URLs without waiting
+            let hostname = 'unknown';
+            try {
+              hostname = new URL(webview.getURL()).hostname;
+            } catch (e) { console.warn('Could not get hostname for cooldown key'); }
+            
+            const storageKey = `webuntis_last_login_attempt_${hostname}`;
+            const lastLoginAttemptWebuntis = localStorage.getItem(storageKey);
+            const nowWebuntis = Date.now();
+            
+            if (lastLoginAttemptWebuntis) {
+              const timeSinceLastAttempt = nowWebuntis - parseInt(lastLoginAttemptWebuntis, 10);
+              const cooldownPeriod = COOLDOWN_MINUTES_WEBUNTIS * 60 * 1000; // 15 minutes in milliseconds
               
               if (timeSinceLastAttempt < cooldownPeriod) {
                 const remainingMinutes = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / (60 * 1000));
-                console.log(`Anträge login cooldown active. ${remainingMinutes} minutes remaining.`);
+                console.log(`WebUntis login cooldown active for ${hostname}. ${remainingMinutes} minutes remaining.`);
                 return;
               }
             }
@@ -782,9 +791,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `);
 
             // Store timestamp only if login button was actually clicked
-            if (loginResult) {
-              localStorage.setItem('antraege_last_login_attempt', now.toString());
-              console.log('Anträge login attempted. 15-minute cooldown started.');
+            if (webuntisLoginResult) {
+              localStorage.setItem(storageKey, nowWebuntis.toString());
+              console.log(`WebUntis login attempted for ${hostname}. 15-minute cooldown started.`);
             }
           } catch (error) {
             console.error('Error during Anträge login:', error);
@@ -1217,9 +1226,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         if (id === 'webuntis') {
           const isLoginPage = await webview.executeJavaScript(`
             (function() {
-              const form = document.querySelector('.un2-login-form form');
+              const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
+              const passwordInput = document.querySelector('input[type="password"]');
               const authLabel = document.querySelector('.un-input-group__label');
-              return form && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+              return (form || passwordInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
             })()
           `);
           
@@ -1246,9 +1256,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           const checkLoginForm = async () => {
             const isLoginPage = await webview.executeJavaScript(`
               (function() {
-                const form = document.querySelector('.un2-login-form form');
+                const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
+                const passwordInput = document.querySelector('input[type="password"]');
                 const authLabel = document.querySelector('.un-input-group__label');
-                return form && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+                return (form || passwordInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
               })()
             `);
             
@@ -1440,9 +1451,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         if (id === 'webuntis') {
           const isLoginPage = await webview.executeJavaScript(`
             (function() {
-              const form = document.querySelector('.un2-login-form form');
+              const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
+              const passwordInput = document.querySelector('input[type="password"]');
               const authLabel = document.querySelector('.un-input-group__label');
-              return form && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+              return (form || passwordInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
             })()
           `);
           
