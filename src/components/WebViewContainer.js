@@ -800,10 +800,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `);
 
             // Store timestamp only if login button was actually clicked
-            if (webuntisLoginResult) {
-              localStorage.setItem(storageKey, nowWebuntis.toString());
-              console.log(`WebUntis login attempted for ${hostname}. 15-minute cooldown started.`);
-            }
           } catch (error) {
             console.error('Error during Anträge login:', error);
           }
