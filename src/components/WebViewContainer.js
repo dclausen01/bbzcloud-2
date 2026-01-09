@@ -110,6 +110,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [credsAreSet, setCredsAreSet] = useState({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
   const [failedWebviews, setFailedWebviews] = useState({}); // eslint-disable-line no-unused-vars
+  const loginAttempts = useRef({}); // Track login attempts per app (max 3 per session)
+  const MAX_LOGIN_ATTEMPTS = 3;
 
   // Translate error codes to user-friendly German messages
   const getErrorMessage = (error) => {
@@ -263,9 +265,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       const password = passwordResult.password;
       const bbbPassword = bbbPasswordResult?.password;
 
-      if (!emailAddress || !password || (id === 'bbb' && !bbbPassword)) {
+      // Skip injection if credentials are empty or whitespace-only
+      if (!emailAddress?.trim() || !password?.trim() || (id === 'bbb' && !bbbPassword?.trim())) {
+        console.log(`[${id}] Skipping credential injection - empty credentials`);
         return;
       }
+
+      // Check login attempt limit
+      if (!loginAttempts.current[id]) {
+        loginAttempts.current[id] = 0;
+      }
+      if (loginAttempts.current[id] >= MAX_LOGIN_ATTEMPTS) {
+        console.log(`[${id}] Max login attempts (${MAX_LOGIN_ATTEMPTS}) reached - stopping auto-login`);
+        return;
+      }
+      loginAttempts.current[id]++;
+      console.log(`[${id}] Login attempt ${loginAttempts.current[id]}/${MAX_LOGIN_ATTEMPTS}`);
 
       switch (id.toLowerCase()) {
         case 'webuntis':
