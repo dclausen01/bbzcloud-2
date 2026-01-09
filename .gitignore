@@ -10,9 +10,6 @@
 /build
 /dist
 
-# Exception for macOS entitlements file
-!/build/entitlements.mac.plist
-
 # Misc
 .DS_Store
 .env.local

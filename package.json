@@ -122,11 +122,7 @@
       ],
       "icon": "assets/images/icon.png",
       "category": "public.app-category.education",
-      "darkModeSupport": true,
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "darkModeSupport": true
     },
     "linux": {
       "target": [
