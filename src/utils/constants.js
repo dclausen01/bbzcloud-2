@@ -222,6 +222,8 @@ export const DATABASE_CONFIG = {
     BBB_PASSWORD: 'bbbPassword',              // BigBlueButton password
     WEBUNTIS_EMAIL: 'webuntisEmail',          // WebUntis username
     WEBUNTIS_PASSWORD: 'webuntisPassword',    // WebUntis password
+    SCHULPORTAL_EMAIL: 'schulportalEmail',    // Schulportal username
+    SCHULPORTAL_PASSWORD: 'schulportalPassword', // Schulportal password
   },
 };
 

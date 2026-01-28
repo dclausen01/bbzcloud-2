@@ -848,6 +848,75 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           }
           break;
 
+        case 'schulportal':
+          try {
+            // Get Schulportal credentials
+            const schulportalEmailResult = await window.electron.getCredentials({
+              service: 'bbzcloud',
+              account: 'schulportalEmail'
+            });
+            const schulportalPasswordResult = await window.electron.getCredentials({
+              service: 'bbzcloud',
+              account: 'schulportalPassword'
+            });
+
+            if (!schulportalEmailResult.success || !schulportalPasswordResult.success) {
+              return;
+            }
+
+            const schulportalEmail = schulportalEmailResult.password;
+            const schulportalPassword = schulportalPasswordResult.password;
+
+            if (!schulportalEmail || !schulportalPassword) {
+              return;
+            }
+
+            // Inject credentials into Schulportal login form
+            await webview.executeJavaScript(`
+              (async () => {
+                try {
+                  // Wait for form to be ready
+                  await new Promise((resolve) => {
+                    const checkForm = () => {
+                      const usernameField = document.querySelector('input#inputEmail');
+                      const passwordField = document.querySelector('input#inputPassword');
+                      if (usernameField && passwordField) {
+                        resolve();
+                      } else {
+                        setTimeout(checkForm, 100);
+                      }
+                    };
+                    checkForm();
+                  });
+
+                  const usernameField = document.querySelector('input#inputEmail');
+                  const passwordField = document.querySelector('input#inputPassword');
+                  const submitButton = document.querySelector('button[type="submit"]');
+
+                  if (usernameField && passwordField && submitButton) {
+                    usernameField.value = ${JSON.stringify(schulportalEmail)};
+                    usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    passwordField.value = ${JSON.stringify(schulportalPassword)};
+                    passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    setTimeout(() => {
+                      submitButton.click();
+                    }, 500);
+                    
+                    return true;
+                  }
+                  return false;
+                } catch (error) {
+                  return false;
+                }
+              })();
+            `);
+          } catch (error) {
+            console.error('Error during Schulportal login:', error);
+          }
+          break;
+
         case 'office':
           try {
             // Detect Office.com login state using exact selectors
@@ -1439,6 +1508,36 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           
           // Set up periodic check every 5 seconds
           const interval = setInterval(checkAntraegeLogin, 5000);
+          eventCleanups.get(webview)?.push(() => clearInterval(interval));
+        } else if (id === 'schulportal') {
+          // For Schulportal, check for login form periodically
+          const checkSchulportalLogin = async () => {
+            try {
+              const needsLogin = await webview.executeJavaScript(`
+                (function() {
+                  const usernameField = document.querySelector('input#inputEmail');
+                  const passwordField = document.querySelector('input#inputPassword');
+                  const submitButton = document.querySelector('button[type="submit"]');
+                  
+                  // If fields exist, we probably need to login
+                  return !!(usernameField && passwordField && submitButton);
+                })()
+              `);
+              
+              if (needsLogin) {
+                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                await injectCredentials(webview, id);
+              }
+            } catch (error) {
+              // Silent fail
+            }
+          };
+
+          // Initial check
+          await checkSchulportalLogin();
+          
+          // Set up periodic check every 5 seconds
+          const interval = setInterval(checkSchulportalLogin, 5000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
         } else {
           await injectCredentials(webview, id);

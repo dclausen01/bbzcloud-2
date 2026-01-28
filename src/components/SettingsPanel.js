@@ -39,7 +39,9 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
     password: '',
     bbbPassword: '',
     webuntisEmail: '',
-    webuntisPassword: ''
+    webuntisPassword: '',
+    schulportalEmail: '',
+    schulportalPassword: ''
   });
   const [version, setVersion] = useState('');
   const toast = useToast();
@@ -87,13 +89,23 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'webuntisPassword'
         });
+        const schulportalEmailResult = await window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'schulportalEmail'
+        });
+        const schulportalPasswordResult = await window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'schulportalPassword'
+        });
         
         setCredentials({
           email: emailResult.success ? emailResult.password : '',
           password: passwordResult.success ? passwordResult.password : '',
           bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : '',
           webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : '',
-          webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : ''
+          webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : '',
+          schulportalEmail: schulportalEmailResult.success ? schulportalEmailResult.password : '',
+          schulportalPassword: schulportalPasswordResult.success ? schulportalPasswordResult.password : ''
         });
       } catch (error) {
         console.error('Error loading credentials:', error);
@@ -182,6 +194,16 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'webuntisPassword',
           password: credentials.webuntisPassword
+        }) : Promise.resolve({ success: true }),
+        credentials.schulportalEmail ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'schulportalEmail',
+          password: credentials.schulportalEmail
+        }) : Promise.resolve({ success: true }),
+        credentials.schulportalPassword ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'schulportalPassword',
+          password: credentials.schulportalPassword
         }) : Promise.resolve({ success: true })
       ]);
 
@@ -602,6 +624,38 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
               </InputRightElement>
             </InputGroup>
           </FormControl>
+
+          {/* Schulportal - only for teachers (ending with @bbz-rd-eck.de) */}
+          {credentials.email && credentials.email.endsWith('@bbz-rd-eck.de') && (
+            <>
+              <FormControl>
+                <FormLabel>Schulportal Login</FormLabel>
+                <Input
+                  type="text"
+                  value={credentials.schulportalEmail}
+                  onChange={(e) => setCredentials(prev => ({ ...prev, schulportalEmail: e.target.value }))}
+                  placeholder="Schulportal Benutzername"
+                />
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Schulportal Passwort</FormLabel>
+                <InputGroup>
+                  <Input
+                    type={showBBBPassword ? 'text' : 'password'}
+                    value={credentials.schulportalPassword}
+                    onChange={(e) => setCredentials(prev => ({ ...prev, schulportalPassword: e.target.value }))}
+                    placeholder="Schulportal Passwort"
+                  />
+                  <InputRightElement width="4.5rem">
+                    <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
+                      {showBBBPassword ? 'Verbergen' : 'Zeigen'}
+                    </Button>
+                  </InputRightElement>
+                </InputGroup>
+              </FormControl>
+            </>
+          )}
 
           <Button 
             colorScheme="blue" 

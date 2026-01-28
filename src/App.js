@@ -136,11 +136,14 @@ function App() {
   const [bbbPassword, setBbbPassword] = useState(''); // BigBlueButton password
   const [webuntisEmail, setWebuntisEmail] = useState('');
   const [webuntisPassword, setWebuntisPassword] = useState('');
+  const [schulportalEmail, setSchulportalEmail] = useState('');
+  const [schulportalPassword, setSchulportalPassword] = useState('');
   
   // Password visibility toggles for form inputs
   const [showPassword, setShowPassword] = useState(false);
   const [showBBBPassword, setShowBBBPassword] = useState(false);
   const [showWebuntisPassword, setShowWebuntisPassword] = useState(false);
+  const [showSchulportalPassword, setShowSchulportalPassword] = useState(false);
 
   // Application State
   const [isLoadingEmail, setIsLoadingEmail] = useState(true);
@@ -226,7 +229,7 @@ function App() {
         }
         
         // Load all credentials in parallel for better performance
-        const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult] = await Promise.all([
+        const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult, schulportalEmailResult, schulportalPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'email'
@@ -261,6 +264,20 @@ function App() {
           }).catch(error => {
             console.warn('Error loading WebUntis password credential:', error);
             return { success: false };
+          }),
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'schulportalEmail'
+          }).catch(error => {
+            console.warn('Error loading Schulportal email credential:', error);
+            return { success: false };
+          }),
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'schulportalPassword'
+          }).catch(error => {
+            console.warn('Error loading Schulportal password credential:', error);
+            return { success: false };
           })
         ]);
 
@@ -291,6 +308,14 @@ function App() {
 
         if (webuntisPasswordResult.success && webuntisPasswordResult.password) {
           setWebuntisPassword(webuntisPasswordResult.password);
+        }
+
+        if (schulportalEmailResult.success && schulportalEmailResult.password) {
+          setSchulportalEmail(schulportalEmailResult.password);
+        }
+
+        if (schulportalPasswordResult.success && schulportalPasswordResult.password) {
+          setSchulportalPassword(schulportalPasswordResult.password);
         }
 
         // Show welcome modal for new users (no email saved)
@@ -384,6 +409,16 @@ function App() {
           service: 'bbzcloud',
           account: 'webuntisPassword',
           password: webuntisPassword
+        }) : Promise.resolve(),
+        schulportalEmail ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'schulportalEmail',
+          password: schulportalEmail
+        }) : Promise.resolve(),
+        schulportalPassword ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'schulportalPassword',
+          password: schulportalPassword
         }) : Promise.resolve()
       ]);
       
@@ -1210,6 +1245,38 @@ function App() {
                       </InputRightElement>
                     </InputGroup>
                   </FormControl>
+
+                  {/* Schulportal credentials only for teachers */}
+                  {email.endsWith('@bbz-rd-eck.de') && (
+                    <>
+                      <FormControl>
+                        <FormLabel>Schulportal Login</FormLabel>
+                        <Input
+                          type="text"
+                          value={schulportalEmail}
+                          onChange={(e) => setSchulportalEmail(e.target.value)}
+                          placeholder="Schulportal Benutzername (optional)"
+                        />
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel>Schulportal Passwort</FormLabel>
+                        <InputGroup>
+                          <Input
+                            type={showSchulportalPassword ? 'text' : 'password'}
+                            value={schulportalPassword}
+                            onChange={(e) => setSchulportalPassword(e.target.value)}
+                            placeholder="Schulportal Passwort (optional)"
+                          />
+                          <InputRightElement width="4.5rem">
+                            <Button h="1.75rem" size="sm" onClick={() => setShowSchulportalPassword(!showSchulportalPassword)}>
+                              {showSchulportalPassword ? 'Verbergen' : 'Zeigen'}
+                            </Button>
+                          </InputRightElement>
+                        </InputGroup>
+                      </FormControl>
+                    </>
+                  )}
                 </>
               )}
 
