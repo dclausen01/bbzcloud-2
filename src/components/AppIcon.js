@@ -18,7 +18,8 @@ function AppIcon({ id, size = "28px" }) {
       wiki: 'wiki.svg',
       handbook: 'handbook.svg',
       antraege: 'handbook.svg',
-      fobizz: 'fobizztools.svg'
+      fobizz: 'fobizztools.svg',
+      schulportal: 'handbook.svg'
     };
 
     return `icons/${iconMap[id] || 'link.svg'}`;
