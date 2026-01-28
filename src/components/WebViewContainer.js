@@ -111,6 +111,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
   const [failedWebviews, setFailedWebviews] = useState({}); // eslint-disable-line no-unused-vars
   const loginAttempts = useRef({}); // Track login attempts per app (max 3 per session)
+  const failedLogins = useRef({}); // Track fatal login failures (e.g. invalid credentials)
   const MAX_LOGIN_ATTEMPTS = 3;
 
   // Translate error codes to user-friendly German messages
@@ -238,6 +239,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       return;
     }
 
+    // Stop if we already had a fatal login failure for this app
+    if (failedLogins.current[id]) {
+      console.log(`[${id}] Previous login failed - stopping auto-login`);
+      return;
+    }
+
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     try {
@@ -271,8 +278,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         return;
       }
 
-      // Check login attempt limit (except for Outlook)
-      if (id !== 'outlook') {
+      // Check login attempt limit (except for Outlook and WebUntis)
+      if (id !== 'outlook' && id !== 'webuntis') {
         if (!loginAttempts.current[id]) {
           loginAttempts.current[id] = 0;
         }
@@ -441,15 +448,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       form.dispatchEvent(submitEvent);
                     }
 
-                    // Wait 2 seconds then check for authenticator page
+                    // Wait 2 seconds for response
                     await new Promise(resolve => setTimeout(resolve, 2000));
+
+                    // Check for invalid credentials error message
+                    const bodyText = document.body.innerText || '';
+                    if (bodyText.includes('Ungültiger Benutzername und/oder Passwort')) {
+                      return 'INVALID_CREDENTIALS';
+                    }
                     
                     // Only reload if we're not on the authenticator page
                     const authLabel = document.querySelector('.un-input-group__label');
                     if (authLabel?.textContent !== 'Bestätigungscode') {
                       window.location.reload();
                     }
-                    return true;
+                    return 'SUCCESS';
                   }
 
                   return false;
@@ -459,8 +472,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               })();
             `);
 
-            // Store timestamp only if login button was actually clicked
-            if (loginAttemptResult) {
+            if (loginAttemptResult === 'INVALID_CREDENTIALS') {
+              failedLogins.current['webuntis'] = true;
+              console.log('WebUntis login failed: Invalid credentials. Stopping auto-login.');
+              toast({
+                title: 'WebUntis Login fehlgeschlagen',
+                description: 'Ungültiger Benutzername und/oder Passwort. Automatische Anmeldung gestoppt.',
+                status: 'error',
+                duration: null,
+                isClosable: true,
+              });
+              return;
+            }
+
+            // Store timestamp only if login button was actually clicked (success or unknown state)
+            if (loginAttemptResult === 'SUCCESS' || loginAttemptResult === true) {
               localStorage.setItem(storageKey, nowWebuntis.toString());
               console.log(`WebUntis login attempted for ${hostname}. 15-minute cooldown started.`);
             }
