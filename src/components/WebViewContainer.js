@@ -271,16 +271,18 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         return;
       }
 
-      // Check login attempt limit
-      if (!loginAttempts.current[id]) {
-        loginAttempts.current[id] = 0;
+      // Check login attempt limit (except for Outlook)
+      if (id !== 'outlook') {
+        if (!loginAttempts.current[id]) {
+          loginAttempts.current[id] = 0;
+        }
+        if (loginAttempts.current[id] >= MAX_LOGIN_ATTEMPTS) {
+          console.log(`[${id}] Max login attempts (${MAX_LOGIN_ATTEMPTS}) reached - stopping auto-login`);
+          return;
+        }
+        loginAttempts.current[id]++;
+        console.log(`[${id}] Login attempt ${loginAttempts.current[id]}/${MAX_LOGIN_ATTEMPTS}`);
       }
-      if (loginAttempts.current[id] >= MAX_LOGIN_ATTEMPTS) {
-        console.log(`[${id}] Max login attempts (${MAX_LOGIN_ATTEMPTS}) reached - stopping auto-login`);
-        return;
-      }
-      loginAttempts.current[id]++;
-      console.log(`[${id}] Login attempt ${loginAttempts.current[id]}/${MAX_LOGIN_ATTEMPTS}`);
 
       switch (id.toLowerCase()) {
         case 'webuntis':
