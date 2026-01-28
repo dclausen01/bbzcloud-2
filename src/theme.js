@@ -81,6 +81,18 @@ const colors = {
     800: '#2e7d32',
     900: '#1b5e20',
   },
+  schulportal: {
+    50: '#f1f8e9',
+    100: '#dcedc8',
+    200: '#c5e1a5',
+    300: '#aed581',
+    400: '#9ccc65',
+    500: '#8bc34a',
+    600: '#7cb342',
+    700: '#689f38',
+    800: '#558b2f',
+    900: '#33691e',
+  },
   taskcards: {
     50: '#e0f7fa',
     100: '#b2ebf2',
@@ -209,6 +221,13 @@ const components = {
         color: 'white',
         _hover: {
           bg: props.colorMode === 'dark' ? 'handbook.700' : 'handbook.600',
+        },
+      }),
+      schulportal: (props) => ({
+        bg: props.colorMode === 'dark' ? 'schulportal.600' : 'schulportal.500',
+        color: 'white',
+        _hover: {
+          bg: props.colorMode === 'dark' ? 'schulportal.700' : 'schulportal.600',
         },
       }),
       taskcards: (props) => ({

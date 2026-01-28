@@ -64,7 +64,7 @@ export const URLS = {
   WEBUNTIS: 'https://bbz-rd-eck.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login', // Timetable management
   FOBIZZ: 'https://tools.fobizz.com/',                                    // Educational tools
   WIKI: 'https://wiki.bbz-rd-eck.com',                                    // Internal wiki/documentation
-  SCHULPORTAL: 'https://sh.schulportal.de/',                              // School portal
+  SCHULPORTAL: 'https://portal.schule-sh.de/',                              // School portal
   HANDBOOK: 'https://viflow.bbz-rd-eck.de/viflow/',                       // Process handbook
   ANTRAEGE: 'https://dms.bbz-rd-eck.de/',                                // Document management system
 };
