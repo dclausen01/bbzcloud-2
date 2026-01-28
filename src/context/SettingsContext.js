@@ -4,12 +4,6 @@ import { URLS, ZOOM_CONFIG } from '../utils/constants';
 const SettingsContext = createContext();
 
 const standardApps = {
-  "SchulSHPortal": {
-    "id": "SchulSHPortal",
-    "title": "Schul.SH Portal",
-    "url": "https://portal.schule-sh.de/",
-    "buttonVariant": "solid"
-  },
   "BBZHandbuch": {
     "id": "Handbuch",
     "title": "Handbuch",
@@ -156,11 +150,11 @@ const defaultSettings = {
       buttonVariant: 'wiki',
       zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
-    handbook: {
+    schulportal: {
       visible: true,
-      url: URLS.HANDBOOK,
-      title: 'Handbuch',
-      buttonVariant: 'handbook',
+      url: URLS.SCHULPORTAL,
+      title: 'Schulportal',
+      buttonVariant: 'schulportal',
       zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     }
   },
