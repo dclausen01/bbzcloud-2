@@ -878,8 +878,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   // Wait for form to be ready
                   await new Promise((resolve) => {
                     const checkForm = () => {
-                      const usernameField = document.querySelector('input#inputEmail');
-                      const passwordField = document.querySelector('input#inputPassword');
+                      const usernameField = document.querySelector('input#username');
+                      const passwordField = document.querySelector('input#password');
                       if (usernameField && passwordField) {
                         resolve();
                       } else {
@@ -889,16 +889,18 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     checkForm();
                   });
 
-                  const usernameField = document.querySelector('input#inputEmail');
-                  const passwordField = document.querySelector('input#inputPassword');
-                  const submitButton = document.querySelector('button[type="submit"]');
+                  const usernameField = document.querySelector('input#username');
+                  const passwordField = document.querySelector('input#password');
+                  const submitButton = document.querySelector('input#kc-login[type="submit"]');
 
                   if (usernameField && passwordField && submitButton) {
                     usernameField.value = ${JSON.stringify(schulportalEmail)};
                     usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+                    usernameField.dispatchEvent(new Event('change', { bubbles: true }));
                     
                     passwordField.value = ${JSON.stringify(schulportalPassword)};
                     passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+                    passwordField.dispatchEvent(new Event('change', { bubbles: true }));
                     
                     setTimeout(() => {
                       submitButton.click();
@@ -1515,9 +1517,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             try {
               const needsLogin = await webview.executeJavaScript(`
                 (function() {
-                  const usernameField = document.querySelector('input#inputEmail');
-                  const passwordField = document.querySelector('input#inputPassword');
-                  const submitButton = document.querySelector('button[type="submit"]');
+                  const usernameField = document.querySelector('input#username');
+                  const passwordField = document.querySelector('input#password');
+                  const submitButton = document.querySelector('input#kc-login[type="submit"]');
                   
                   // If fields exist, we probably need to login
                   return !!(usernameField && passwordField && submitButton);
