@@ -1919,7 +1919,17 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     webview.addEventListener('did-stop-loading', () => {
                       setIsLoading(prev => ({ ...prev, [id]: false }));
                     });
-                    // Apply zoom
+                    
+                    // DOM Ready handler for credentials and zoom
+                    webview.addEventListener('dom-ready', async () => {
+                      // Apply zoom
+                      await applyZoom(webview, id);
+                      
+                      // Attempt credential injection
+                      await injectCredentials(webview, id);
+                    });
+
+                    // Apply zoom (fallback)
                     setTimeout(async () => {
                       await applyZoom(webview, id);
                     }, 1000);

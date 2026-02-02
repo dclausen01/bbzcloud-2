@@ -13,7 +13,7 @@
  * 5. Modify DATABASE_CONFIG service name for your organization
  * 
  * @author Dennis Clausen <dennis.clausen@bbz-rd-eck.de>
- * @version 2.2.3
+ * @version 2.2.4
  */
 
 // ============================================================================

@@ -23,7 +23,7 @@
  * 5. Adjust the user filtering logic in filterNavigationButtons()
  * 
  * @author Dennis Clausen <dennis.clausen@bbz-rd-eck.de>
- * @version 2.2.3
+ * @version 2.2.4
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
