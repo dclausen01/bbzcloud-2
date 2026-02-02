@@ -212,8 +212,11 @@ export function SettingsProvider({ children }) {
             [key]: {
               ...defaultButton,
               ...savedButton,
-              // Preserve the hardcoded title and ensure visible property exists
+              // Preserve the hardcoded title, url and buttonVariant from constants
+              // This ensures that updates to URLs in constants.js are applied even if settings were saved
               title: defaultButton.title,
+              url: defaultButton.url,
+              buttonVariant: defaultButton.buttonVariant,
               visible: savedButton.visible ?? defaultButton.visible
             }
           };
