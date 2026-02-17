@@ -768,18 +768,16 @@ async function createWindow() {
         }
         // WebView Zoom In: Ctrl+Plus or Ctrl+Equal
         else if (matchesShortcut('+', true, false, false) || matchesShortcut('=', true, false, false)) {
-          focusedWebview.getZoomFactor().then(currentZoom => {
-            const newZoom = Math.min(currentZoom + 0.1, 2.0);
-            focusedWebview.setZoomFactor(newZoom);
-          }).catch(err => console.error('Error zooming in:', err));
+          const currentZoom = focusedWebview.getZoomFactor();
+          const newZoom = Math.min(currentZoom + 0.1, 2.0);
+          focusedWebview.setZoomFactor(newZoom);
           handled = true;
         }
         // WebView Zoom Out: Ctrl+Minus
         else if (matchesShortcut('-', true, false, false)) {
-          focusedWebview.getZoomFactor().then(currentZoom => {
-            const newZoom = Math.max(currentZoom - 0.1, 0.5);
-            focusedWebview.setZoomFactor(newZoom);
-          }).catch(err => console.error('Error zooming out:', err));
+          const currentZoom = focusedWebview.getZoomFactor();
+          const newZoom = Math.max(currentZoom - 0.1, 0.5);
+          focusedWebview.setZoomFactor(newZoom);
           handled = true;
         }
         // WebView Zoom Reset: Ctrl+0
@@ -1541,19 +1539,17 @@ app.on('web-contents-created', (event, contents) => {
       // WebView Zoom In: Ctrl+Plus or Ctrl+Equal
       else if (matchesShortcut('+', true, false, false) || matchesShortcut('=', true, false, false)) {
         console.log('[Webview Keyboard] Matched: Zoom In');
-        contents.getZoomFactor().then(currentZoom => {
-          const newZoom = Math.min(currentZoom + 0.1, 2.0);
-          contents.setZoomFactor(newZoom);
-        }).catch(err => console.error('Error zooming in:', err));
+        const currentZoom = contents.getZoomFactor();
+        const newZoom = Math.min(currentZoom + 0.1, 2.0);
+        contents.setZoomFactor(newZoom);
         handled = true;
       }
       // WebView Zoom Out: Ctrl+Minus
       else if (matchesShortcut('-', true, false, false)) {
         console.log('[Webview Keyboard] Matched: Zoom Out');
-        contents.getZoomFactor().then(currentZoom => {
-          const newZoom = Math.max(currentZoom - 0.1, 0.5);
-          contents.setZoomFactor(newZoom);
-        }).catch(err => console.error('Error zooming out:', err));
+        const currentZoom = contents.getZoomFactor();
+        const newZoom = Math.max(currentZoom - 0.1, 0.5);
+        contents.setZoomFactor(newZoom);
         handled = true;
       }
       // WebView Zoom Reset: Ctrl+0
