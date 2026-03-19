@@ -355,7 +355,7 @@ function App() {
     }
 
     // CUSTOMIZE: Define which apps students/restricted users can access
-    const allowedApps = ['schulcloud', 'moodle', 'office', 'cryptpad', 'webuntis', 'wiki'];
+    const allowedApps = ['schulcloud', 'moodle', 'nextcloud', 'cryptpad', 'webuntis', 'wiki'];
     return Object.entries(settings.navigationButtons)
       .filter(([key]) => allowedApps.includes(key))
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});

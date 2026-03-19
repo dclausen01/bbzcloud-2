@@ -117,6 +117,18 @@ const colors = {
     800: '#006787',
     900: '#004a74',
   },
+  nextcloud: {
+    50: '#e3f4fb',
+    100: '#b8e1f5',
+    200: '#8dceef',
+    300: '#62bbe9',
+    400: '#37a8e3',
+    500: '#0082C9',
+    600: '#0074b5',
+    700: '#0066a1',
+    800: '#00588d',
+    900: '#003c79',
+  },
   lilac: {
     50: '#f3e5f5',
     100: '#e1bee7',
@@ -242,6 +254,13 @@ const components = {
         color: 'white',
         _hover: {
           bg: props.colorMode === 'dark' ? 'cryptpad.700' : 'cryptpad.600',
+        },
+      }),
+      nextcloud: (props) => ({
+        bg: props.colorMode === 'dark' ? 'nextcloud.600' : 'nextcloud.500',
+        color: 'white',
+        _hover: {
+          bg: props.colorMode === 'dark' ? 'nextcloud.700' : 'nextcloud.600',
         },
       }),
       lilac: (props) => ({

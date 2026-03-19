@@ -1062,24 +1062,107 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const result = await webview.executeJavaScript(`
                 (function() {
                   const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                  
+
                   if (jaButton) {
                     console.log('Clicking Office Ja button');
-                    
+
                     setTimeout(() => {
                       jaButton.click();
                     }, 500);
-                    
+
                     return true;
                   }
                   return false;
                 })()
               `);
-              
+
               console.log('Office Ja button click result:', result);
             }
           } catch (error) {
             console.error('Error during Office login:', error);
+          }
+          break;
+
+        case 'nextcloud':
+          try {
+            const ncLoginState = await webview.executeJavaScript(`
+              (function() {
+                // Step 1: BBZ ADFS button on Nextcloud login page
+                const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
+                                   Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
+
+                // Step 2: ADFS login form (same as Outlook)
+                const userNameInput = document.querySelector('#userNameInput');
+                const passwordInput = document.querySelector('#passwordInput');
+                const submitButton = document.querySelector('#submitButton');
+
+                // Step 3: "Stay signed in?" page
+                const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+
+                // Already logged in to Nextcloud
+                const loggedIn = document.querySelector('#header') ||
+                                 document.querySelector('.app-navigation') ||
+                                 document.querySelector('#nextcloud') ||
+                                 window.location.href.includes('/apps/');
+
+                return {
+                  adfsButton: !!adfsButton,
+                  userNameInput: !!userNameInput,
+                  passwordInput: !!passwordInput,
+                  submitButton: !!submitButton,
+                  jaButton: !!jaButton,
+                  loggedIn: !!loggedIn,
+                  url: window.location.href
+                };
+              })()
+            `);
+
+            console.log('Nextcloud login state:', ncLoginState);
+
+            if (ncLoginState.loggedIn) {
+              return;
+            }
+
+            if (ncLoginState.adfsButton) {
+              // Click the BBZ ADFS button to initiate SAML login
+              await webview.executeJavaScript(`
+                (function() {
+                  const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
+                                     Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
+                  if (adfsButton) {
+                    console.log('Clicking Nextcloud BBZ ADFS button');
+                    adfsButton.click();
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+            } else if (ncLoginState.userNameInput && ncLoginState.passwordInput && ncLoginState.submitButton) {
+              // ADFS login form - fill credentials (same form as Outlook)
+              await webview.executeJavaScript(
+                `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
+              );
+              await webview.executeJavaScript(
+                `document.querySelector('#passwordInput').value = "${password}"; void(0);`
+              );
+              await webview.executeJavaScript(
+                `document.querySelector('#submitButton').click();`
+              );
+            } else if (ncLoginState.jaButton) {
+              // "Stay signed in?" page - click Ja
+              await webview.executeJavaScript(`
+                (function() {
+                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                  if (jaButton) {
+                    setTimeout(() => jaButton.click(), 500);
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+            }
+          } catch (error) {
+            console.error('Error during Nextcloud login:', error);
           }
           break;
       }
@@ -1468,10 +1551,46 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           // Initial check
           await checkOfficeLogin();
-          
+
           // Set up periodic check every 5 seconds
           const interval = setInterval(checkOfficeLogin, 5000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
+        } else if (id === 'nextcloud') {
+          // For Nextcloud, check periodically for BBZ ADFS button or ADFS login form
+          const checkNextcloudLogin = async () => {
+            try {
+              const needsLogin = await webview.executeJavaScript(`
+                (function() {
+                  const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
+                                     Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
+                  const userNameInput = document.querySelector('#userNameInput');
+                  const passwordInput = document.querySelector('#passwordInput');
+                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+
+                  const loggedIn = document.querySelector('#header') ||
+                                   document.querySelector('.app-navigation') ||
+                                   document.querySelector('#nextcloud') ||
+                                   window.location.href.includes('/apps/');
+
+                  return (adfsButton || userNameInput || passwordInput || jaButton) && !loggedIn;
+                })()
+              `);
+
+              if (needsLogin) {
+                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                await injectCredentials(webview, id);
+              }
+            } catch (error) {
+              // Silent fail - page might not be ready
+            }
+          };
+
+          // Initial check
+          await checkNextcloudLogin();
+
+          // Set up periodic check every 5 seconds
+          const ncInterval = setInterval(checkNextcloudLogin, 5000);
+          eventCleanups.get(webview)?.push(() => clearInterval(ncInterval));
         } else if (id === 'antraege') {
           // For Anträge, check for agorum login form periodically
           const checkAntraegeLogin = async () => {
@@ -1658,6 +1777,33 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               })()
             `);
             
+            if (needsLogin) {
+              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              await injectCredentials(webview, id);
+            }
+          } catch (error) {
+            // Silent fail - page might not be ready
+          }
+        } else if (id === 'nextcloud') {
+          // For Nextcloud, check for BBZ ADFS button or ADFS login form after navigation
+          try {
+            const needsLogin = await webview.executeJavaScript(`
+              (function() {
+                const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
+                                   Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
+                const userNameInput = document.querySelector('#userNameInput');
+                const passwordInput = document.querySelector('#passwordInput');
+                const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+
+                const loggedIn = document.querySelector('#header') ||
+                                 document.querySelector('.app-navigation') ||
+                                 document.querySelector('#nextcloud') ||
+                                 window.location.href.includes('/apps/');
+
+                return (adfsButton || userNameInput || passwordInput || jaButton) && !loggedIn;
+              })()
+            `);
+
             if (needsLogin) {
               setCredsAreSet(prev => ({ ...prev, [id]: false }));
               await injectCredentials(webview, id);

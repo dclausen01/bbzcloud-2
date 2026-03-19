@@ -13,7 +13,7 @@
  * 5. Modify DATABASE_CONFIG service name for your organization
  * 
  * @author Dennis Clausen <dennis.clausen@bbz-rd-eck.de>
- * @version 2.2.4
+ * @version 2.3.0
  */
 
 // ============================================================================
@@ -56,6 +56,7 @@ export const URLS = {
   OUTLOOK: 'https://exchange.bbz-rd-eck.de/owa/#path=/mail',              // Email client
   
   // Productivity applications
+  NEXTCLOUD: 'https://cloud.bbz-rd-eck.de',                                // Nextcloud
   OFFICE: 'https://m365.cloud.microsoft/apps/?auth=2',                     // Microsoft Office 365
   CRYPTPAD: 'https://cryptpad.fr/drive',                                  // Encrypted collaborative documents
   TASKCARDS: 'https://bbzrdeck.taskcards.app',                           // Digital task cards

@@ -75,6 +75,12 @@ const standardApps = {
     "title": "Kurze Links",
     "url": "https://kurzelinks.de",
     "buttonVariant": "solid"
+  },
+  "MSOffice": {
+    "id": "MSOffice",
+    "title": "MS Office",
+    "url": "https://m365.cloud.microsoft/apps/?auth=2",
+    "buttonVariant": "solid"
   }
 };
 
@@ -108,11 +114,11 @@ const defaultSettings = {
       buttonVariant: 'blue',
       zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
-    office: {
+    nextcloud: {
       visible: true,
-      url: URLS.OFFICE,
-      title: 'Office',
-      buttonVariant: 'lilac',
+      url: URLS.NEXTCLOUD,
+      title: 'Nextcloud',
+      buttonVariant: 'nextcloud',
       zoom: ZOOM_CONFIG.DEFAULT_ZOOM
     },
     cryptpad: {

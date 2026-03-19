@@ -11,6 +11,7 @@ function AppIcon({ id, size = "28px" }) {
       moodle: 'moodle.svg',
       bbb: 'bigbluebutton.svg',
       outlook: 'outlook.svg',
+      nextcloud: 'nextcloud.svg',
       office: 'office.svg',
       cryptpad: 'cryptpad.svg',
       taskcards: 'taskcards.svg',
