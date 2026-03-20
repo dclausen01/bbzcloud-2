@@ -1130,8 +1130,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
                                      Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
                   if (adfsButton) {
-                    console.log('Clicking Nextcloud BBZ ADFS button');
-                    adfsButton.click();
+                    console.log('Clicking Nextcloud BBZ ADFS button, href:', adfsButton.href);
+                    // .click() on anchor elements doesn't reliably trigger navigation in Electron webviews
+                    // Use direct navigation instead
+                    if (adfsButton.href) {
+                      window.location.href = adfsButton.href;
+                    } else {
+                      // Fallback: dispatch a real mouse event
+                      adfsButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                    }
                     return true;
                   }
                   return false;
