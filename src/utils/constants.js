@@ -49,6 +49,7 @@ export const URLS = {
   
   // Educational platforms
   SCHULCLOUD: 'https://app.schul.cloud',                                    // Cloud-based learning platform
+  BBZ_CHAT: 'https://chat.bbz-rd-eck.com',                                  // BBZ Chat alternative
   MOODLE: 'https://portal.bbz-rd-eck.com',                                 // Learning management system
   
   // Communication tools

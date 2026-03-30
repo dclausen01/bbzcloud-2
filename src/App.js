@@ -63,6 +63,7 @@ import {
 
 // Context and Components
 import { useSettings } from './context/SettingsContext';
+import { URLS } from './utils/constants';
 import NavigationBar from './components/NavigationBar';
 import WebViewContainer from './components/WebViewContainer';
 import SettingsPanel from './components/SettingsPanel';
@@ -350,16 +351,30 @@ function App() {
     // CUSTOMIZE: Change this logic for your organization's email domains
     const isTeacher = email.endsWith('@bbz-rd-eck.de');
 
+    // Get the schulcloud URL and title based on useBbzChat setting
+    const schulcloudUrl = settings.useBbzChat ? URLS.BBZ_CHAT : URLS.SCHULCLOUD;
+    const schulcloudTitle = settings.useBbzChat ? 'BBZ Chat' : 'schul.cloud';
+
+    // Update the schulcloud button with the correct URL and title
+    const updatedButtons = {
+      ...settings.navigationButtons,
+      schulcloud: {
+        ...settings.navigationButtons.schulcloud,
+        url: schulcloudUrl,
+        title: schulcloudTitle
+      }
+    };
+
     if (isTeacher) {
-      return settings.navigationButtons;
+      return updatedButtons;
     }
 
     // CUSTOMIZE: Define which apps students/restricted users can access
     const allowedApps = ['schulcloud', 'moodle', 'nextcloud', 'cryptpad', 'webuntis', 'wiki'];
-    return Object.entries(settings.navigationButtons)
+    return Object.entries(updatedButtons)
       .filter(([key]) => allowedApps.includes(key))
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-  }, [email, settings.navigationButtons]);
+  }, [email, settings.navigationButtons, settings.useBbzChat]);
 
   // Pre-compute filtered buttons to avoid recalculation
   const filteredNavigationButtons = filterNavigationButtons();

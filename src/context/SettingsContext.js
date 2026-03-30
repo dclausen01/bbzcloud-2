@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { URLS, ZOOM_CONFIG } from '../utils/constants';
 
+// Helper to get the schulcloud URL based on settings
+const getSchulcloudUrl = (useBbzChat) => useBbzChat ? URLS.BBZ_CHAT : URLS.SCHULCLOUD;
+const getSchulcloudTitle = (useBbzChat) => useBbzChat ? 'BBZ Chat' : 'schul.cloud';
+
 const SettingsContext = createContext();
 
 const standardApps = {
@@ -171,7 +175,8 @@ const defaultSettings = {
   globalZoom: ZOOM_CONFIG.DEFAULT_ZOOM,
   navbarZoom: ZOOM_CONFIG.DEFAULT_NAVBAR_ZOOM,
   autostart: true,
-  minimizedStart: false
+  minimizedStart: false,
+  useBbzChat: false
 };
 
 export function SettingsProvider({ children }) {
@@ -240,7 +245,8 @@ export function SettingsProvider({ children }) {
           globalZoom: result.settings.globalZoom || defaultSettings.globalZoom,
           navbarZoom: result.settings.navbarZoom || defaultSettings.navbarZoom,
           autostart: result.settings.autostart ?? defaultSettings.autostart,
-          minimizedStart: result.settings.minimizedStart ?? defaultSettings.minimizedStart
+          minimizedStart: result.settings.minimizedStart ?? defaultSettings.minimizedStart,
+          useBbzChat: result.settings.useBbzChat ?? defaultSettings.useBbzChat
         });
       }
     } catch (error) {
@@ -410,6 +416,13 @@ export function SettingsProvider({ children }) {
       }));
     };
 
+    const toggleBbzChat = () => {
+      setSettings(prevSettings => ({
+        ...prevSettings,
+        useBbzChat: !prevSettings.useBbzChat
+      }));
+    };
+
     return {
       settings: { ...settings, customApps },
       updateSettings,
@@ -422,6 +435,7 @@ export function SettingsProvider({ children }) {
       isLoading,
       toggleDarkMode,
       updateNavbarZoom,
+      toggleBbzChat,
       updateStatus
     };
   }, [

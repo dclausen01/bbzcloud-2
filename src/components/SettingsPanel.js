@@ -25,7 +25,7 @@ import {
 import { useSettings } from '../context/SettingsContext';
 
 function SettingsPanel({ onClose, onOpenShortcuts }) {
-  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, updateSettings, updateStatus } = useSettings();
+  const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, toggleBbzChat, updateSettings, updateStatus } = useSettings();
   const { setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
@@ -799,6 +799,26 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
             Feedback senden
           </Button>
         </VStack>
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <Text fontSize="lg" fontWeight="bold" mb={4}>
+          schul.cloud / BBZ Chat
+        </Text>
+        <FormControl display="flex" alignItems="center" mb={2}>
+          <FormLabel mb={0}>BBZ Chat verwenden</FormLabel>
+          <Switch 
+            isChecked={settings.useBbzChat} 
+            onChange={toggleBbzChat}
+          />
+        </FormControl>
+        <Text fontSize="sm" color="gray.500">
+          {settings.useBbzChat 
+            ? 'Es wird chat.bbz-rd-eck.com geladen' 
+            : 'Es wird app.schul.cloud geladen'}
+        </Text>
       </Box>
 
       <Button onClick={onClose} mt={4}>
