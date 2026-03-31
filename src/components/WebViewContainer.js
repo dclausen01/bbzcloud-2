@@ -107,7 +107,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
   const [imageError, setImageError] = useState(false);
-  const [credsAreSet, setCredsAreSet] = useState({});
+  // Use a ref (not state) so reads inside useCallback closures always see the latest value
+  // immediately — React state batching would cause stale reads otherwise.
+  const credsAreSet = useRef({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
   const [failedWebviews, setFailedWebviews] = useState({}); // eslint-disable-line no-unused-vars
   const loginAttempts = useRef({}); // Track login attempts per app (max 3 per session)
@@ -235,7 +237,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   // Function to inject credentials based on webview ID
   const injectCredentials = useCallback(async (webview, id) => {
-    if (!webview || credsAreSet[id]) {
+    if (!webview || credsAreSet.current[id]) {
       return;
     }
 
@@ -1472,11 +1474,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           break;
       }
 
-      setCredsAreSet(prev => ({ ...prev, [id]: true }));
+      credsAreSet.current[id] = true;
     } catch (error) {
       console.error(`Error injecting credentials for ${id}:`, error);
     }
-  }, [credsAreSet]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for webview messages
   useEffect(() => {
@@ -1489,7 +1491,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         if (message.type === 'webuntis-needs-login') {
           const webview = document.querySelector('#wv-webuntis');
           if (webview) {
-            setCredsAreSet(prev => ({ ...prev, webuntis: false }));
+            credsAreSet.current["webuntis"] = false;
             injectCredentials(webview, 'webuntis');
           }
         }
@@ -1522,7 +1524,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           if (webview) {
             if (id === 'outlook') {
               // For Outlook, clear credentials state and force complete reload
-              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              credsAreSet.current[id] = false;
               webview.clearHistory();
               // Force navigation to base OWA URL
               webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
@@ -1741,7 +1743,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           `);
           
           if (isLoginPage) {
-            setCredsAreSet(prev => ({ ...prev, [id]: false }));
+            credsAreSet.current[id] = false;
             await injectCredentials(webview, id);
           }
         }
@@ -1771,7 +1773,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `);
             
             if (isLoginPage) {
-              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              credsAreSet.current[id] = false;
               await injectCredentials(webview, id);
             }
           };
@@ -1829,7 +1831,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               
               if (needsLogin) {
                 console.log('schul.cloud/BBZ Chat periodic check: Login needed, triggering injection');
-                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                credsAreSet.current[id] = false;
                 await injectCredentials(webview, id);
               }
             } catch (error) {
@@ -1868,7 +1870,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               `);
               
               if (needsLogin) {
-                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                credsAreSet.current[id] = false;
                 await injectCredentials(webview, id);
               }
             } catch (error) {
@@ -1904,7 +1906,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               `);
 
               if (needsLogin) {
-                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                credsAreSet.current[id] = false;
                 await injectCredentials(webview, id);
               }
             } catch (error) {
@@ -1943,7 +1945,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               
               if (needsLogin) {
                 console.log('Anträge periodic check: Login needed, triggering injection');
-                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                credsAreSet.current[id] = false;
                 await injectCredentials(webview, id);
               }
             } catch (error) {
@@ -1973,7 +1975,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               `);
               
               if (needsLogin) {
-                setCredsAreSet(prev => ({ ...prev, [id]: false }));
+                credsAreSet.current[id] = false;
                 await injectCredentials(webview, id);
               }
             } catch (error) {
@@ -2054,7 +2056,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           `);
           
           if (isLoginPage) {
-            setCredsAreSet(prev => ({ ...prev, [id]: false }));
+            credsAreSet.current[id] = false;
             await injectCredentials(webview, id);
           }
         } else if (id === 'schulcloud') {
@@ -2094,7 +2096,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `);
             
             if (needsLogin) {
-              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              credsAreSet.current[id] = false;
               await injectCredentials(webview, id);
             }
           } catch (error) {
@@ -2123,7 +2125,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `);
             
             if (needsLogin) {
-              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              credsAreSet.current[id] = false;
               await injectCredentials(webview, id);
             }
           } catch (error) {
@@ -2150,7 +2152,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             `);
 
             if (needsLogin) {
-              setCredsAreSet(prev => ({ ...prev, [id]: false }));
+              credsAreSet.current[id] = false;
               await injectCredentials(webview, id);
             }
           } catch (error) {
