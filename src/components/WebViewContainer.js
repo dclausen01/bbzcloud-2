@@ -264,16 +264,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         account: 'bbbPassword'
       }) : null;
 
-      if (!emailResult.success || !passwordResult.success || (id === 'bbb' && !bbbPasswordResult?.success)) {
+      const encryptionPasswordResult = id === 'bbzchat' ? await window.electron.getCredentials({
+        service: 'bbzcloud',
+        account: 'schulcloudEncryptionPassword'
+      }) : null;
+
+      if (!emailResult.success || !passwordResult.success || (id === 'bbb' && !bbbPasswordResult?.success) || (id === 'bbzchat' && !encryptionPasswordResult?.success)) {
         return;
       }
 
       const emailAddress = emailResult.password;
       const password = passwordResult.password;
       const bbbPassword = bbbPasswordResult?.password;
+      const encryptionPassword = encryptionPasswordResult?.password;
 
       // Skip injection if credentials are empty or whitespace-only
-      if (!emailAddress?.trim() || !password?.trim() || (id === 'bbb' && !bbbPassword?.trim())) {
+      if (!emailAddress?.trim() || !password?.trim() || (id === 'bbb' && !bbbPassword?.trim()) || (id === 'bbzchat' && !encryptionPassword?.trim())) {
         console.log(`[${id}] Skipping credential injection - empty credentials`);
         return;
       }
@@ -1170,6 +1176,91 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }
           } catch (error) {
             console.error('Error during Nextcloud login:', error);
+          }
+          break;
+
+        case 'bbzchat':
+          try {
+            // Get encryption password
+            const encryptionPasswordResult = await window.electron.getCredentials({
+              service: 'bbzcloud',
+              account: 'schulcloudEncryptionPassword'
+            });
+
+            if (!encryptionPasswordResult.success || !encryptionPasswordResult.password) {
+              return;
+            }
+
+            const encryptionPassword = encryptionPasswordResult.password;
+
+            // Detect BBZ Chat login state
+            const loginState = await webview.executeJavaScript(`
+              (function() {
+                const emailInput = document.querySelector('input[type="email"]');
+                const passwordInputs = document.querySelectorAll('input[type="password"]');
+                const submitButton = document.querySelector('button[type="submit"]');
+                
+                // Check if already logged in
+                const loggedIn = document.querySelector('.app-sidebar') ||
+                                document.querySelector('.chat-container') ||
+                                document.body.textContent.includes('Abmelden') ||
+                                document.body.textContent.includes('Logout');
+                
+                return {
+                  emailInput: !!emailInput,
+                  passwordInputs: passwordInputs.length,
+                  submitButton: !!submitButton,
+                  loggedIn: !!loggedIn,
+                  url: window.location.href,
+                  title: document.title
+                };
+              })()
+            `);
+
+            console.log('BBZ Chat login state:', loginState);
+
+            if (loginState.loggedIn) {
+              return;
+            }
+
+            if (loginState.emailInput && loginState.passwordInputs >= 2 && loginState.submitButton) {
+              // Fill email, password, encryption password and submit
+              const result = await webview.executeJavaScript(`
+                (async function() {
+                  const emailInput = document.querySelector('input[type="email"]');
+                  const passwordInputs = document.querySelectorAll('input[type="password"]');
+                  const submitButton = document.querySelector('button[type="submit"]');
+                  
+                  if (emailInput && passwordInputs.length >= 2 && submitButton) {
+                    emailInput.value = ${JSON.stringify(emailAddress)};
+                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    passwordInputs[0].value = ${JSON.stringify(password)};
+                    passwordInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+                    passwordInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    passwordInputs[1].value = ${JSON.stringify(encryptionPassword)};
+                    passwordInputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+                    passwordInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    submitButton.click();
+                    return true;
+                  }
+                  return false;
+                })()
+              `);
+              
+              console.log('BBZ Chat injection result:', result);
+            }
+          } catch (error) {
+            console.error('Error during BBZ Chat login:', error);
           }
           break;
       }

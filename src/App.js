@@ -139,12 +139,14 @@ function App() {
   const [webuntisPassword, setWebuntisPassword] = useState('');
   const [schulportalEmail, setSchulportalEmail] = useState('');
   const [schulportalPassword, setSchulportalPassword] = useState('');
+  const [schulcloudEncryptionPassword, setSchulcloudEncryptionPassword] = useState('');
   
   // Password visibility toggles for form inputs
   const [showPassword, setShowPassword] = useState(false);
   const [showBBBPassword, setShowBBBPassword] = useState(false);
   const [showWebuntisPassword, setShowWebuntisPassword] = useState(false);
   const [showSchulportalPassword, setShowSchulportalPassword] = useState(false);
+  const [showEncryptionPassword, setShowEncryptionPassword] = useState(false);
 
   // Application State
   const [isLoadingEmail, setIsLoadingEmail] = useState(true);
@@ -230,7 +232,7 @@ function App() {
         }
         
         // Load all credentials in parallel for better performance
-        const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult, schulportalEmailResult, schulportalPasswordResult] = await Promise.all([
+        const [emailResult, passwordResult, bbbPasswordResult, webuntisEmailResult, webuntisPasswordResult, schulportalEmailResult, schulportalPasswordResult, schulcloudEncryptionPasswordResult] = await Promise.all([
           window.electron.getCredentials({
             service: 'bbzcloud',
             account: 'email'
@@ -279,6 +281,13 @@ function App() {
           }).catch(error => {
             console.warn('Error loading Schulportal password credential:', error);
             return { success: false };
+          }),
+          window.electron.getCredentials({
+            service: 'bbzcloud',
+            account: 'schulcloudEncryptionPassword'
+          }).catch(error => {
+            console.warn('Error loading encryption password credential:', error);
+            return { success: false };
           })
         ]);
 
@@ -317,6 +326,10 @@ function App() {
 
         if (schulportalPasswordResult.success && schulportalPasswordResult.password) {
           setSchulportalPassword(schulportalPasswordResult.password);
+        }
+
+        if (schulcloudEncryptionPasswordResult.success && schulcloudEncryptionPasswordResult.password) {
+          setSchulcloudEncryptionPassword(schulcloudEncryptionPasswordResult.password);
         }
 
         // Show welcome modal for new users (no email saved)
@@ -434,6 +447,11 @@ function App() {
           service: 'bbzcloud',
           account: 'schulportalPassword',
           password: schulportalPassword
+        }) : Promise.resolve(),
+        schulcloudEncryptionPassword ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'schulcloudEncryptionPassword',
+          password: schulcloudEncryptionPassword
         }) : Promise.resolve()
       ]);
       
@@ -1292,6 +1310,24 @@ function App() {
                       </FormControl>
                     </>
                   )}
+
+                  {/* schul.cloud Verschlüsselungskennwort */}
+                  <FormControl>
+                    <FormLabel>schul.cloud Verschlüsselungskennwort</FormLabel>
+                    <InputGroup>
+                      <Input
+                        type={showEncryptionPassword ? 'text' : 'password'}
+                        value={schulcloudEncryptionPassword}
+                        onChange={(e) => setSchulcloudEncryptionPassword(e.target.value)}
+                        placeholder="Verschlüsselungskennwort (optional)"
+                      />
+                      <InputRightElement width="4.5rem">
+                        <Button h="1.75rem" size="sm" onClick={() => setShowEncryptionPassword(!showEncryptionPassword)}>
+                          {showEncryptionPassword ? 'Verbergen' : 'Zeigen'}
+                        </Button>
+                      </InputRightElement>
+                    </InputGroup>
+                  </FormControl>
                 </>
               )}
 

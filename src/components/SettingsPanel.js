@@ -31,6 +31,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
   const [newAppUrl, setNewAppUrl] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showBBBPassword, setShowBBBPassword] = useState(false);
+  const [showEncryptionPassword, setShowEncryptionPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dbPath, setDbPath] = useState('');
@@ -41,7 +42,8 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
     webuntisEmail: '',
     webuntisPassword: '',
     schulportalEmail: '',
-    schulportalPassword: ''
+    schulportalPassword: '',
+    schulcloudEncryptionPassword: ''
   });
   const [version, setVersion] = useState('');
   const toast = useToast();
@@ -97,6 +99,10 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'schulportalPassword'
         });
+        const schulcloudEncryptionPasswordResult = await window.electron.getCredentials({
+          service: 'bbzcloud',
+          account: 'schulcloudEncryptionPassword'
+        });
         
         setCredentials({
           email: emailResult.success ? emailResult.password : '',
@@ -105,7 +111,8 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : '',
           webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : '',
           schulportalEmail: schulportalEmailResult.success ? schulportalEmailResult.password : '',
-          schulportalPassword: schulportalPasswordResult.success ? schulportalPasswordResult.password : ''
+          schulportalPassword: schulportalPasswordResult.success ? schulportalPasswordResult.password : '',
+          schulcloudEncryptionPassword: schulcloudEncryptionPasswordResult.success ? schulcloudEncryptionPasswordResult.password : ''
         });
       } catch (error) {
         console.error('Error loading credentials:', error);
@@ -204,6 +211,11 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'schulportalPassword',
           password: credentials.schulportalPassword
+        }) : Promise.resolve({ success: true }),
+        credentials.schulcloudEncryptionPassword ? window.electron.saveCredentials({
+          service: 'bbzcloud',
+          account: 'schulcloudEncryptionPassword',
+          password: credentials.schulcloudEncryptionPassword
         }) : Promise.resolve({ success: true })
       ]);
 
@@ -656,6 +668,24 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
               </FormControl>
             </>
           )}
+
+          {/* schul.cloud Verschlüsselungskennwort */}
+          <FormControl>
+            <FormLabel>schul.cloud Verschlüsselungskennwort</FormLabel>
+            <InputGroup>
+              <Input
+                type={showEncryptionPassword ? 'text' : 'password'}
+                value={credentials.schulcloudEncryptionPassword}
+                onChange={(e) => setCredentials(prev => ({ ...prev, schulcloudEncryptionPassword: e.target.value }))}
+                placeholder="Verschlüsselungskennwort"
+              />
+              <InputRightElement width="4.5rem">
+                <Button h="1.75rem" size="sm" onClick={() => setShowEncryptionPassword(!showEncryptionPassword)}>
+                  {showEncryptionPassword ? 'Verbergen' : 'Zeigen'}
+                </Button>
+              </InputRightElement>
+            </InputGroup>
+          </FormControl>
 
           <Button 
             colorScheme="blue" 

@@ -226,6 +226,7 @@ export const DATABASE_CONFIG = {
     WEBUNTIS_PASSWORD: 'webuntisPassword',    // WebUntis password
     SCHULPORTAL_EMAIL: 'schulportalEmail',    // Schulportal username
     SCHULPORTAL_PASSWORD: 'schulportalPassword', // Schulportal password
+    SCHULCLOUD_ENCRYPTION_PASSWORD: 'schulcloudEncryptionPassword', // BBZ Chat encryption password
   },
 };
 
