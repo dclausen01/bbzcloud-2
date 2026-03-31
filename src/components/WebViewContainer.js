@@ -607,28 +607,47 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             const currentUrl = webview.getURL();
             const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
 
-            // If BBZ Chat, handle its specific login form
+            // If BBZ Chat (Rocket.Chat), handle its specific login form
             if (isBbzChat) {
-              // BBZ Chat login state detection
+              // BBZ Chat / Rocket.Chat login state detection
+              // Rocket.Chat uses input#emailOrUsername (type=text) and input#pass, NOT input[type=email]
               const chatLoginState = await webview.executeJavaScript(`
                 (function() {
-                  const emailInput = document.querySelector('input[type="email"]');
+                  // Rocket.Chat specific selectors (primary)
+                  const rcEmailInput = document.querySelector('input#emailOrUsername') ||
+                                       document.querySelector('input[name="emailOrUsername"]');
+                  const rcPassInput  = document.querySelector('input#pass') ||
+                                       document.querySelector('input[name="pass"]');
+
+                  // Generic fallbacks
+                  const genericEmailInput = document.querySelector('input[type="email"]') ||
+                                            document.querySelector('input[placeholder*="E-Mail"]') ||
+                                            document.querySelector('input[placeholder*="Nutzername"]') ||
+                                            document.querySelector('input[placeholder*="Username"]');
                   const passwordInputs = document.querySelectorAll('input[type="password"]');
-                  const submitButton = document.querySelector('button[type="submit"]');
-                  
-                  // Check for "Durch dein Verschlüsselungskennwort" button
-                  const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                  const submitButton   = document.querySelector('button[type="submit"]') ||
+                                         document.querySelector('.login-button') ||
+                                         document.querySelector('button.rc-button--primary');
+
+                  // Check for "Durch dein Verschlüsselungskennwort" button (E2E encryption)
+                  const encryptionButton = Array.from(document.querySelectorAll('button, div')).find(btn =>
                     btn.textContent.includes('Durch dein Verschlüsselungskennwort')
                   );
-                  
+
                   // Check if already logged in
                   const loggedIn = document.querySelector('.app-sidebar') ||
-                                  document.querySelector('.chat-container') ||
-                                  document.body.textContent.includes('Abmelden') ||
-                                  document.body.textContent.includes('Logout');
-                  
+                                   document.querySelector('.sidebar') ||
+                                   document.querySelector('.main-content') ||
+                                   document.querySelector('[data-qa="sidebar"]') ||
+                                   document.body.textContent.includes('Abmelden') ||
+                                   document.body.textContent.includes('Logout');
+
+                  const emailInput = rcEmailInput || genericEmailInput;
+                  const passInput  = rcPassInput || (passwordInputs.length > 0 ? passwordInputs[0] : null);
+
                   return {
                     emailInput: !!emailInput,
+                    hasRcSelectors: !!(rcEmailInput && rcPassInput),
                     passwordInputCount: passwordInputs.length,
                     submitButton: !!submitButton,
                     hasEncryptionButton: !!encryptionButton,
@@ -639,21 +658,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 })()
               `);
 
-              console.log('BBZ Chat login state:', chatLoginState);
+              console.log('BBZ Chat (Rocket.Chat) login state:', chatLoginState);
 
               if (chatLoginState.loggedIn) {
                 return;
               }
 
-              // Click "Durch dein Verschlüsselungskennwort" button first if visible
+              // Click "Durch dein Verschlüsselungskennwort" button first if visible (E2E encryption page)
               if (chatLoginState.hasEncryptionButton) {
                 await webview.executeJavaScript(`
                   (function() {
-                    const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                    const encryptionButton = Array.from(document.querySelectorAll('button, div')).find(btn =>
                       btn.textContent.includes('Durch dein Verschlüsselungskennwort')
                     );
                     if (encryptionButton) {
-                      console.log('Clicking Durch dein Verschlüsselungskennwort button');
+                      console.log('[BBZ Chat] Clicking Verschlüsselungskennwort button');
                       encryptionButton.click();
                       return true;
                     }
@@ -662,58 +681,79 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 `);
                 // Wait for password field to appear
                 await new Promise(resolve => setTimeout(resolve, 1500));
+
+                // Fill the E2E encryption password if available
+                if (schulcloudEncryptionPassword) {
+                  await webview.executeJavaScript(`
+                    (async function() {
+                      await new Promise(r => setTimeout(r, 500));
+                      const passInput = document.querySelector('input[type="password"]');
+                      const submitBtn = document.querySelector('button[type="submit"]') ||
+                                        document.querySelector('.rc-button--primary');
+                      if (passInput) {
+                        passInput.value = ${JSON.stringify(schulcloudEncryptionPassword)};
+                        passInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        passInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        await new Promise(r => setTimeout(r, 500));
+                        if (submitBtn) submitBtn.click();
+                        return true;
+                      }
+                      return false;
+                    })()
+                  `);
+                }
+                break;
               }
 
-              // Fill email, password and encryption password
-              if (chatLoginState.emailInput && schulcloudEncryptionPassword) {
+              // Main login form: fill email/username + password
+              if (chatLoginState.emailInput) {
                 const result = await webview.executeJavaScript(`
                   (async function() {
-                    const emailInput = document.querySelector('input[type="email"]');
-                    const passwordInputs = document.querySelectorAll('input[type="password"]');
-                    
-                    // Wait a bit for fields to appear after clicking encryption button
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                    // Find visible password inputs
-                    const visiblePasswordInputs = Array.from(passwordInputs).filter(input => 
-                      input.offsetParent !== null || input.type === 'password'
-                    );
+                    // Prefer Rocket.Chat specific selectors, fall back to generic
+                    const emailInput = document.querySelector('input#emailOrUsername') ||
+                                       document.querySelector('input[name="emailOrUsername"]') ||
+                                       document.querySelector('input[type="email"]') ||
+                                       document.querySelector('input[placeholder*="E-Mail"]') ||
+                                       document.querySelector('input[placeholder*="Nutzername"]');
+                    const passInput  = document.querySelector('input#pass') ||
+                                       document.querySelector('input[name="pass"]') ||
+                                       document.querySelector('input[type="password"]');
+                    const submitBtn  = document.querySelector('button[type="submit"]') ||
+                                       document.querySelector('.login-button') ||
+                                       document.querySelector('button.rc-button--primary');
 
-                    if (emailInput) {
-                      emailInput.value = ${JSON.stringify(emailAddress)};
-                      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-                      emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (!emailInput || !passInput || !submitBtn) {
+                      console.log('[BBZ Chat] Login form elements not found', {emailInput: !!emailInput, passInput: !!passInput, submitBtn: !!submitBtn});
+                      return false;
                     }
 
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    console.log('[BBZ Chat] Filling login form');
 
-                    if (visiblePasswordInputs.length > 0) {
-                      // First password field = login password
-                      visiblePasswordInputs[0].value = ${JSON.stringify(password)};
-                      visiblePasswordInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-                      visiblePasswordInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-                    }
+                    // Fill email/username
+                    emailInput.focus();
+                    emailInput.value = ${JSON.stringify(emailAddress)};
+                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    emailInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
 
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    await new Promise(r => setTimeout(r, 300));
 
-                    if (visiblePasswordInputs.length > 1 && ${JSON.stringify(schulcloudEncryptionPassword)}) {
-                      // Second password field = encryption password
-                      visiblePasswordInputs[1].value = ${JSON.stringify(schulcloudEncryptionPassword)};
-                      visiblePasswordInputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-                      visiblePasswordInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
-                    }
+                    // Fill password
+                    passInput.focus();
+                    passInput.value = ${JSON.stringify(password)};
+                    passInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    passInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    passInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
 
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await new Promise(r => setTimeout(r, 500));
 
-                    const submitButton = document.querySelector('button[type="submit"]');
-                    if (submitButton) {
-                      submitButton.click();
-                      return true;
-                    }
-                    return false;
+                    // Submit
+                    submitBtn.click();
+                    console.log('[BBZ Chat] Login form submitted');
+                    return true;
                   })()
                 `);
-                
+
                 console.log('BBZ Chat injection result:', result);
               }
               break;
@@ -1821,11 +1861,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   // schul.cloud login selectors
                   const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
 
-                  // BBZ Chat login selectors (uses email input instead of text)
-                  const bbzChatEmailInput = document.querySelector('input[type="email"]');
+                  // BBZ Chat / Rocket.Chat login selectors
+                  // Rocket.Chat uses input#emailOrUsername (type=text), NOT input[type=email]
+                  const bbzChatEmailInput = document.querySelector('input#emailOrUsername') ||
+                                            document.querySelector('input[name="emailOrUsername"]') ||
+                                            document.querySelector('input[type="email"]');
 
                   // Shared: password field present on both login pages
-                  const passwordInput = document.querySelector('input[type="password"]');
+                  const passwordInput = document.querySelector('input[type="password"]') ||
+                                        document.querySelector('input#pass') ||
+                                        document.querySelector('input[name="pass"]');
 
                   // schul.cloud logged-in indicators
                   const loggedInSchulcloud = document.querySelector('.user-menu') ||
@@ -1834,8 +1879,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                                  document.body.textContent.includes('Verschlüsselungspasswort') ||
                                  document.body.textContent.includes('Smartphone');
 
-                  // BBZ Chat logged-in indicators
+                  // BBZ Chat / Rocket.Chat logged-in indicators
                   const loggedInBbzChat = document.querySelector('.app-sidebar') ||
+                                 document.querySelector('.sidebar') ||
+                                 document.querySelector('[data-qa="sidebar"]') ||
                                  document.querySelector('.chat-container');
 
                   // Generic logged-in indicator (works for both)
