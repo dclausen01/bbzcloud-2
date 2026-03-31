@@ -596,13 +596,130 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'schulcloud':
           try {
-            // Get encryption password for schul.cloud
+            // Get encryption password for schul.cloud / BBZ Chat
             const schulcloudEncryptionResult = await window.electron.getCredentials({
               service: 'bbzcloud',
               account: 'schulcloudEncryptionPassword'
             });
             const schulcloudEncryptionPassword = schulcloudEncryptionResult.success ? schulcloudEncryptionResult.password : null;
 
+            // Check if we're on BBZ Chat (chat.bbz-rd-eck.com)
+            const currentUrl = webview.getURL();
+            const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
+
+            // If BBZ Chat, handle its specific login form
+            if (isBbzChat) {
+              // BBZ Chat login state detection
+              const chatLoginState = await webview.executeJavaScript(`
+                (function() {
+                  const emailInput = document.querySelector('input[type="email"]');
+                  const passwordInputs = document.querySelectorAll('input[type="password"]');
+                  const submitButton = document.querySelector('button[type="submit"]');
+                  
+                  // Check for "Durch dein Verschlüsselungskennwort" button
+                  const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                    btn.textContent.includes('Durch dein Verschlüsselungskennwort')
+                  );
+                  
+                  // Check if already logged in
+                  const loggedIn = document.querySelector('.app-sidebar') ||
+                                  document.querySelector('.chat-container') ||
+                                  document.body.textContent.includes('Abmelden') ||
+                                  document.body.textContent.includes('Logout');
+                  
+                  return {
+                    emailInput: !!emailInput,
+                    passwordInputCount: passwordInputs.length,
+                    submitButton: !!submitButton,
+                    hasEncryptionButton: !!encryptionButton,
+                    loggedIn: !!loggedIn,
+                    url: window.location.href,
+                    title: document.title
+                  };
+                })()
+              `);
+
+              console.log('BBZ Chat login state:', chatLoginState);
+
+              if (chatLoginState.loggedIn) {
+                return;
+              }
+
+              // Click "Durch dein Verschlüsselungskennwort" button first if visible
+              if (chatLoginState.hasEncryptionButton) {
+                await webview.executeJavaScript(`
+                  (function() {
+                    const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                      btn.textContent.includes('Durch dein Verschlüsselungskennwort')
+                    );
+                    if (encryptionButton) {
+                      console.log('Clicking Durch dein Verschlüsselungskennwort button');
+                      encryptionButton.click();
+                      return true;
+                    }
+                    return false;
+                  })()
+                `);
+                // Wait for password field to appear
+                await new Promise(resolve => setTimeout(resolve, 1500));
+              }
+
+              // Fill email, password and encryption password
+              if (chatLoginState.emailInput && schulcloudEncryptionPassword) {
+                const result = await webview.executeJavaScript(`
+                  (async function() {
+                    const emailInput = document.querySelector('input[type="email"]');
+                    const passwordInputs = document.querySelectorAll('input[type="password"]');
+                    
+                    // Wait a bit for fields to appear after clicking encryption button
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Find visible password inputs
+                    const visiblePasswordInputs = Array.from(passwordInputs).filter(input => 
+                      input.offsetParent !== null || input.type === 'password'
+                    );
+
+                    if (emailInput) {
+                      emailInput.value = ${JSON.stringify(emailAddress)};
+                      emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      emailInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, 200));
+
+                    if (visiblePasswordInputs.length > 0) {
+                      // First password field = login password
+                      visiblePasswordInputs[0].value = ${JSON.stringify(password)};
+                      visiblePasswordInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+                      visiblePasswordInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, 200));
+
+                    if (visiblePasswordInputs.length > 1 && ${JSON.stringify(schulcloudEncryptionPassword)}) {
+                      // Second password field = encryption password
+                      visiblePasswordInputs[1].value = ${JSON.stringify(schulcloudEncryptionPassword)};
+                      visiblePasswordInputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+                      visiblePasswordInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                    const submitButton = document.querySelector('button[type="submit"]');
+                    if (submitButton) {
+                      submitButton.click();
+                      return true;
+                    }
+                    return false;
+                  })()
+                `);
+                
+                console.log('BBZ Chat injection result:', result);
+              }
+              break;
+            }
+
+            // Fall back to schul.cloud logic
             // Detect login state using exact schul.cloud selectors
             const loginState = await webview.executeJavaScript(`
               (function() {
