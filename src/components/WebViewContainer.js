@@ -760,67 +760,79 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               
               console.log('Password injection result:', result);
               
-            } else if (loginState.onEncryptionPage) {
-              // Check page state for encryption page
+            } else if (loginState.onEncryptionPage && schulcloudEncryptionPassword) {
+              // Encryption password page - need to click "Durch dein Verschlüsselungskennwort" first, then fill password
               const pageState = await webview.executeJavaScript(`
                 (function() {
+                  // Check for "Durch dein Verschlüsselungskennwort" button (with data-icon="password")
+                  const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                    btn.textContent.includes('Durch dein Verschlüsselungskennwort')
+                  );
+                  
                   const passwordInputs = document.querySelectorAll('input[type="password"]');
                   const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
-                    btn.textContent.includes('Weiter') || btn.textContent.includes('Entschlüsseln')
+                    btn.textContent.includes('Weiter')
                   );
                   
                   return {
+                    hasEncryptionButton: !!encryptionButton,
                     passwordInputCount: passwordInputs.length,
-                    hasWeiterButton: !!weiterButton
+                    hasWeiterButton: !!weiterButton,
+                    // Check if password field is already visible (after clicking encryption button)
+                    passwordInputVisible: passwordInputs.length > 0 && passwordInputs[0].offsetParent !== null
                   };
                 })()
               `);
 
               console.log('schul.cloud encryption page state:', pageState);
 
-              // Fill encryption password directly without clicking "Privaten Schlüssel importieren"
+              // Wait a bit for the page to settle
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+              // Check if we need to click the encryption button first
+              if (pageState.hasEncryptionButton) {
+                // Click "Durch dein Verschlüsselungskennwort" button
+                await webview.executeJavaScript(`
+                  (function() {
+                    const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                      btn.textContent.includes('Durch dein Verschlüsselungskennwort')
+                    );
+                    if (encryptionButton) {
+                      console.log('Clicking Durch dein Verschlüsselungskennwort button');
+                      encryptionButton.click();
+                      return true;
+                    }
+                    return false;
+                  })()
+                `);
+
+                // Wait for password field to appear
+                await new Promise(resolve => setTimeout(resolve, 1500));
+              }
+
+              // Now fill encryption password and click Weiter
               const result = await webview.executeJavaScript(`
                 (function() {
                   const passwordInputs = document.querySelectorAll('input[type="password"]');
+                  const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
+                    btn.textContent.includes('Weiter')
+                  );
+
+                  // Find the visible password input
                   let encryptionInput = null;
-                  
-                  // Find encryption password field
                   for (const input of passwordInputs) {
-                    const parentAppLabel = input.closest('app-label-input');
-                    const hasEncryptionTestId = parentAppLabel && parentAppLabel.getAttribute('data-test-id') === 'set-private-key-password_pass_if';
-                    const hasEncryptionLabel = parentAppLabel && parentAppLabel.textContent.includes('Verschlüsselungskennwort');
-                    
-                    if (hasEncryptionTestId || hasEncryptionLabel) {
+                    if (input.offsetParent !== null) {
                       encryptionInput = input;
                       break;
                     }
                   }
-                  
-                  // Fallback: if no encryption label found, use the visible password input
+
                   if (!encryptionInput && passwordInputs.length > 0) {
-                    // Find the first visible password input (not hidden)
-                    for (const input of passwordInputs) {
-                      const rect = input.getBoundingClientRect();
-                      if (rect.width > 0 && rect.height > 0) {
-                        encryptionInput = input;
-                        break;
-                      }
-                    }
+                    encryptionInput = passwordInputs[0];
                   }
                   
-                  if (!encryptionInput) {
-                    // Last fallback: use last password input
-                    if (passwordInputs.length > 0) {
-                      encryptionInput = passwordInputs[passwordInputs.length - 1];
-                    }
-                  }
-                  
-                  const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
-                    btn.textContent.includes('Weiter') || btn.textContent.includes('Entschlüsseln')
-                  );
-                  
-                  if (encryptionInput) {
-                    console.log('Filling encryption password');
+                  if (encryptionInput && ${JSON.stringify(schulcloudEncryptionPassword)}) {
+                    console.log('Filling encryption password:', ${JSON.stringify(schulcloudEncryptionPassword)});
                     encryptionInput.value = ${JSON.stringify(schulcloudEncryptionPassword)};
                     encryptionInput.focus();
                     
@@ -839,7 +851,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     
                     return true;
                   } else {
-                    console.log('No encryption password field found');
+                    console.log('No encryption password field found or no password set');
                     return false;
                   }
                 })()
