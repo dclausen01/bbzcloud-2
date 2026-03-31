@@ -596,12 +596,19 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'schulcloud':
           try {
+            // Get encryption password for schul.cloud
+            const schulcloudEncryptionResult = await window.electron.getCredentials({
+              service: 'bbzcloud',
+              account: 'schulcloudEncryptionPassword'
+            });
+            const schulcloudEncryptionPassword = schulcloudEncryptionResult.success ? schulcloudEncryptionResult.password : null;
+
             // Detect login state using exact schul.cloud selectors
             const loginState = await webview.executeJavaScript(`
               (function() {
                 // Look for specific schul.cloud elements
                 const emailInput = document.querySelector('input#username[type="text"]');
-                const passwordInput = document.querySelector('input[type="password"]');
+                const passwordInputs = document.querySelectorAll('input[type="password"]');
                 const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
                 const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
                                   Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
@@ -610,21 +617,35 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 // Check for remember login checkbox (look for the SVG icon structure)
                 const rememberCheckbox = document.querySelector('app-icon[icon="check"]');
                 
+                // Find encryption password field
+                let encryptionInput = null;
+                for (const input of passwordInputs) {
+                  const parentAppLabel = input.closest('app-label-input');
+                  const hasEncryptionTestId = parentAppLabel && parentAppLabel.getAttribute('data-test-id') === 'set-private-key-password_pass_if';
+                  const hasEncryptionLabel = parentAppLabel && parentAppLabel.textContent.includes('Verschlüsselungskennwort');
+                  if (hasEncryptionTestId || hasEncryptionLabel) {
+                    encryptionInput = input;
+                    break;
+                  }
+                }
+                
                 // Check if already logged in or on encryption/auth page
                 const loggedIn = document.querySelector('.user-menu') ||
                                document.querySelector('.dashboard') ||
                                document.querySelector('.main-content') ||
-                               document.body.textContent.includes('Abmelden') ||
-                               document.body.textContent.includes('Verschlüsselungspasswort') ||
-                               document.body.textContent.includes('Smartphone');
+                               document.body.textContent.includes('Abmelden');
+                const onEncryptionPage = document.body.textContent.includes('Verschlüsselungspasswort') || document.body.textContent.includes('Smartphone');
                 
                 return {
                   emailInput: !!emailInput,
-                  passwordInput: !!passwordInput,
+                  passwordInputs: passwordInputs.length,
                   weiterButton: !!weiterButton,
                   loginButton: !!loginButton,
                   rememberCheckbox: !!rememberCheckbox,
+                  hasEncryptionInput: !!encryptionInput,
+                  encryptionInputIndex: encryptionInput ? Array.from(passwordInputs).indexOf(encryptionInput) : -1,
                   loggedIn: !!loggedIn,
+                  onEncryptionPage: !!onEncryptionPage,
                   url: window.location.href,
                   title: document.title
                 };
@@ -638,7 +659,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               return;
             }
 
-            if (loginState.emailInput && !loginState.passwordInput) {
+            if (loginState.emailInput && !loginState.passwordInputs) {
               // Email page - fill email and click Weiter
               const result = await webview.executeJavaScript(`
                 (function() {
@@ -669,7 +690,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               
               console.log('Email injection result:', result);
               
-            } else if (loginState.passwordInput) {
+            } else if (loginState.passwordInputs && !loginState.onEncryptionPage) {
               // Password page - fill password, check remember me, and submit
               const result = await webview.executeJavaScript(`
                 (function() {
@@ -700,7 +721,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   
                   if (passwordInput) {
                     console.log('Filling login password (not encryption password)');
-                    passwordInput.value = "${password}";
+                    passwordInput.value = ${JSON.stringify(password)};
                     passwordInput.focus();
                     
                     // Trigger Angular events
@@ -721,8 +742,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                         loginButton.click();
                       } else {
                         // Try to find the parent button element
-                        const parentButton = document.querySelector('button:contains("Anmelden")') ||
-                                           document.querySelector('button[type="submit"]');
+                        const parentButton = document.querySelector('button[type="submit"]');
                         if (parentButton) {
                           console.log('Clicking parent login button');
                           parentButton.click();
@@ -739,6 +759,67 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               `);
               
               console.log('Password injection result:', result);
+              
+            } else if (loginState.onEncryptionPage && schulcloudEncryptionPassword) {
+              // Encryption password page - fill encryption password and submit
+              const result = await webview.executeJavaScript(`
+                (function() {
+                  const allPasswordInputs = document.querySelectorAll('input[type="password"]');
+                  let encryptionInput = null;
+                  
+                  // Find encryption password field
+                  for (const input of allPasswordInputs) {
+                    const parentAppLabel = input.closest('app-label-input');
+                    const hasEncryptionTestId = parentAppLabel && parentAppLabel.getAttribute('data-test-id') === 'set-private-key-password_pass_if';
+                    const hasEncryptionLabel = parentAppLabel && parentAppLabel.textContent.includes('Verschlüsselungskennwort');
+                    
+                    if (hasEncryptionTestId || hasEncryptionLabel) {
+                      encryptionInput = input;
+                      break;
+                    }
+                  }
+                  
+                  if (!encryptionInput) {
+                    // Fallback: use last password input if no encryption label found
+                    if (allPasswordInputs.length > 0) {
+                      encryptionInput = allPasswordInputs[allPasswordInputs.length - 1];
+                    }
+                  }
+                  
+                  const submitButton = document.querySelector('button[type="submit"]') ||
+                                      Array.from(document.querySelectorAll('button')).find(btn => 
+                                        btn.textContent.includes('Entschlüsseln') || 
+                                        btn.textContent.includes('Fortfahren') ||
+                                        btn.textContent.includes('Weiter')
+                                      );
+                  
+                  if (encryptionInput) {
+                    console.log('Filling encryption password');
+                    encryptionInput.value = ${JSON.stringify(schulcloudEncryptionPassword)};
+                    encryptionInput.focus();
+                    
+                    // Trigger Angular events
+                    encryptionInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    encryptionInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    encryptionInput.dispatchEvent(new Event('blur', { bubbles: true }));
+                    
+                    // Wait then click submit button
+                    setTimeout(() => {
+                      if (submitButton) {
+                        console.log('Clicking encryption submit button');
+                        submitButton.click();
+                      }
+                    }, 1000);
+                    
+                    return true;
+                  } else {
+                    console.log('No encryption password field found');
+                    return false;
+                  }
+                })()
+              `);
+              
+              console.log('Encryption password injection result:', result);
             }
           } catch (error) {
             console.error('Error during schul.cloud login:', error);
