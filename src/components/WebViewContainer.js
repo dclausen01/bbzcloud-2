@@ -760,15 +760,57 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               
               console.log('Password injection result:', result);
               
-            } else if (loginState.onEncryptionPage && schulcloudEncryptionPassword) {
-              // Encryption password page - fill encryption password and submit
+            } else if (loginState.onEncryptionPage) {
+              // Check if we need to click "Privaten Schlüssel importieren" first
+              const pageState = await webview.executeJavaScript(`
+                (function() {
+                  const importKeyButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                    btn.textContent.includes('Privaten Schlüssel importieren')
+                  );
+                  const passwordInput = document.querySelector('input[type="password"]');
+                  const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
+                    btn.textContent.includes('Weiter') || btn.textContent.includes('Entschlüsseln')
+                  );
+                  
+                  return {
+                    hasImportKeyButton: !!importKeyButton,
+                    hasPasswordInput: !!passwordInput,
+                    hasWeiterButton: !!weiterButton,
+                    passwordInputIndex: passwordInput ? Array.from(document.querySelectorAll('input[type="password"]')).indexOf(passwordInput) : -1
+                  };
+                })()
+              `);
+
+              console.log('schul.cloud encryption page state:', pageState);
+
+              if (pageState.hasImportKeyButton) {
+                // Click "Privaten Schlüssel importieren" button first
+                await webview.executeJavaScript(`
+                  (function() {
+                    const importKeyButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                      btn.textContent.includes('Privaten Schlüssel importieren')
+                    );
+                    if (importKeyButton) {
+                      console.log('Clicking Privaten Schlüssel importieren button');
+                      importKeyButton.click();
+                      return true;
+                    }
+                    return false;
+                  })()
+                `);
+
+                // Wait for password field to appear
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+
+              // Now fill encryption password
               const result = await webview.executeJavaScript(`
                 (function() {
-                  const allPasswordInputs = document.querySelectorAll('input[type="password"]');
+                  const passwordInputs = document.querySelectorAll('input[type="password"]');
                   let encryptionInput = null;
                   
                   // Find encryption password field
-                  for (const input of allPasswordInputs) {
+                  for (const input of passwordInputs) {
                     const parentAppLabel = input.closest('app-label-input');
                     const hasEncryptionTestId = parentAppLabel && parentAppLabel.getAttribute('data-test-id') === 'set-private-key-password_pass_if';
                     const hasEncryptionLabel = parentAppLabel && parentAppLabel.textContent.includes('Verschlüsselungskennwort');
@@ -779,19 +821,28 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     }
                   }
                   
-                  if (!encryptionInput) {
-                    // Fallback: use last password input if no encryption label found
-                    if (allPasswordInputs.length > 0) {
-                      encryptionInput = allPasswordInputs[allPasswordInputs.length - 1];
+                  // Fallback: if no encryption label found, use the visible password input
+                  if (!encryptionInput && passwordInputs.length > 0) {
+                    // Find the first visible password input (not hidden)
+                    for (const input of passwordInputs) {
+                      const rect = input.getBoundingClientRect();
+                      if (rect.width > 0 && rect.height > 0) {
+                        encryptionInput = input;
+                        break;
+                      }
                     }
                   }
                   
-                  const submitButton = document.querySelector('button[type="submit"]') ||
-                                      Array.from(document.querySelectorAll('button')).find(btn => 
-                                        btn.textContent.includes('Entschlüsseln') || 
-                                        btn.textContent.includes('Fortfahren') ||
-                                        btn.textContent.includes('Weiter')
-                                      );
+                  if (!encryptionInput) {
+                    // Last fallback: use last password input
+                    if (passwordInputs.length > 0) {
+                      encryptionInput = passwordInputs[passwordInputs.length - 1];
+                    }
+                  }
+                  
+                  const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
+                    btn.textContent.includes('Weiter') || btn.textContent.includes('Entschlüsseln')
+                  );
                   
                   if (encryptionInput) {
                     console.log('Filling encryption password');
@@ -803,11 +854,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     encryptionInput.dispatchEvent(new Event('change', { bubbles: true }));
                     encryptionInput.dispatchEvent(new Event('blur', { bubbles: true }));
                     
-                    // Wait then click submit button
+                    // Wait then click Weiter button
                     setTimeout(() => {
-                      if (submitButton) {
-                        console.log('Clicking encryption submit button');
-                        submitButton.click();
+                      if (weiterButton) {
+                        console.log('Clicking Weiter button');
+                        weiterButton.click();
                       }
                     }, 1000);
                     
