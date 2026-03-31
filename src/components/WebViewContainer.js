@@ -761,49 +761,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               console.log('Password injection result:', result);
               
             } else if (loginState.onEncryptionPage) {
-              // Check if we need to click "Privaten Schlüssel importieren" first
+              // Check page state for encryption page
               const pageState = await webview.executeJavaScript(`
                 (function() {
-                  const importKeyButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
-                    btn.textContent.includes('Privaten Schlüssel importieren')
-                  );
-                  const passwordInput = document.querySelector('input[type="password"]');
+                  const passwordInputs = document.querySelectorAll('input[type="password"]');
                   const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
                     btn.textContent.includes('Weiter') || btn.textContent.includes('Entschlüsseln')
                   );
                   
                   return {
-                    hasImportKeyButton: !!importKeyButton,
-                    hasPasswordInput: !!passwordInput,
-                    hasWeiterButton: !!weiterButton,
-                    passwordInputIndex: passwordInput ? Array.from(document.querySelectorAll('input[type="password"]')).indexOf(passwordInput) : -1
+                    passwordInputCount: passwordInputs.length,
+                    hasWeiterButton: !!weiterButton
                   };
                 })()
               `);
 
               console.log('schul.cloud encryption page state:', pageState);
 
-              if (pageState.hasImportKeyButton) {
-                // Click "Privaten Schlüssel importieren" button first
-                await webview.executeJavaScript(`
-                  (function() {
-                    const importKeyButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
-                      btn.textContent.includes('Privaten Schlüssel importieren')
-                    );
-                    if (importKeyButton) {
-                      console.log('Clicking Privaten Schlüssel importieren button');
-                      importKeyButton.click();
-                      return true;
-                    }
-                    return false;
-                  })()
-                `);
-
-                // Wait for password field to appear
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
-
-              // Now fill encryption password
+              // Fill encryption password directly without clicking "Privaten Schlüssel importieren"
               const result = await webview.executeJavaScript(`
                 (function() {
                   const passwordInputs = document.querySelectorAll('input[type="password"]');
