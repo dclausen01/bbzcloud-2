@@ -427,7 +427,8 @@ class DatabaseService {
                 }), {}),
                 theme: settings.theme || 'light', // Ensure theme is never undefined
                 autostart: settings.autostart ?? false,
-                minimizedStart: settings.minimizedStart ?? false
+                minimizedStart: settings.minimizedStart ?? false,
+                useBbzChat: settings.useBbzChat ?? false
             };
 
             return new Promise((resolve, reject) => {
@@ -479,7 +480,8 @@ class DatabaseService {
                             globalZoom: globalZoom,
                             navbarZoom: navbarZoom,
                             autostart: settings.autostart ?? false,
-                            minimizedStart: settings.minimizedStart ?? false
+                            minimizedStart: settings.minimizedStart ?? false,
+                            useBbzChat: settings.useBbzChat ?? false
                         };
                         resolve(result);
                     }

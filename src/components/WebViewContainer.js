@@ -1812,30 +1812,45 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           const interval = setInterval(checkLoginForm, 2000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
         } else if (id === 'schulcloud') {
-          // For schul.cloud, check for login forms periodically using exact selectors
+          // For schul.cloud AND BBZ Chat (both use the 'schulcloud' webview ID),
+          // check for login forms periodically using selectors for both services
           const checkSchulCloudLogin = async () => {
             try {
               const needsLogin = await webview.executeJavaScript(`
                 (function() {
-                  // Use exact same selectors as injection function
-                  const emailInput = document.querySelector('input#username[type="text"]');
+                  // schul.cloud login selectors
+                  const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
+
+                  // BBZ Chat login selectors (uses email input instead of text)
+                  const bbzChatEmailInput = document.querySelector('input[type="email"]');
+
+                  // Shared: password field present on both login pages
                   const passwordInput = document.querySelector('input[type="password"]');
-                  
-                  // Check if already logged in or on encryption/auth page
-                  const loggedIn = document.querySelector('.user-menu') ||
+
+                  // schul.cloud logged-in indicators
+                  const loggedInSchulcloud = document.querySelector('.user-menu') ||
                                  document.querySelector('.dashboard') ||
                                  document.querySelector('.main-content') ||
-                                 document.body.textContent.includes('Abmelden') ||
                                  document.body.textContent.includes('Verschlüsselungspasswort') ||
                                  document.body.textContent.includes('Smartphone');
-                  
-                  // We need login if we see login forms and not logged in
-                  return (emailInput || passwordInput) && !loggedIn;
+
+                  // BBZ Chat logged-in indicators
+                  const loggedInBbzChat = document.querySelector('.app-sidebar') ||
+                                 document.querySelector('.chat-container');
+
+                  // Generic logged-in indicator (works for both)
+                  const loggedInGeneric = document.body.textContent.includes('Abmelden') ||
+                                 document.body.textContent.includes('Logout');
+
+                  const loggedIn = loggedInSchulcloud || loggedInBbzChat || loggedInGeneric;
+
+                  // We need login if we see any login form and are not logged in
+                  return (schulcloudEmailInput || bbzChatEmailInput || passwordInput) && !loggedIn;
                 })()
               `);
               
               if (needsLogin) {
-                console.log('schul.cloud periodic check: Login needed, triggering injection');
+                console.log('schul.cloud/BBZ Chat periodic check: Login needed, triggering injection');
                 setCredsAreSet(prev => ({ ...prev, [id]: false }));
                 await injectCredentials(webview, id);
               }
@@ -2065,20 +2080,38 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             await injectCredentials(webview, id);
           }
         } else if (id === 'schulcloud') {
-          // For schul.cloud, check for login forms after navigation
+          // For schul.cloud AND BBZ Chat (both use the 'schulcloud' webview ID),
+          // check for login forms after navigation using selectors for both services
           try {
             const needsLogin = await webview.executeJavaScript(`
               (function() {
-                const emailInput = document.querySelector('input#username[type="text"]');
+                // schul.cloud login selectors
+                const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
+
+                // BBZ Chat login selectors (uses email input instead of text)
+                const bbzChatEmailInput = document.querySelector('input[type="email"]');
+
+                // Shared: password field present on both login pages
                 const passwordInput = document.querySelector('input[type="password"]');
-                const loggedIn = document.querySelector('.user-menu') ||
+
+                // schul.cloud logged-in indicators
+                const loggedInSchulcloud = document.querySelector('.user-menu') ||
                                document.querySelector('.dashboard') ||
                                document.querySelector('.main-content') ||
-                               document.body.textContent.includes('Abmelden') ||
                                document.body.textContent.includes('Verschlüsselungspasswort') ||
                                document.body.textContent.includes('Smartphone');
-                
-                return (emailInput || passwordInput) && !loggedIn;
+
+                // BBZ Chat logged-in indicators
+                const loggedInBbzChat = document.querySelector('.app-sidebar') ||
+                               document.querySelector('.chat-container');
+
+                // Generic logged-in indicator (works for both)
+                const loggedInGeneric = document.body.textContent.includes('Abmelden') ||
+                               document.body.textContent.includes('Logout');
+
+                const loggedIn = loggedInSchulcloud || loggedInBbzChat || loggedInGeneric;
+
+                return (schulcloudEmailInput || bbzChatEmailInput || passwordInput) && !loggedIn;
               })()
             `);
             
