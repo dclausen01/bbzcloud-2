@@ -669,9 +669,9 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
             </>
           )}
 
-          {/* schul.cloud Verschlüsselungskennwort */}
+          {/* schul.cloud / BBZ Chat Verschlüsselungskennwort */}
           <FormControl>
-            <FormLabel>schul.cloud Verschlüsselungskennwort</FormLabel>
+            <FormLabel>schul.cloud / BBZ Chat Verschlüsselungskennwort</FormLabel>
             <InputGroup>
               <Input
                 type={showEncryptionPassword ? 'text' : 'password'}
