@@ -266,22 +266,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         account: 'bbbPassword'
       }) : null;
 
-      const encryptionPasswordResult = id === 'bbzchat' ? await window.electron.getCredentials({
-        service: 'bbzcloud',
-        account: 'schulcloudEncryptionPassword'
-      }) : null;
-
-      if (!emailResult.success || !passwordResult.success || (id === 'bbb' && !bbbPasswordResult?.success) || (id === 'bbzchat' && !encryptionPasswordResult?.success)) {
+      if (!emailResult.success || !passwordResult.success || (id === 'bbb' && !bbbPasswordResult?.success)) {
         return;
       }
 
       const emailAddress = emailResult.password;
       const password = passwordResult.password;
       const bbbPassword = bbbPasswordResult?.password;
-      const encryptionPassword = encryptionPasswordResult?.password;
 
       // Skip injection if credentials are empty or whitespace-only
-      if (!emailAddress?.trim() || !password?.trim() || (id === 'bbb' && !bbbPassword?.trim()) || (id === 'bbzchat' && !encryptionPassword?.trim())) {
+      if (!emailAddress?.trim() || !password?.trim() || (id === 'bbb' && !bbbPassword?.trim())) {
         console.log(`[${id}] Skipping credential injection - empty credentials`);
         return;
       }
@@ -610,13 +604,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
 
             // If BBZ Chat, handle its specific login form
-            // BBZ Chat is a custom React SPA that calls POST /api/login directly.
+            // BBZ Chat (stashcat-chat) is a custom React SPA with POST /api/login.
             // React-controlled inputs don't respond to simple .value assignment,
             // so we call the login API directly for reliability.
             if (isBbzChat) {
               const loginResult = await webview.executeJavaScript(`
                 (async function() {
-                  // Check if already logged in (token in localStorage and /me works)
+                  // Check if already logged in (token in localStorage and /api/me works)
                   const token = localStorage.getItem('schulchat_token');
                   if (token) {
                     try {
@@ -635,6 +629,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   }
 
                   // Check if login form is visible at all
+                  // stashcat-chat LoginPage renders: input[type=email], 2x input[type=password], button[type=submit]
                   const emailInput = document.querySelector('input[type="email"]');
                   if (!emailInput) {
                     return 'NO_LOGIN_FORM';
@@ -648,7 +643,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       body: JSON.stringify({
                         email: ${JSON.stringify(emailAddress)},
                         password: ${JSON.stringify(password)},
-                        securityPassword: ${JSON.stringify(schulcloudEncryptionPassword || '')}
+                        securityPassword: ${JSON.stringify(schulcloudEncryptionPassword || password)}
                       })
                     });
 
@@ -661,7 +656,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     const data = await resp.json();
                     if (data.token) {
                       localStorage.setItem('schulchat_token', data.token);
-                      window.location.reload();
+                      // Don't reload here — return SUCCESS and let the outer code
+                      // reload the webview cleanly to avoid promise rejection.
                       return 'SUCCESS';
                     }
                     return 'FAILED:no token in response';
@@ -673,13 +669,26 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
               console.log('[BBZ Chat] Login result:', loginResult);
 
-              if (loginResult === 'ALREADY_LOGGED_IN' || loginResult === 'NO_LOGIN_FORM') {
-                return; // Nothing to do
+              if (loginResult === 'ALREADY_LOGGED_IN') {
+                credsAreSet.current[id] = true;
+                break;
+              }
+
+              if (loginResult === 'NO_LOGIN_FORM') {
+                return; // React SPA may not have rendered yet — periodic check will retry
+              }
+
+              if (loginResult === 'SUCCESS') {
+                credsAreSet.current[id] = true;
+                // Reload the webview from outside so the stashcat-chat app
+                // picks up the token from localStorage via restoreToken()
+                webview.reload();
+                break;
               }
 
               if (typeof loginResult === 'string' && loginResult.startsWith('FAILED:')) {
                 const failMsg = loginResult.replace('FAILED:', '');
-                failedLogins.current['schulcloud'] = true;
+                failedLogins.current[id] = true;
                 console.error('[BBZ Chat] Login failed:', failMsg);
                 toast({
                   title: 'BBZ Chat Login fehlgeschlagen',
@@ -688,7 +697,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   duration: null,
                   isClosable: true,
                 });
+                break;
               }
+
+              // ERROR: case (network errors etc.) — don't set failedLogins,
+              // allow periodic check to retry
+              if (typeof loginResult === 'string' && loginResult.startsWith('ERROR:')) {
+                console.warn('[BBZ Chat] Login error (will retry):', loginResult.replace('ERROR:', ''));
+                return; // Don't set credsAreSet — periodic check will retry
+              }
+
               break;
             }
 
@@ -1388,90 +1406,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           }
           break;
 
-        case 'bbzchat':
-          try {
-            // Get encryption password
-            const encryptionPasswordResult = await window.electron.getCredentials({
-              service: 'bbzcloud',
-              account: 'schulcloudEncryptionPassword'
-            });
-
-            if (!encryptionPasswordResult.success || !encryptionPasswordResult.password) {
-              return;
-            }
-
-            const encryptionPassword = encryptionPasswordResult.password;
-
-            // Detect BBZ Chat login state
-            const loginState = await webview.executeJavaScript(`
-              (function() {
-                const emailInput = document.querySelector('input[type="email"]');
-                const passwordInputs = document.querySelectorAll('input[type="password"]');
-                const submitButton = document.querySelector('button[type="submit"]');
-                
-                // Check if already logged in
-                const loggedIn = document.querySelector('.app-sidebar') ||
-                                document.querySelector('.chat-container') ||
-                                document.body.textContent.includes('Abmelden') ||
-                                document.body.textContent.includes('Logout');
-                
-                return {
-                  emailInput: !!emailInput,
-                  passwordInputs: passwordInputs.length,
-                  submitButton: !!submitButton,
-                  loggedIn: !!loggedIn,
-                  url: window.location.href,
-                  title: document.title
-                };
-              })()
-            `);
-
-            console.log('BBZ Chat login state:', loginState);
-
-            if (loginState.loggedIn) {
-              return;
-            }
-
-            if (loginState.emailInput && loginState.passwordInputs >= 2 && loginState.submitButton) {
-              // Fill email, password, encryption password and submit
-              const result = await webview.executeJavaScript(`
-                (async function() {
-                  const emailInput = document.querySelector('input[type="email"]');
-                  const passwordInputs = document.querySelectorAll('input[type="password"]');
-                  const submitButton = document.querySelector('button[type="submit"]');
-                  
-                  if (emailInput && passwordInputs.length >= 2 && submitButton) {
-                    emailInput.value = ${JSON.stringify(emailAddress)};
-                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                    
-                    passwordInputs[0].value = ${JSON.stringify(password)};
-                    passwordInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-                    passwordInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-                    
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                    
-                    passwordInputs[1].value = ${JSON.stringify(encryptionPassword)};
-                    passwordInputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-                    passwordInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
-                    
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                    submitButton.click();
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-              
-              console.log('BBZ Chat injection result:', result);
-            }
-          } catch (error) {
-            console.error('Error during BBZ Chat login:', error);
-          }
-          break;
+        // NOTE: BBZ Chat uses the 'schulcloud' webview ID (not 'bbzchat').
+        // BBZ Chat credential injection is handled in the 'schulcloud' case above,
+        // which detects the URL containing 'chat.bbz-rd-eck.com' and uses the
+        // direct API login approach (POST /api/login).
       }
 
       credsAreSet.current[id] = true;
@@ -1794,16 +1732,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   // schul.cloud login selectors
                   const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
 
-                  // BBZ Chat / Rocket.Chat login selectors
-                  // Rocket.Chat uses input#emailOrUsername (type=text), NOT input[type=email]
-                  const bbzChatEmailInput = document.querySelector('input#emailOrUsername') ||
-                                            document.querySelector('input[name="emailOrUsername"]') ||
-                                            document.querySelector('input[type="email"]');
+                  // BBZ Chat (stashcat-chat) login selectors
+                  // stashcat-chat LoginPage uses input[type=email] for email
+                  const bbzChatEmailInput = document.querySelector('input[type="email"]');
 
                   // Shared: password field present on both login pages
-                  const passwordInput = document.querySelector('input[type="password"]') ||
-                                        document.querySelector('input#pass') ||
-                                        document.querySelector('input[name="pass"]');
+                  const passwordInput = document.querySelector('input[type="password"]');
 
                   // schul.cloud logged-in indicators
                   const loggedInSchulcloud = document.querySelector('.user-menu') ||
@@ -1812,11 +1746,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                                  document.body.textContent.includes('Verschlüsselungspasswort') ||
                                  document.body.textContent.includes('Smartphone');
 
-                  // BBZ Chat / Rocket.Chat logged-in indicators
-                  const loggedInBbzChat = document.querySelector('.app-sidebar') ||
-                                 document.querySelector('.sidebar') ||
-                                 document.querySelector('[data-qa="sidebar"]') ||
-                                 document.querySelector('.chat-container');
+                  // BBZ Chat (stashcat-chat) logged-in indicators
+                  // When logged in, the app shows a Sidebar and ChatView/CalendarView.
+                  // Also check for valid token in localStorage as a reliable indicator.
+                  const hasToken = !!localStorage.getItem('schulchat_token');
+                  const loggedInBbzChat = hasToken ||
+                                 document.querySelector('nav') ||
+                                 document.querySelector('[class*="sidebar" i]') ||
+                                 document.querySelector('[class*="chat" i]');
 
                   // Generic logged-in indicator (works for both)
                   const loggedInGeneric = document.body.textContent.includes('Abmelden') ||
