@@ -37,10 +37,10 @@ jobs:
       npm_config_python: "python3"
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -50,7 +50,7 @@ jobs:
           pip install setuptools wheel
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -83,7 +83,7 @@ jobs:
           electron-builder --linux --x64 -c.linux.target=AppImage -c.linux.target=deb -c.linux.target=rpm -c.linux.target=pacman
 
       - name: Upload x64 artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-x64-artifacts
           path: |
@@ -107,10 +107,10 @@ jobs:
       npm_config_target_platform: "linux"
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -120,7 +120,7 @@ jobs:
           pip install setuptools wheel
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -213,7 +213,7 @@ jobs:
           done
 
       - name: Upload ARM64 artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-arm64-artifacts
           path: |
@@ -227,32 +227,32 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Get version
         id: get_version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
       - name: Download Linux x64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-x64-artifacts
           path: dist-linux-x64/
 
       - name: Download Linux ARM64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-arm64-artifacts
           path: dist-linux-arm64/
 
       - name: Download Mac artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mac-artifacts
           path: dist-mac/
 
       - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-artifacts
           path: dist-windows/
@@ -276,7 +276,7 @@ jobs:
 
       - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -299,7 +299,7 @@ jobs:
 
       - name: Upload Test Build Artifacts
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-build-all-platforms-${{ steps.get_version.outputs.version }}
           path: |
@@ -321,10 +321,10 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -334,7 +334,7 @@ jobs:
           pip install setuptools wheel
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -357,7 +357,7 @@ jobs:
           electron-builder --mac --x64 --arm64
 
       - name: Upload Mac artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mac-artifacts
           path: |
@@ -371,10 +371,10 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -384,7 +384,7 @@ jobs:
           pip install setuptools wheel
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -408,7 +408,7 @@ jobs:
           electron-builder --win --x64
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-artifacts
           path: |
