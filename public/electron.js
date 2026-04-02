@@ -510,7 +510,7 @@ function createSplashWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      devTools: true // DevTools always available (Ctrl+Shift+I)
+      devTools: isDev // Only enable DevTools in development
     },
     icon: getAssetPath('icon.ico')
   });
@@ -572,7 +572,7 @@ async function createWindow() {
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
       ],
       sandbox: false,
-      devTools: true // DevTools always available (Ctrl+Shift+I)
+      devTools: isDev // Only enable DevTools in development
     },
     icon: getAssetPath('icon.ico')
   });
@@ -588,13 +588,6 @@ async function createWindow() {
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
-
-  // Allow opening DevTools in production via Ctrl+Shift+I
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.control && input.shift && input.key === 'I') {
-      mainWindow.webContents.toggleDevTools();
-    }
-  });
 
   // Save window state on various window events
   mainWindow.on('resize', saveWindowState);
@@ -825,7 +818,7 @@ async function createWebviewWindow(url, title) {
         `--webview-preload-script=${path.join(__dirname, 'webview-preload.js')}`
       ],
       sandbox: false,
-      devTools: true // DevTools always available (Ctrl+Shift+I)
+      devTools: isDev // Only enable DevTools in development
     },
     icon: getAssetPath('icon.ico')
   });
