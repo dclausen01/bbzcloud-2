@@ -100,7 +100,7 @@ Die automatische Anmeldung ist in `WebViewContainer.js` implementiert und wird a
 | **Nextcloud** | Klick auf `a[href*="user_saml/saml/login"]` ("BBZ ADFS") → dann wie Outlook (ADFS) |
 | **Moodle** | `input#username` + `input#password` → `button#loginbtn` |
 | **schul.cloud** | `input#username` + `input[type="password"]` |
-| **BBZ Chat** | React-Fiber-Injection: `getReactProps`→`onChange` für `input[type=email]` + 2× `input[type=password]`, Form-Submit via React `onSubmit`-Handler. Die stashcat-chat App (https://github.com/dclausen01/stashcat-chat) übernimmt API-Aufruf und Token-Verwaltung. Webview-ID ist `schulcloud` (URL-Erkennung via `chat.bbz-rd-eck.com`). |
+| **BBZ Chat** | Direkter API-Call: `fetch('/api/login', {email, password, securityPassword})` → Token in `localStorage('schulchat_token')` speichern → `webview.reload()`. Umgeht die React-19-Login-Form komplett. Webview-ID ist `schulcloud` (URL-Erkennung via `chat.bbz-rd-eck.com`). |
 | **WebUntis** | Periodenbasiert, eigene Selektor-Logik |
 | **Schulportal** | Keycloak: `input#username` + `input#password` → `input#kc-login` |
 | **Handbuch/Anträge** | ADFS-Login analog Outlook |
@@ -110,8 +110,11 @@ Die Credentials (E-Mail, Passwort) werden aus dem System-Keychain (`keytar`) gel
 ### BBZ Chat / schul.cloud Umschaltung
 Der `schulcloud`-Navigationsbutton kann zwischen schul.cloud und BBZ Chat umgeschaltet werden (`useBbzChat`-Toggle in Einstellungen). Die Webview-ID bleibt `schulcloud`, die URL wird über `URLS.BBZ_CHAT` / `URLS.SCHULCLOUD` gesteuert. Die Credential-Injection erkennt den aktiven Dienst über `webview.getURL().includes('chat.bbz-rd-eck.com')`.
 
-**BBZ Chat Credential-Injection (React-Fiber-Ansatz):**
-Die stashcat-chat LoginPage verwendet React Controlled Inputs. Direkte `.value`-Zuweisung funktioniert nicht. Stattdessen wird der React Fiber-Tree traversiert, um den `onChange`-Handler direkt aufzurufen — identisch zum WebUntis-Ansatz. Die stashcat-chat App übernimmt danach den API-Aufruf (`POST /api/login`), Token-Speicherung und State-Update.
+**BBZ Chat Credential-Injection (Direkter API-Ansatz):**
+Statt die React-19-Login-Form zu manipulieren (Fiber-Traversal, `__reactProps$`, native setter — alles fragil bei React 19), wird `POST /api/login` direkt per `fetch()` im Webview-Kontext aufgerufen. Der zurückgegebene Token wird in `localStorage('schulchat_token')` gespeichert und die Seite neu geladen. Die stashcat-chat App (https://github.com/dclausen01/stashcat-chat) erkennt den Token beim Start via `restoreToken()` und überspringt die Login-Seite.
+
+**Wichtig — Race Condition bei `dom-ready`:**
+Der `schulcloud`-Webview ruft `injectCredentials` direkt beim `dom-ready`-Event auf (wie alle anderen Apps). Zusätzlich läuft ein periodischer Check (alle 5s) als Fallback für Multi-Step-Flows (schul.cloud Verschlüsselungsseite). Der direkte Aufruf ist notwendig, weil der `useEffect` in `WebViewContainer.js` Dependencies hat, deren Änderung den `setInterval` cleart — und `dom-ready` feuert nicht erneut.
 
 ## 7. Bekannte Probleme / ToDos
 - Die Erkennung von Benachrichtigungs-Badges ("Red Dot") in WebViews basiert auf Pixel-Analyse (siehe `NOTIFICATION_CONFIG` in constants.js) und kann je nach Webseiten-Update fragil sein.
