@@ -70,7 +70,7 @@ Wichtige Konfigurationsdateien:
 - **`package.json`**: Definiert Build-Konfigurationen für Electron Builder (Icons, AppIds, File Associations).
 
 ### Navigationsbuttons vs. Apps-Dropdown
-- **Navigationsbuttons** (definiert in `SettingsContext.js` → `defaultSettings.navigationButtons`): Hauptleiste, immer sichtbar, haben WebViews im Hauptfenster mit Credential-Injection. Schlüssel: `schulcloud`, `moodle`, `bbb`, `outlook`, `nextcloud`, `cryptpad`, `taskcards`, `webuntis`, `fobizz`, `wiki`, `schulportal`.
+- **Navigationsbuttons** (definiert in `SettingsContext.js` → `defaultSettings.navigationButtons`): Hauptleiste, immer sichtbar, haben WebViews im Hauptfenster mit Credential-Injection. Schlüssel: `schulcloud` (auch BBZ Chat via `useBbzChat`-Toggle), `moodle`, `bbb`, `outlook`, `nextcloud`, `cryptpad`, `taskcards`, `webuntis`, `fobizz`, `wiki`, `schulportal`.
 - **Apps-Dropdown** (`standardApps` + Custom Apps): Öffnen in separatem Fenster, keine automatische Credential-Injection. Enthält u.a. `MS Office` (https://m365.cloud.microsoft/apps/?auth=2).
 
 ## 5. Entwicklung
@@ -100,11 +100,18 @@ Die automatische Anmeldung ist in `WebViewContainer.js` implementiert und wird a
 | **Nextcloud** | Klick auf `a[href*="user_saml/saml/login"]` ("BBZ ADFS") → dann wie Outlook (ADFS) |
 | **Moodle** | `input#username` + `input#password` → `button#loginbtn` |
 | **schul.cloud** | `input#username` + `input[type="password"]` |
+| **BBZ Chat** | React-Fiber-Injection: `getReactProps`→`onChange` für `input[type=email]` + 2× `input[type=password]`, Form-Submit via React `onSubmit`-Handler. Die stashcat-chat App (https://github.com/dclausen01/stashcat-chat) übernimmt API-Aufruf und Token-Verwaltung. Webview-ID ist `schulcloud` (URL-Erkennung via `chat.bbz-rd-eck.com`). |
 | **WebUntis** | Periodenbasiert, eigene Selektor-Logik |
 | **Schulportal** | Keycloak: `input#username` + `input#password` → `input#kc-login` |
 | **Handbuch/Anträge** | ADFS-Login analog Outlook |
 
-Die Credentials (E-Mail, Passwort) werden aus dem System-Keychain (`keytar`) geladen. Nextcloud verwendet dieselben Zugangsdaten wie Outlook (ADFS-Domain-Login).
+Die Credentials (E-Mail, Passwort) werden aus dem System-Keychain (`keytar`) geladen. Nextcloud verwendet dieselben Zugangsdaten wie Outlook (ADFS-Domain-Login). BBZ Chat nutzt zusätzlich das `schulcloudEncryptionPassword` (Fallback: Hauptpasswort).
+
+### BBZ Chat / schul.cloud Umschaltung
+Der `schulcloud`-Navigationsbutton kann zwischen schul.cloud und BBZ Chat umgeschaltet werden (`useBbzChat`-Toggle in Einstellungen). Die Webview-ID bleibt `schulcloud`, die URL wird über `URLS.BBZ_CHAT` / `URLS.SCHULCLOUD` gesteuert. Die Credential-Injection erkennt den aktiven Dienst über `webview.getURL().includes('chat.bbz-rd-eck.com')`.
+
+**BBZ Chat Credential-Injection (React-Fiber-Ansatz):**
+Die stashcat-chat LoginPage verwendet React Controlled Inputs. Direkte `.value`-Zuweisung funktioniert nicht. Stattdessen wird der React Fiber-Tree traversiert, um den `onChange`-Handler direkt aufzurufen — identisch zum WebUntis-Ansatz. Die stashcat-chat App übernimmt danach den API-Aufruf (`POST /api/login`), Token-Speicherung und State-Update.
 
 ## 7. Bekannte Probleme / ToDos
 - Die Erkennung von Benachrichtigungs-Badges ("Red Dot") in WebViews basiert auf Pixel-Analyse (siehe `NOTIFICATION_CONFIG` in constants.js) und kann je nach Webseiten-Update fragil sein.
