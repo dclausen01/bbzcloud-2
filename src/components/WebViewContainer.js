@@ -603,102 +603,66 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             const currentUrl = webview.getURL();
             const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
 
-            // If BBZ Chat, inject credentials using React's own event system.
-            // stashcat-chat is a React SPA — controlled inputs require calling
-            // the React onChange handler directly (same technique as WebUntis).
+            // If BBZ Chat, inject credentials into React 19 controlled inputs.
+            // Key insight: React state updates are batched — calling onSubmit directly
+            // from props/fiber would use stale closure values. Instead we set values
+            // via native setter + _valueTracker reset (triggers React's onChange),
+            // wait for React to re-render, then click the submit button.
             if (isBbzChat) {
               const loginResult = await webview.executeJavaScript(`
                 (async function() {
-                  // stashcat-chat LoginPage: input[type=email], 2x input[type=password], button[type=submit]
                   const emailInput = document.querySelector('input[type="email"]');
                   const passwordInputs = document.querySelectorAll('input[type="password"]');
 
-                  // No login form yet — React SPA still loading
                   if (!emailInput || passwordInputs.length < 2) {
                     return 'NO_LOGIN_FORM';
                   }
 
-                  // Trigger React's onChange handler directly (same as WebUntis approach)
-                  function setReactValue(element, value) {
-                    const key = Object.keys(element).find(k =>
-                      k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
-                    );
-                    if (key) {
-                      let fiber = element[key];
-                      while (fiber) {
-                        if (fiber.memoizedProps && fiber.memoizedProps.onChange) {
-                          element.value = value;
-                          fiber.memoizedProps.onChange({
-                            target: element,
-                            currentTarget: element,
-                            type: 'change',
-                            bubbles: true,
-                            cancelable: true,
-                            defaultPrevented: false,
-                            preventDefault: () => {},
-                            stopPropagation: () => {},
-                            isPropagationStopped: () => false,
-                            persist: () => {}
-                          });
-                          return true;
-                        }
-                        fiber = fiber.return;
-                      }
-                    }
-                    // Fallback: native value setter forces React to see the change
+                  // Set value on a React controlled input using the native setter approach.
+                  // This resets React's internal _valueTracker and dispatches an input event,
+                  // which makes React detect the change and call the onChange handler.
+                  function setNativeValue(element, value) {
                     const nativeSetter = Object.getOwnPropertyDescriptor(
                       window.HTMLInputElement.prototype, 'value'
                     );
                     if (nativeSetter && nativeSetter.set) {
                       nativeSetter.set.call(element, value);
+                      const tracker = element._valueTracker;
+                      if (tracker) { tracker.setValue(''); }
                       element.dispatchEvent(new Event('input', { bubbles: true }));
                       element.dispatchEvent(new Event('change', { bubbles: true }));
+                      console.log('[BBZ Chat] setNativeValue OK for', element.type);
                       return true;
                     }
+                    console.warn('[BBZ Chat] setNativeValue: no native setter available');
                     return false;
                   }
 
-                  // Fill all three fields
-                  setReactValue(emailInput, ${JSON.stringify(emailAddress)});
-                  await new Promise(r => setTimeout(r, 150));
-                  setReactValue(passwordInputs[0], ${JSON.stringify(password)});
-                  await new Promise(r => setTimeout(r, 150));
-                  setReactValue(passwordInputs[1], ${JSON.stringify(schulcloudEncryptionPassword || password)});
-                  await new Promise(r => setTimeout(r, 200));
+                  // Fill all three fields with short delays between each
+                  const r1 = setNativeValue(emailInput, ${JSON.stringify(emailAddress)});
+                  await new Promise(r => setTimeout(r, 100));
+                  const r2 = setNativeValue(passwordInputs[0], ${JSON.stringify(password)});
+                  await new Promise(r => setTimeout(r, 100));
+                  const r3 = setNativeValue(passwordInputs[1], ${JSON.stringify(schulcloudEncryptionPassword || password)});
 
-                  // Submit via React's own onSubmit handler on the form
-                  const form = emailInput.closest('form');
-                  if (form) {
-                    const formKey = Object.keys(form).find(k =>
-                      k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
-                    );
-                    let submitted = false;
-                    if (formKey) {
-                      let fiber = form[formKey];
-                      while (fiber) {
-                        if (fiber.memoizedProps && fiber.memoizedProps.onSubmit) {
-                          fiber.memoizedProps.onSubmit({
-                            preventDefault: () => {},
-                            stopPropagation: () => {},
-                            target: form,
-                            currentTarget: form,
-                            nativeEvent: new Event('submit')
-                          });
-                          submitted = true;
-                          break;
-                        }
-                        fiber = fiber.return;
-                      }
-                    }
-                    if (!submitted) {
-                      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                    }
-                  } else {
-                    const submitBtn = document.querySelector('button[type="submit"]');
-                    if (submitBtn) submitBtn.click();
+                  console.log('[BBZ Chat] Fields filled:', { email: r1, password: r2, securityPassword: r3 });
+
+                  // Wait for React to flush state updates and re-render.
+                  // The handleSubmit closure needs the updated state values.
+                  await new Promise(r => setTimeout(r, 500));
+
+                  // Submit by clicking the button — this triggers a native form submit
+                  // event, which React handles with the CURRENT handleSubmit (containing
+                  // the updated state values from the re-render).
+                  const submitBtn = document.querySelector('button[type="submit"]');
+                  if (submitBtn && !submitBtn.disabled) {
+                    submitBtn.click();
+                    console.log('[BBZ Chat] Submit button clicked');
+                    return 'SUBMITTED';
                   }
 
-                  return 'SUBMITTED';
+                  console.warn('[BBZ Chat] Submit button not found or disabled');
+                  return 'SUBMIT_FAILED';
                 })()
               `);
 
@@ -709,10 +673,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               }
 
               if (loginResult === 'SUBMITTED') {
-                // Form submitted — stashcat-chat handles the API call and auth state.
-                // Set credsAreSet so we don't immediately retry.
                 credsAreSet.current[id] = true;
                 break;
+              }
+
+              if (loginResult === 'SUBMIT_FAILED') {
+                console.warn('[BBZ Chat] Form submission failed — will retry');
+                return; // periodic check will retry
               }
 
               break;
