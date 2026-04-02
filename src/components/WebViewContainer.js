@@ -603,83 +603,73 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             const currentUrl = webview.getURL();
             const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
 
-            // If BBZ Chat, inject credentials into React 19 controlled inputs.
-            // Key insight: React state updates are batched — calling onSubmit directly
-            // from props/fiber would use stale closure values. Instead we set values
-            // via native setter + _valueTracker reset (triggers React's onChange),
-            // wait for React to re-render, then click the submit button.
+            // If BBZ Chat, bypass the React login form entirely by calling
+            // the API directly. This avoids all React internals / controlled input issues.
+            // stashcat-chat's POST /api/login returns {token, user}, and the app
+            // reads the token from localStorage('schulchat_token') on startup.
             if (isBbzChat) {
               const loginResult = await webview.executeJavaScript(`
                 (async function() {
-                  const emailInput = document.querySelector('input[type="email"]');
-                  const passwordInputs = document.querySelectorAll('input[type="password"]');
-
-                  if (!emailInput || passwordInputs.length < 2) {
-                    return 'NO_LOGIN_FORM';
-                  }
-
-                  // Set value on a React controlled input using the native setter approach.
-                  // This resets React's internal _valueTracker and dispatches an input event,
-                  // which makes React detect the change and call the onChange handler.
-                  function setNativeValue(element, value) {
-                    const nativeSetter = Object.getOwnPropertyDescriptor(
-                      window.HTMLInputElement.prototype, 'value'
-                    );
-                    if (nativeSetter && nativeSetter.set) {
-                      nativeSetter.set.call(element, value);
-                      const tracker = element._valueTracker;
-                      if (tracker) { tracker.setValue(''); }
-                      element.dispatchEvent(new Event('input', { bubbles: true }));
-                      element.dispatchEvent(new Event('change', { bubbles: true }));
-                      console.log('[BBZ Chat] setNativeValue OK for', element.type);
-                      return true;
+                  try {
+                    // Check if already logged in (token exists and is valid)
+                    const existingToken = localStorage.getItem('schulchat_token');
+                    if (existingToken) {
+                      console.log('[BBZ Chat] Token already exists, skipping login');
+                      return 'ALREADY_LOGGED_IN';
                     }
-                    console.warn('[BBZ Chat] setNativeValue: no native setter available');
-                    return false;
+
+                    console.log('[BBZ Chat] Calling /api/login directly...');
+                    const response = await fetch('/api/login', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        email: ${JSON.stringify(emailAddress)},
+                        password: ${JSON.stringify(password)},
+                        securityPassword: ${JSON.stringify(schulcloudEncryptionPassword || password)}
+                      })
+                    });
+
+                    if (!response.ok) {
+                      const errorText = await response.text();
+                      console.error('[BBZ Chat] Login API error:', response.status, errorText);
+                      return 'API_ERROR_' + response.status;
+                    }
+
+                    const data = await response.json();
+                    if (data.token) {
+                      localStorage.setItem('schulchat_token', data.token);
+                      console.log('[BBZ Chat] Token stored, reloading...');
+                      return 'TOKEN_STORED';
+                    } else {
+                      console.error('[BBZ Chat] No token in response:', JSON.stringify(data));
+                      return 'NO_TOKEN';
+                    }
+                  } catch (err) {
+                    console.error('[BBZ Chat] Login fetch error:', err.message);
+                    return 'FETCH_ERROR';
                   }
-
-                  // Fill all three fields with short delays between each
-                  const r1 = setNativeValue(emailInput, ${JSON.stringify(emailAddress)});
-                  await new Promise(r => setTimeout(r, 100));
-                  const r2 = setNativeValue(passwordInputs[0], ${JSON.stringify(password)});
-                  await new Promise(r => setTimeout(r, 100));
-                  const r3 = setNativeValue(passwordInputs[1], ${JSON.stringify(schulcloudEncryptionPassword || password)});
-
-                  console.log('[BBZ Chat] Fields filled:', { email: r1, password: r2, securityPassword: r3 });
-
-                  // Wait for React to flush state updates and re-render.
-                  // The handleSubmit closure needs the updated state values.
-                  await new Promise(r => setTimeout(r, 500));
-
-                  // Submit by clicking the button — this triggers a native form submit
-                  // event, which React handles with the CURRENT handleSubmit (containing
-                  // the updated state values from the re-render).
-                  const submitBtn = document.querySelector('button[type="submit"]');
-                  if (submitBtn && !submitBtn.disabled) {
-                    submitBtn.click();
-                    console.log('[BBZ Chat] Submit button clicked');
-                    return 'SUBMITTED';
-                  }
-
-                  console.warn('[BBZ Chat] Submit button not found or disabled');
-                  return 'SUBMIT_FAILED';
                 })()
               `);
 
-              console.log('[BBZ Chat] Injection result:', loginResult);
+              console.log('[BBZ Chat] Login result:', loginResult);
 
-              if (loginResult === 'NO_LOGIN_FORM') {
-                return; // React SPA still loading — periodic check will retry
+              if (loginResult === 'TOKEN_STORED') {
+                // Token saved — reload the page so the app picks it up
+                credsAreSet.current[id] = true;
+                webview.reload();
+                break;
               }
 
-              if (loginResult === 'SUBMITTED') {
+              if (loginResult === 'ALREADY_LOGGED_IN') {
                 credsAreSet.current[id] = true;
                 break;
               }
 
-              if (loginResult === 'SUBMIT_FAILED') {
-                console.warn('[BBZ Chat] Form submission failed — will retry');
-                return; // periodic check will retry
+              // API error or fetch error — don't retry immediately
+              if (loginResult.startsWith('API_ERROR') || loginResult === 'FETCH_ERROR') {
+                console.warn('[BBZ Chat] Login failed:', loginResult);
+                credsAreSet.current[id] = true; // prevent retry loop
+                break;
               }
 
               break;
