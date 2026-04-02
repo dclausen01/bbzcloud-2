@@ -1688,8 +1688,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           const interval = setInterval(checkLoginForm, 2000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
         } else if (id === 'schulcloud') {
-          // For schul.cloud AND BBZ Chat (both use the 'schulcloud' webview ID),
-          // check for login forms periodically using selectors for both services
+          // For schul.cloud AND BBZ Chat (both use the 'schulcloud' webview ID).
+          //
+          // IMPORTANT: Call injectCredentials directly on dom-ready (like generic apps)
+          // AND set up a periodic check as fallback. The useEffect cleanup can clear
+          // the periodic interval, and since dom-ready won't fire again, the periodic
+          // check alone is unreliable. The direct call ensures at least one attempt.
+          await injectCredentials(webview, id);
+
           const checkSchulCloudLogin = async () => {
             try {
               const needsLogin = await webview.executeJavaScript(`
@@ -1698,7 +1704,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
 
                   // BBZ Chat (stashcat-chat) login selectors
-                  // stashcat-chat LoginPage uses input[type=email] for email
                   const bbzChatEmailInput = document.querySelector('input[type="email"]');
 
                   // Shared: password field present on both login pages
@@ -1711,12 +1716,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                                  document.body.textContent.includes('Verschlüsselungspasswort') ||
                                  document.body.textContent.includes('Smartphone');
 
-                  // BBZ Chat (stashcat-chat) logged-in indicators.
-                  // The Sidebar root is: div.relative.flex.h-full.shrink-0.flex-col
-                  // The simplest reliable indicator: the token exists AND the login
-                  // form is NOT visible (app has hidden it after successful auth).
-                  // Note: we check login-form absence rather than logged-in elements
-                  // because Tailwind class names are harder to target reliably.
+                  // BBZ Chat logged-in: no login form + token present
                   const bbzChatLoggedIn = !bbzChatEmailInput && !!localStorage.getItem('schulchat_token');
 
                   // Generic logged-in indicator (works for both)
@@ -1725,11 +1725,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
                   const loggedIn = loggedInSchulcloud || bbzChatLoggedIn || loggedInGeneric;
 
-                  // We need login if we see any login form and are not logged in
                   return (schulcloudEmailInput || bbzChatEmailInput || passwordInput) && !loggedIn;
                 })()
               `);
-              
+
               if (needsLogin) {
                 console.log('schul.cloud/BBZ Chat periodic check: Login needed, triggering injection');
                 credsAreSet.current[id] = false;
@@ -1740,10 +1739,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }
           };
 
-          // Initial check
-          await checkSchulCloudLogin();
-          
-          // Set up periodic check every 5 seconds
+          // Set up periodic check every 5 seconds as fallback
           const interval = setInterval(checkSchulCloudLogin, 5000);
           eventCleanups.get(webview)?.push(() => clearInterval(interval));
         } else if (id === 'office') {
