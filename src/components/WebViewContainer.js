@@ -1696,6 +1696,45 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // check alone is unreliable. The direct call ensures at least one attempt.
           await injectCredentials(webview, id);
 
+          // Initial check for BBZ Chat specifically - check if we're on the login page
+          // and need to trigger credential injection immediately
+          const checkBbzChatInitial = async () => {
+            try {
+              const currentUrl = webview.getURL();
+              const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
+              if (!isBbzChat) return;
+
+              const needsLogin = await webview.executeJavaScript(`
+                (function() {
+                  // BBZ Chat login indicators
+                  const emailInput = document.querySelector('input[type="email"]');
+                  const passwordInputs = document.querySelectorAll('input[type="password"]');
+                  const submitButton = document.querySelector('button[type="submit"]');
+                  
+                  // Check if already logged in (token exists)
+                  const token = localStorage.getItem('schulchat_token');
+                  const loggedIn = document.querySelector('.app-sidebar') ||
+                                  document.querySelector('.sidebar') ||
+                                  document.querySelector('[data-qa="sidebar"]');
+                  
+                  // Need login if we see login form and are not logged in
+                  return (emailInput || passwordInputs.length > 0 || submitButton) && !loggedIn && !token;
+                })()
+              `);
+              
+              if (needsLogin) {
+                console.log('[BBZ Chat] Initial check: Login needed, triggering injection');
+                credsAreSet.current[id] = false;
+                await injectCredentials(webview, id);
+              }
+            } catch (error) {
+              // Silent fail - page might not be ready
+            }
+          };
+          
+          // Run initial BBZ Chat check
+          await checkBbzChatInitial();
+
           const checkSchulCloudLogin = async () => {
             try {
               const needsLogin = await webview.executeJavaScript(`
