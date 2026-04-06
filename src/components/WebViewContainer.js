@@ -665,10 +665,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 break;
               }
 
-              // API error or fetch error — don't retry immediately
+              // API error or fetch error — allow retry for temporary failures
               if (loginResult.startsWith('API_ERROR') || loginResult === 'FETCH_ERROR') {
-                console.warn('[BBZ Chat] Login failed:', loginResult);
-                credsAreSet.current[id] = true; // prevent retry loop
+                console.warn('[BBZ Chat] Login failed (temporary):', loginResult, '- will retry on next check');
+                // DON'T set credsAreSet - allow retry on next periodic check
+                // The 5-second interval check will try again
                 break;
               }
 
