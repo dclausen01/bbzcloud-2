@@ -1769,7 +1769,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               if (!isBbzChat) return;
 
               const needsLogin = await webview.executeJavaScript(`
-                (function() {
+                (async function() {
                   // BBZ Chat login indicators
                   const emailInput = document.querySelector('input[type="email"]');
                   const passwordInputs = document.querySelectorAll('input[type="password"]');
@@ -1780,6 +1780,27 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   const loggedIn = document.querySelector('.app-sidebar') ||
                                   document.querySelector('.sidebar') ||
                                   document.querySelector('[data-qa="sidebar"]');
+                  
+                  // If token exists, verify it's still valid by calling /api/me
+                  if (token && !loggedIn) {
+                    try {
+                      const response = await fetch('/api/me', {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                      });
+                      if (response.ok) {
+                        console.log('[BBZ Chat] Token is valid, user is logged in');
+                        return false; // Token valid, no login needed
+                      } else if (response.status === 401 || response.status === 403) {
+                        console.log('[BBZ Chat] Token expired or invalid, clearing and need re-login');
+                        localStorage.removeItem('schulchat_token');
+                        return true; // Token invalid, need login
+                      }
+                    } catch (e) {
+                      console.log('[BBZ Chat] Token validation failed:', e.message);
+                      // Network error - keep token and don't force login
+                      return false;
+                    }
+                  }
                   
                   // Need login if we see login form and are not logged in
                   return (emailInput || passwordInputs.length > 0 || submitButton) && !loggedIn && !token;
@@ -1801,8 +1822,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           const checkSchulCloudLogin = async () => {
             try {
+              const currentUrl = webview.getURL();
+              const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
+
               const needsLogin = await webview.executeJavaScript(`
-                (function() {
+                (async function() {
                   // schul.cloud login selectors
                   const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
 
@@ -1819,14 +1843,36 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                                  document.body.textContent.includes('Verschlüsselungspasswort') ||
                                  document.body.textContent.includes('Smartphone');
 
-                  // BBZ Chat logged-in: no login form + token present
-                  const bbzChatLoggedIn = !bbzChatEmailInput && !!localStorage.getItem('schulchat_token');
+                  // BBZ Chat logged-in: check token validity via API
+                  const token = localStorage.getItem('schulchat_token');
+                  const bbzChatLoggedIn = !bbzChatEmailInput && !!token;
 
                   // Generic logged-in indicator (works for both)
                   const loggedInGeneric = document.body.textContent.includes('Abmelden') ||
                                  document.body.textContent.includes('Logout');
 
-                  const loggedIn = loggedInSchulcloud || bbzChatLoggedIn || loggedInGeneric;
+                  let loggedIn = loggedInSchulcloud || bbzChatLoggedIn || loggedInGeneric;
+
+                  // For BBZ Chat, verify token is still valid by calling /api/me
+                  if (${isBbzChat ? 'true' : 'false'} && token && !loggedIn) {
+                    try {
+                      const response = await fetch('/api/me', {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                      });
+                      if (response.ok) {
+                        console.log('[BBZ Chat Periodic] Token is valid');
+                        return false; // Token valid, no login needed
+                      } else if (response.status === 401 || response.status === 403) {
+                        console.log('[BBZ Chat Periodic] Token expired, clearing');
+                        localStorage.removeItem('schulchat_token');
+                        return true; // Token invalid, need login
+                      }
+                    } catch (e) {
+                      console.log('[BBZ Chat Periodic] Token validation error:', e.message);
+                      // Network error - don't force login
+                      return false;
+                    }
+                  }
 
                   return (schulcloudEmailInput || bbzChatEmailInput || passwordInput) && !loggedIn;
                 })()
