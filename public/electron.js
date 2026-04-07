@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor, screen, globalShortcut, powerSaveBlocker } = require('electron');
 const path = require('path');
 const zlib = require('zlib');
 const util = require('util');
@@ -1916,10 +1916,25 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
   }
 });
 
+// Power save blocker to prevent macOS from suspending network connections
+let powerSaveBlockerId = null;
+
 app.on('ready', async () => {
   if (!gotTheLock) {
     app.quit();
     return;
+  }
+  
+  // Start power save blocker on macOS to prevent network disconnection
+  if (process.platform === 'darwin') {
+    try {
+      // 'prevent-app-suspension' prevents the app from being suspended
+      // 'prevent-display-sleep' prevents the display from sleeping
+      powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+      console.log('[macOS] Power save blocker started:', powerSaveBlockerId);
+    } catch (error) {
+      console.error('[macOS] Failed to start power save blocker:', error);
+    }
   }
   
   try {    
