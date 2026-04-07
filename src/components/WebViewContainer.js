@@ -1428,10 +1428,57 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           if (webview) {
             if (id === 'outlook') {
               // For Outlook, clear credentials state and force complete reload
+              // Under macOS, we need to clear session data to prevent auth issues
+              // Option A: Clear MSAL auth tokens for reliable re-login
+              console.log('[System Resume] Clearing Outlook MSAL tokens and reloading');
               credsAreSet.current[id] = false;
-              webview.clearHistory();
-              // Force navigation to base OWA URL
-              webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+              
+              // Clear only OWA-specific auth tokens, not all storage
+              webview.executeJavaScript(`
+                // Clear OWA-specific auth items to force fresh login
+                // These are the common OWA/Exchange auth token keys
+                const owaKeys = [
+                  'msal.token.keys',
+                  'msal.account.keys',
+                  'msal.idtoken',
+                  'msal.accesstoken',
+                  'msal.refreshtoken',
+                  'msal.client.info',
+                  'msal.error.description',
+                  'msal.error',
+                  'msal.token.renew.status',
+                  'msal.interaction.status',
+                  'msal.login.request',
+                  'msal.authority',
+                  'msal.nonce.idtoken',
+                  'msal.state.login',
+                  'msal.state.acquireToken'
+                ];
+                
+                owaKeys.forEach(key => {
+                  if (localStorage.getItem(key)) {
+                    localStorage.removeItem(key);
+                    console.log('[Outlook] Cleared auth key:', key);
+                  }
+                });
+                
+                // Also clear any cookies that might be expired
+                document.cookie.split(';').forEach(cookie => {
+                  const [name] = cookie.split('=');
+                  if (name.trim().startsWith('msal.') || name.trim().includes('auth')) {
+                    document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                  }
+                });
+                
+                console.log('[Outlook] Auth tokens cleared on system resume');
+              `).then(() => {
+                webview.clearHistory();
+                // Small delay to ensure cleanup is complete
+                setTimeout(() => {
+                  // Force navigation to base OWA URL
+                  webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+                }, 100);
+              });
             } else if (id === 'webuntis') {
               // For WebUntis, check if we're on the authenticator page before reloading
               webview.executeJavaScript(`
@@ -1441,6 +1488,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 if (!isAuthPage) {
                   webview.reload();
                 }
+              });
+            } else if (id === 'office') {
+              // For Office, clear credentials state and reload to prevent session loss
+              console.log('[System Resume] Reloading Office webview');
+              credsAreSet.current[id] = false;
+              webview.reload();
+            } else if (id === 'schulcloud') {
+              // For BBZ Chat (schulcloud), clear token and credentials to force re-login
+              console.log('[System Resume] Clearing BBZ Chat session');
+              credsAreSet.current[id] = false;
+              // Clear the token from localStorage to force re-login
+              webview.executeJavaScript(`
+                localStorage.removeItem('schulchat_token');
+                console.log('[BBZ Chat] Token cleared on system resume');
+              `).then(() => {
+                webview.reload();
               });
             } else {
               webview.reload();

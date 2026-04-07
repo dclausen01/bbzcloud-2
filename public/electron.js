@@ -7,7 +7,8 @@ const compress = util.promisify(zlib.gzip);
 const decompress = util.promisify(zlib.gunzip);
 
 // List of webviews that need special handling on system resume
-const webviewsToReload = ['outlook', 'webuntis'];
+// Added 'office' and 'schulcloud' (BBZ Chat) to prevent session loss on macOS resume
+const webviewsToReload = ['outlook', 'webuntis', 'office', 'schulcloud'];
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
