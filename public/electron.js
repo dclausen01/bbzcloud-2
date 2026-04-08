@@ -227,7 +227,7 @@ function cleanupWebviewSessions() {
           
           // Clear storage data for non-essential webviews
           const url = webview.getURL();
-          if (!url.includes('exchange.bbz-rd-eck.de') && !url.includes('webuntis.com') && !url.includes('stash.cat')) {
+          if (!url.includes('exchange.bbz-rd-eck.de') && !url.includes('webuntis.com') && !url.includes('stash.cat') && !url.includes('chat.bbz-rd-eck.com')) {
             webview.session.clearStorageData({
               storages: ['cookies', 'localstorage', 'sessionstorage', 'websql']
             });
