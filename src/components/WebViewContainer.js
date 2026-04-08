@@ -611,11 +611,25 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const loginResult = await webview.executeJavaScript(`
                 (async function() {
                   try {
-                    // Check if already logged in (token exists and is valid)
+                    // Check if already logged in (token exists AND is valid)
                     const existingToken = localStorage.getItem('schulchat_token');
                     if (existingToken) {
-                      console.log('[BBZ Chat] Token already exists, skipping login');
-                      return 'ALREADY_LOGGED_IN';
+                      try {
+                        const meResp = await fetch('/api/me', {
+                          headers: { 'Authorization': 'Bearer ' + existingToken }
+                        });
+                        if (meResp.ok) {
+                          console.log('[BBZ Chat] Token valid, already logged in');
+                          return 'ALREADY_LOGGED_IN';
+                        }
+                        // Token expired / invalid — remove it and continue to login
+                        console.log('[BBZ Chat] Token invalid (status ' + meResp.status + '), clearing');
+                        localStorage.removeItem('schulchat_token');
+                      } catch (e) {
+                        // Network error — keep token, don't force re-login
+                        console.log('[BBZ Chat] Token validation network error, assuming OK');
+                        return 'ALREADY_LOGGED_IN';
+                      }
                     }
 
                     console.log('[BBZ Chat] Calling /api/login directly...');
@@ -1604,23 +1618,36 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     });
   };
 
-  // Set up SchulCloud notification checking with MutationObserver
+  // Set up SchulCloud / BBZ Chat notification checking with MutationObserver.
+  // For BBZ Chat (useBbzChat=true): parse document.title for "(N) BBZ Chat" pattern
+  // For schul.cloud (useBbzChat=false): use favicon red-dot pixel analysis (legacy)
   useEffect(() => {
     let observer = null;
+    const isBbzChat = settings.useBbzChat;
 
     const setupNotificationChecking = (webview) => {
       if (!webview) return;
 
       const checkNotifications = async () => {
         try {
-          const faviconData = await webview.executeJavaScript(`
-            document.querySelector('link[rel="icon"][type="image/png"]')?.href;
-          `);
+          if (isBbzChat) {
+            // BBZ Chat: parse document.title for unread count
+            // Format: "(N) BBZ Chat" for N unread, "BBZ Chat" for none
+            const title = await webview.executeJavaScript(`document.title`);
+            const match = title && title.match(/^\((\d+)\)/);
+            const unreadCount = match ? parseInt(match[1], 10) : 0;
+            window.electron.send('update-badge', unreadCount);
+          } else {
+            // schul.cloud: favicon red-dot pixel analysis (legacy)
+            const faviconData = await webview.executeJavaScript(`
+              document.querySelector('link[rel="icon"][type="image/png"]')?.href;
+            `);
 
-          if (!faviconData) return;
+            if (!faviconData) return;
 
-          const hasNotification = await checkForNotifications(faviconData);
-          window.electron.send('update-badge', hasNotification);
+            const hasNotification = await checkForNotifications(faviconData);
+            window.electron.send('update-badge', hasNotification ? 1 : 0);
+          }
         } catch (error) {
           // Silent fail and try again next interval
         }
@@ -1636,8 +1663,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         // Initial check
         checkNotifications();
         
-        // Set up interval with a more reasonable frequency
-        notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
+        // Set up interval — BBZ Chat title changes are lightweight, check every 5s
+        // schul.cloud favicon analysis is heavier, check every 8s
+        const interval = isBbzChat ? 5000 : 8000;
+        notificationCheckIntervalRef.current = setInterval(checkNotifications, interval);
       });
     };
 
@@ -1672,7 +1701,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         clearInterval(notificationCheckIntervalRef.current);
       }
     };
-  }, []); // Empty dependency array means this runs once when component mounts
+  }, [settings.useBbzChat]); // Re-run when switching between BBZ Chat and schul.cloud
 
   useEffect(() => {
     // Track event listeners for cleanup
@@ -1760,73 +1789,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // check alone is unreliable. The direct call ensures at least one attempt.
           await injectCredentials(webview, id);
 
-          // Initial check for BBZ Chat specifically - check if we're on the login page
-          // and need to trigger credential injection immediately
-          const checkBbzChatInitial = async () => {
-            try {
-              const currentUrl = webview.getURL();
-              const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
-              if (!isBbzChat) return;
-
-              const needsLogin = await webview.executeJavaScript(`
-                (async function() {
-                  // BBZ Chat login indicators
-                  const emailInput = document.querySelector('input[type="email"]');
-                  const passwordInputs = document.querySelectorAll('input[type="password"]');
-                  const submitButton = document.querySelector('button[type="submit"]');
-                  
-                  // Check if already logged in (token exists)
-                  const token = localStorage.getItem('schulchat_token');
-                  const loggedIn = document.querySelector('.app-sidebar') ||
-                                  document.querySelector('.sidebar') ||
-                                  document.querySelector('[data-qa="sidebar"]');
-                  
-                  // If token exists, verify it's still valid by calling /api/me
-                  if (token && !loggedIn) {
-                    try {
-                      const response = await fetch('/api/me', {
-                        headers: { 'Authorization': 'Bearer ' + token }
-                      });
-                      if (response.ok) {
-                        console.log('[BBZ Chat] Token is valid, user is logged in');
-                        return false; // Token valid, no login needed
-                      } else if (response.status === 401 || response.status === 403) {
-                        console.log('[BBZ Chat] Token expired or invalid, clearing and need re-login');
-                        localStorage.removeItem('schulchat_token');
-                        return true; // Token invalid, need login
-                      }
-                    } catch (e) {
-                      console.log('[BBZ Chat] Token validation failed:', e.message);
-                      // Network error - keep token and don't force login
-                      return false;
-                    }
-                  }
-                  
-                  // Need login if we see login form and are not logged in
-                  return (emailInput || passwordInputs.length > 0 || submitButton) && !loggedIn && !token;
-                })()
-              `);
-              
-              if (needsLogin) {
-                console.log('[BBZ Chat] Initial check: Login needed, triggering injection');
-                credsAreSet.current[id] = false;
-                await injectCredentials(webview, id);
-              }
-            } catch (error) {
-              // Silent fail - page might not be ready
-            }
-          };
-          
-          // Run initial BBZ Chat check
-          await checkBbzChatInitial();
-
+          // Periodic check for schul.cloud AND BBZ Chat login state.
+          // Token validation for BBZ Chat is now handled inside injectCredentials
+          // itself (via /api/me), so the periodic check only needs to detect
+          // whether a login form is visible (= not logged in).
           const checkSchulCloudLogin = async () => {
             try {
-              const currentUrl = webview.getURL();
-              const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
-
               const needsLogin = await webview.executeJavaScript(`
-                (async function() {
+                (function() {
                   // schul.cloud login selectors
                   const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
 
@@ -1843,7 +1813,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                                  document.body.textContent.includes('Verschlüsselungspasswort') ||
                                  document.body.textContent.includes('Smartphone');
 
-                  // BBZ Chat logged-in: check token validity via API
+                  // BBZ Chat logged-in: no login form + token present
                   const token = localStorage.getItem('schulchat_token');
                   const bbzChatLoggedIn = !bbzChatEmailInput && !!token;
 
@@ -1851,28 +1821,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   const loggedInGeneric = document.body.textContent.includes('Abmelden') ||
                                  document.body.textContent.includes('Logout');
 
-                  let loggedIn = loggedInSchulcloud || bbzChatLoggedIn || loggedInGeneric;
-
-                  // For BBZ Chat, verify token is still valid by calling /api/me
-                  if (${isBbzChat ? 'true' : 'false'} && token && !loggedIn) {
-                    try {
-                      const response = await fetch('/api/me', {
-                        headers: { 'Authorization': 'Bearer ' + token }
-                      });
-                      if (response.ok) {
-                        console.log('[BBZ Chat Periodic] Token is valid');
-                        return false; // Token valid, no login needed
-                      } else if (response.status === 401 || response.status === 403) {
-                        console.log('[BBZ Chat Periodic] Token expired, clearing');
-                        localStorage.removeItem('schulchat_token');
-                        return true; // Token invalid, need login
-                      }
-                    } catch (e) {
-                      console.log('[BBZ Chat Periodic] Token validation error:', e.message);
-                      // Network error - don't force login
-                      return false;
-                    }
-                  }
+                  const loggedIn = loggedInSchulcloud || bbzChatLoggedIn || loggedInGeneric;
 
                   return (schulcloudEmailInput || bbzChatEmailInput || passwordInput) && !loggedIn;
                 })()

@@ -117,5 +117,6 @@ Statt die React-19-Login-Form zu manipulieren (Fiber-Traversal, `__reactProps$`,
 Der `schulcloud`-Webview ruft `injectCredentials` direkt beim `dom-ready`-Event auf (wie alle anderen Apps). Zusätzlich läuft ein periodischer Check (alle 5s) als Fallback für Multi-Step-Flows (schul.cloud Verschlüsselungsseite). Der direkte Aufruf ist notwendig, weil der `useEffect` in `WebViewContainer.js` Dependencies hat, deren Änderung den `setInterval` cleart — und `dom-ready` feuert nicht erneut.
 
 ## 7. Bekannte Probleme / ToDos
-- Die Erkennung von Benachrichtigungs-Badges ("Red Dot") in WebViews basiert auf Pixel-Analyse (siehe `NOTIFICATION_CONFIG` in constants.js) und kann je nach Webseiten-Update fragil sein.
+- Die Erkennung von Benachrichtigungs-Badges für **schul.cloud** basiert auf Pixel-Analyse des Favicons (siehe `NOTIFICATION_CONFIG` in constants.js) und kann je nach Webseiten-Update fragil sein.
+- Für **BBZ Chat** wird stattdessen `document.title` geparst (Pattern: `(N) BBZ Chat`). Der `update-badge` IPC-Handler akzeptiert sowohl Zahlen (BBZ Chat: Anzahl ungelesener Nachrichten) als auch Booleans (schul.cloud Legacy). Auf macOS wird `app.dock.setBadge()` für die Dock-Badge-Anzeige genutzt.
 - PDF-Handling innerhalb von WebViews erfordert oft spezielle Konfiguration in `electron.js` (Plugins aktiviert).

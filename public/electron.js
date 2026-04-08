@@ -1126,15 +1126,21 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
   }
 });
 
-ipcMain.on('update-badge', (event, isBadge) => {
+ipcMain.on('update-badge', (event, badgeValue) => {
   try {
+    // badgeValue can be:
+    //   - a number (0 = no badge, >0 = unread count from BBZ Chat)
+    //   - a boolean (legacy schul.cloud: true/false)
+    const count = typeof badgeValue === 'number' ? badgeValue : (badgeValue ? 1 : 0);
+    const hasBadge = count > 0;
+
     if (process.platform === 'win32') {
       // For Windows:
       // - Use icon_badge.png for overlay (just the notification dot)
-      if (isBadge) {
+      if (hasBadge) {
         const icon = nativeImage.createFromPath(getAssetPath('icon_badge.png'));
         if (!icon.isEmpty()) {
-          mainWindow?.setOverlayIcon(icon, 'NeueNachrichten');
+          mainWindow?.setOverlayIcon(icon, `${count} ungelesene Nachricht${count !== 1 ? 'en' : ''}`);
           mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
           tray?.setImage(getAssetPath('tray-lowres_badge.png'));
         } else {
@@ -1146,13 +1152,15 @@ ipcMain.on('update-badge', (event, isBadge) => {
         tray?.setImage(getAssetPath('tray-lowres.png'));
       }
     } else if (process.platform === 'darwin') {
-      // For macOS
-      if (isBadge) {
+      // For macOS — set dock badge with count
+      if (hasBadge) {
+        app.dock?.setBadge(String(count));
         const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
         if (!badgeIcon.isEmpty()) {
           tray?.setImage(badgeIcon);
         }
       } else {
+        app.dock?.setBadge('');
         const normalIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
         if (!normalIcon.isEmpty()) {
           tray?.setImage(normalIcon);
@@ -1160,7 +1168,7 @@ ipcMain.on('update-badge', (event, isBadge) => {
       }
     } else {
       // For Linux and others
-      if (isBadge) {
+      if (hasBadge) {
         tray?.setImage(getAssetPath('tray_badge.png'));
       } else {
         tray?.setImage(getAssetPath('tray.png'));
