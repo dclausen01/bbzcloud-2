@@ -219,11 +219,19 @@ function cleanupWebviewSessions() {
     
     console.log(`[macOS] Found ${webviews.length} webview sessions for cleanup`);
     
-    webviews.forEach((webview, index) => {
+      webviews.forEach((webview, index) => {
       try {
         // Clear cache for webviews that haven't been used recently
         if (webview.session && !webview.isDestroyed()) {
-          webview.session.clearCache();
+          // Get URL before clearing to check if this is BBZ Chat
+          const url = webview.getURL();
+          
+          // Don't clear cache for BBZ Chat to prevent session loss
+          // (chat.bbz-rd-eck.com is already protected in storage cleanup below,
+          // but clearCache() affects all origins in the shared session)
+          if (!url.includes('chat.bbz-rd-eck.com')) {
+            webview.session.clearCache();
+          }
           
           // Clear storage data for non-essential webviews.
           // IMPORTANT: All webviews share the same 'persist:main' Session object.
@@ -231,7 +239,6 @@ function cleanupWebviewSessions() {
           // for ALL origins (including chat.bbz-rd-eck.com) even if only a moodle
           // or nextcloud webview triggered this call. Always pass origin so only
           // the specific webview's data is cleared.
-          const url = webview.getURL();
           if (url && url !== 'about:blank' &&
               !url.includes('exchange.bbz-rd-eck.de') &&
               !url.includes('webuntis.com') &&
@@ -1908,7 +1915,7 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
         try {
           await secureDelete(tempPath);
         } catch (error) {
-          console.error('Error deleting temp file:', error);
+      console.error('Error deleting temp file:', error);
         }
       }
     };
