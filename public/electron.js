@@ -225,12 +225,27 @@ function cleanupWebviewSessions() {
         if (webview.session && !webview.isDestroyed()) {
           webview.session.clearCache();
           
-          // Clear storage data for non-essential webviews
+          // Clear storage data for non-essential webviews.
+          // IMPORTANT: All webviews share the same 'persist:main' Session object.
+          // clearStorageData() without an origin filter would wipe ALL localStorage
+          // for ALL origins (including chat.bbz-rd-eck.com) even if only a moodle
+          // or nextcloud webview triggered this call. Always pass origin so only
+          // the specific webview's data is cleared.
           const url = webview.getURL();
-          if (!url.includes('exchange.bbz-rd-eck.de') && !url.includes('webuntis.com') && !url.includes('stash.cat') && !url.includes('chat.bbz-rd-eck.com')) {
-            webview.session.clearStorageData({
-              storages: ['cookies', 'localstorage', 'sessionstorage', 'websql']
-            });
+          if (url && url !== 'about:blank' &&
+              !url.includes('exchange.bbz-rd-eck.de') &&
+              !url.includes('webuntis.com') &&
+              !url.includes('stash.cat') &&
+              !url.includes('chat.bbz-rd-eck.com')) {
+            try {
+              const origin = new URL(url).origin;
+              webview.session.clearStorageData({
+                storages: ['cookies', 'localstorage', 'sessionstorage', 'websql'],
+                origin
+              });
+            } catch (urlError) {
+              console.warn(`[macOS] Could not parse URL for storage cleanup: ${url}`);
+            }
           }
         }
       } catch (error) {
