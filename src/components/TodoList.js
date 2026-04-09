@@ -527,7 +527,7 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
     }
 
     const newTodo = {
-      id: Date.now(),
+      id: crypto.randomUUID(),
       text: trimmedText,
       completed: false,
       folder: todoState.selectedFolder,

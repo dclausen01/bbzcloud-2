@@ -120,150 +120,134 @@ class DatabaseService {
                 throw new Error('Invalid old password');
             }
 
-            // Start transaction
-            return new Promise((resolve, reject) => {
-                this.db.serialize(() => {
-                    this.db.run('BEGIN TRANSACTION');
-
-                    try {
-                        // 1. Reencrypt todos
-                        this.db.all('SELECT * FROM todos', [], async (err, todos) => {
-                            if (err) throw err;
-
-                            const todoStmt = this.db.prepare(`
-                                UPDATE todos 
-                                SET text = ?
-                                WHERE id = ?
-                            `);
-
-                            for (const todo of todos) {
-                                // Decrypt with old password
-                                const decryptedText = this.decrypt(todo.text);
-                                
-                                // Encrypt with new password
-                                this.encryptionKey = newPassword;
-                                const newEncryptedText = this.encrypt(decryptedText);
-                                
-                                todoStmt.run(newEncryptedText, todo.id);
-                            }
-                            todoStmt.finalize();
-                        });
-
-                        // 2. Reencrypt secure documents
-                        this.db.all('SELECT * FROM secure_documents', [], async (err, docs) => {
-                            if (err) throw err;
-
-                            const docStmt = this.db.prepare(`
-                                UPDATE secure_documents 
-                                SET content = ?
-                                WHERE id = ?
-                            `);
-
-                            for (const doc of docs) {
-                                try {
-                                    // Decrypt with old password
-                                    const decrypted = CryptoJS.AES.decrypt(doc.content, oldPassword);
-                                    const metadata = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
-                                    
-                                    // Encrypt with new password
-                                    const newEncrypted = CryptoJS.AES.encrypt(
-                                        JSON.stringify(metadata),
-                                        newPassword
-                                    ).toString();
-                                    
-                                    docStmt.run(newEncrypted, doc.id);
-                                } catch (error) {
-                                    console.error('Error reencrypting document:', error);
-                                }
-                            }
-                            docStmt.finalize();
-                        });
-
-                        // Update encryption key
-                        this.encryptionKey = newPassword;
-
-                        this.db.run('COMMIT', (err) => {
-                            if (err) reject(err);
-                            else resolve(true);
-                        });
-                    } catch (error) {
-                        this.db.run('ROLLBACK');
-                        reject(error);
-                    }
-                });
+            // Promisified helpers to avoid async/callback mixing in transactions
+            const dbAll = (sql, params) => new Promise((resolve, reject) => {
+                this.db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
             });
+            const dbRun = (sql, params) => new Promise((resolve, reject) => {
+                this.db.run(sql, params, (err) => err ? reject(err) : resolve());
+            });
+
+            // Fetch all data before starting transaction
+            const todos = await dbAll('SELECT id, text FROM todos', []);
+            const docs = await dbAll('SELECT id, content FROM secure_documents', []);
+
+            // Prepare re-encrypted values in memory (CryptoJS is synchronous).
+            // Decrypt everything with oldPassword first, then encrypt with newPassword.
+            // Do NOT mutate this.encryptionKey here -- it stays as oldPassword until commit succeeds.
+            const reencryptedTodos = todos.map(todo => {
+                const decryptedText = (() => {
+                    const bytes = CryptoJS.AES.decrypt(todo.text, oldPassword);
+                    return bytes.toString(CryptoJS.enc.Utf8);
+                })();
+                return {
+                    id: todo.id,
+                    text: CryptoJS.AES.encrypt(decryptedText, newPassword).toString()
+                };
+            });
+
+            const reencryptedDocs = [];
+            for (const doc of docs) {
+                try {
+                    const decrypted = CryptoJS.AES.decrypt(doc.content, oldPassword);
+                    const metadata = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
+                    reencryptedDocs.push({
+                        id: doc.id,
+                        content: CryptoJS.AES.encrypt(JSON.stringify(metadata), newPassword).toString()
+                    });
+                } catch (error) {
+                    console.error('Error reencrypting document:', error);
+                }
+            }
+
+            // Execute all updates in a single transaction
+            await dbRun('BEGIN TRANSACTION', []);
+            try {
+                for (const todo of reencryptedTodos) {
+                    await dbRun('UPDATE todos SET text = ? WHERE id = ?', [todo.text, todo.id]);
+                }
+                for (const doc of reencryptedDocs) {
+                    await dbRun('UPDATE secure_documents SET content = ? WHERE id = ?', [doc.content, doc.id]);
+                }
+                await dbRun('COMMIT', []);
+            } catch (error) {
+                await dbRun('ROLLBACK', []).catch(() => {});
+                throw error;
+            }
+
+            // Update encryption key only after successful commit
+            this.encryptionKey = newPassword;
+            return true;
         });
     }
 
     async createTables() {
         return new Promise((resolve, reject) => {
             this.db.serialize(() => {
-                try {
-                    // Settings table
-                    this.db.run(`
-                        CREATE TABLE IF NOT EXISTS settings (
-                            id TEXT PRIMARY KEY,
-                            value TEXT NOT NULL,
-                            updated_at INTEGER NOT NULL
-                        )
-                    `);
+                // Settings table
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS settings (
+                        id TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                `, (err) => { if (err) reject(err); });
 
-                    // Todos table
-                    this.db.run(`
-                        CREATE TABLE IF NOT EXISTS todos (
-                            id INTEGER PRIMARY KEY,
-                            text TEXT NOT NULL,
-                            completed BOOLEAN NOT NULL DEFAULT 0,
-                            folder TEXT NOT NULL DEFAULT 'Default',
-                            created_at TEXT NOT NULL,
-                            reminder TEXT,
-                            updated_at INTEGER NOT NULL
-                        )
-                    `);
+                // Todos table
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS todos (
+                        id INTEGER PRIMARY KEY,
+                        text TEXT NOT NULL,
+                        completed BOOLEAN NOT NULL DEFAULT 0,
+                        folder TEXT NOT NULL DEFAULT 'Default',
+                        created_at TEXT NOT NULL,
+                        reminder TEXT,
+                        updated_at INTEGER NOT NULL
+                    )
+                `, (err) => { if (err) reject(err); });
 
-                    // Todo folders table
-                    this.db.run(`
-                        CREATE TABLE IF NOT EXISTS todo_folders (
-                            name TEXT PRIMARY KEY,
-                            updated_at INTEGER NOT NULL
-                        )
-                    `);
+                // Todo folders table
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS todo_folders (
+                        name TEXT PRIMARY KEY,
+                        updated_at INTEGER NOT NULL
+                    )
+                `, (err) => { if (err) reject(err); });
 
-                    // Insert Default folder if it doesn't exist
-                    this.db.run(`
-                        INSERT OR IGNORE INTO todo_folders (name, updated_at)
-                        VALUES ('Default', ?)
-                    `, [Date.now()]);
+                // Insert Default folder if it doesn't exist
+                this.db.run(`
+                    INSERT OR IGNORE INTO todo_folders (name, updated_at)
+                    VALUES ('Default', ?)
+                `, [Date.now()], (err) => { if (err) reject(err); });
 
-                    // Secure documents table
-                    this.db.run(`
-                        CREATE TABLE IF NOT EXISTS secure_documents (
-                            id TEXT PRIMARY KEY,
-                            name TEXT NOT NULL,
-                            size TEXT NOT NULL,
-                            date TEXT NOT NULL,
-                            content TEXT NOT NULL,
-                            updated_at INTEGER NOT NULL
-                        )
-                    `);
+                // Secure documents table
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS secure_documents (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        size TEXT NOT NULL,
+                        date TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                `, (err) => { if (err) reject(err); });
 
-                    // Custom apps table
-                    this.db.run(`
-                        CREATE TABLE IF NOT EXISTS custom_apps (
-                            id TEXT PRIMARY KEY,
-                            title TEXT NOT NULL,
-                            url TEXT NOT NULL,
-                            button_variant TEXT NOT NULL DEFAULT 'solid',
-                            favicon TEXT,
-                            zoom REAL NOT NULL DEFAULT 1.0,
-                            updated_at INTEGER NOT NULL
-                        )
-                    `);
-
-                    resolve();
-                } catch (error) {
-                    reject(error);
-                }
+                // Custom apps table -- resolve/reject from last statement's callback
+                // so we only resolve after all prior serialized statements have completed.
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS custom_apps (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        url TEXT NOT NULL,
+                        button_variant TEXT NOT NULL DEFAULT 'solid',
+                        favicon TEXT,
+                        zoom REAL NOT NULL DEFAULT 1.0,
+                        updated_at INTEGER NOT NULL
+                    )
+                `, (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
             });
         });
     }

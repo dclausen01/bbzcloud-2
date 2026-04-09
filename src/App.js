@@ -91,14 +91,6 @@ import {
   restoreFocus, 
   announceToScreenReader
 } from './utils/accessibility';
-import { 
-  setupGlobalErrorHandling,
-  handleCredentialError,
-  handleWebViewError,
-  safeExecute,
-  performanceMonitor,
-  ERROR_CATEGORIES
-} from './utils/errorHandler';
 
 /**
  * Helper function to create delays in async operations

@@ -500,15 +500,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'outlook':
           await webview.executeJavaScript(
-            `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
+            `document.querySelector('#userNameInput').value = ${JSON.stringify(emailAddress)}; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = "${password}"; void(0);`
+            `document.querySelector('#passwordInput').value = ${JSON.stringify(password)}; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('#submitButton').click();`
           );
-          
+
           // Save credentials after successful login
           await window.electron.saveCredentials({
             service: 'bbzcloud',
@@ -520,29 +520,29 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             account: 'password',
             password: password
           });
-          
+
           await sleep(5000);
           webview.reload();
           break;
 
         case 'moodle':
           await webview.executeJavaScript(
-            `document.querySelector('input[name="username"][id="username"]').value = "${emailAddress.toLowerCase()}"; void(0);`
+            `document.querySelector('input[name="username"][id="username"]').value = ${JSON.stringify(emailAddress.toLowerCase())}; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('input[name="password"][id="password"]').value = "${password}"; void(0);`
+            `document.querySelector('input[name="password"][id="password"]').value = ${JSON.stringify(password)}; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('button[type="submit"][id="loginbtn"]').click();`
-          );         
+          );
           break;
 
         case 'bbb':
           await webview.executeJavaScript(
-            `document.querySelector('#session_email').value = "${emailAddress}"; void(0);`
+            `document.querySelector('#session_email').value = ${JSON.stringify(emailAddress)}; void(0);`
           );
           await webview.executeJavaScript(
-            `document.querySelector('#session_password').value = "${bbbPassword}"; void(0);`
+            `document.querySelector('#session_password').value = ${JSON.stringify(bbbPassword)}; void(0);`
           );
           await webview.executeJavaScript(
             `document.querySelector('.signin-button').click();`
@@ -577,10 +577,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           if (formExists) {
             await webview.executeJavaScript(
-              `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
+              `document.querySelector('#userNameInput').value = ${JSON.stringify(emailAddress)}; void(0);`
             );
             await webview.executeJavaScript(
-              `document.querySelector('#passwordInput').value = "${password}"; void(0);`
+              `document.querySelector('#passwordInput').value = ${JSON.stringify(password)}; void(0);`
             );
             await webview.executeJavaScript(
               `document.querySelector('#submitButton').click();`
@@ -755,8 +755,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
                   
                   if (emailInput && weiterButton) {
-                    console.log('Filling email:', "${emailAddress}");
-                    emailInput.value = "${emailAddress}";
+                    console.log('Filling email:', ${JSON.stringify(emailAddress)});
+                    emailInput.value = ${JSON.stringify(emailAddress)};
                     emailInput.focus();
                     
                     // Trigger Angular events
@@ -1181,8 +1181,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
                   
                   if (emailInput && weiterButton) {
-                    console.log('Filling Office email:', "${emailAddress}");
-                    emailInput.value = "${emailAddress}";
+                    console.log('Filling Office email:', ${JSON.stringify(emailAddress)});
+                    emailInput.value = ${JSON.stringify(emailAddress)};
                     emailInput.focus();
                     
                     // Trigger Microsoft form events
@@ -1248,7 +1248,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   
                   if (passwordInput && anmeldenButton) {
                     console.log('Filling Office password');
-                    passwordInput.value = "${password}";
+                    passwordInput.value = ${JSON.stringify(password)};
                     passwordInput.focus();
                     
                     // Trigger Microsoft form events
@@ -1360,10 +1360,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             } else if (ncLoginState.userNameInput && ncLoginState.passwordInput && ncLoginState.submitButton) {
               // ADFS login form - fill credentials (same form as Outlook)
               await webview.executeJavaScript(
-                `document.querySelector('#userNameInput').value = "${emailAddress}"; void(0);`
+                `document.querySelector('#userNameInput').value = ${JSON.stringify(emailAddress)}; void(0);`
               );
               await webview.executeJavaScript(
-                `document.querySelector('#passwordInput').value = "${password}"; void(0);`
+                `document.querySelector('#passwordInput').value = ${JSON.stringify(password)}; void(0);`
               );
               await webview.executeJavaScript(
                 `document.querySelector('#submitButton').click();`
@@ -1579,11 +1579,17 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         clearInterval(notificationCheckIntervalRef.current);
       }
 
-      // Only start checking when DOM is ready
+      // Only start checking when DOM is ready.
+      // dom-ready fires on every page load — always clear the previous interval
+      // before creating a new one to prevent multiple concurrent intervals.
       webview.addEventListener('dom-ready', () => {
+        if (notificationCheckIntervalRef.current) {
+          clearInterval(notificationCheckIntervalRef.current);
+        }
+
         // Initial check
         checkNotifications();
-        
+
         // Set up interval — BBZ Chat title changes are lightweight, check every 5s
         // schul.cloud favicon analysis is heavier, check every 8s
         const interval = isBbzChat ? 5000 : 8000;

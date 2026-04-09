@@ -31,6 +31,8 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
   const [newAppUrl, setNewAppUrl] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showBBBPassword, setShowBBBPassword] = useState(false);
+  const [showWebuntisPassword, setShowWebuntisPassword] = useState(false);
+  const [showSchulportalPassword, setShowSchulportalPassword] = useState(false);
   const [showEncryptionPassword, setShowEncryptionPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -260,7 +262,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
 
     try {
       await addCustomApp({
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         title: newAppTitle,
         url: url,
       });
@@ -624,14 +626,14 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
             <FormLabel>WebUntis Passwort</FormLabel>
             <InputGroup>
               <Input
-                type={showBBBPassword ? 'text' : 'password'}
+                type={showWebuntisPassword ? 'text' : 'password'}
                 value={credentials.webuntisPassword}
                 onChange={(e) => setCredentials(prev => ({ ...prev, webuntisPassword: e.target.value }))}
                 placeholder="WebUntis Passwort"
               />
               <InputRightElement width="4.5rem">
-                <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
-                  {showBBBPassword ? 'Verbergen' : 'Zeigen'}
+                <Button h="1.75rem" size="sm" onClick={() => setShowWebuntisPassword(!showWebuntisPassword)}>
+                  {showWebuntisPassword ? 'Verbergen' : 'Zeigen'}
                 </Button>
               </InputRightElement>
             </InputGroup>
@@ -654,14 +656,14 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
                 <FormLabel>Schulportal Passwort</FormLabel>
                 <InputGroup>
                   <Input
-                    type={showBBBPassword ? 'text' : 'password'}
+                    type={showSchulportalPassword ? 'text' : 'password'}
                     value={credentials.schulportalPassword}
                     onChange={(e) => setCredentials(prev => ({ ...prev, schulportalPassword: e.target.value }))}
                     placeholder="Schulportal Passwort"
                   />
                   <InputRightElement width="4.5rem">
-                    <Button h="1.75rem" size="sm" onClick={() => setShowBBBPassword(!showBBBPassword)}>
-                      {showBBBPassword ? 'Verbergen' : 'Zeigen'}
+                    <Button h="1.75rem" size="sm" onClick={() => setShowSchulportalPassword(!showSchulportalPassword)}>
+                      {showSchulportalPassword ? 'Verbergen' : 'Zeigen'}
                     </Button>
                   </InputRightElement>
                 </InputGroup>

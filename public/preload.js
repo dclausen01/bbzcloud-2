@@ -55,7 +55,7 @@ contextBridge.exposeInMainWorld('electron', {
   // Added methods from webview-preload.js
   send: (channel, data) => {
     // whitelist channels
-    const validChannels = ['update-badge', 'contextMenu', 'open-external'];
+    const validChannels = ['update-badge', 'contextMenu', 'showContextMenu', 'open-external'];
     if (validChannels.includes(channel)) {
       ipcRenderer.send(channel, data);
     }
@@ -200,12 +200,10 @@ contextBridge.exposeInMainWorld('electron', {
       };
     }
   },
-  off: (channel, callback) => {
-    const validChannels = ['secure-file-updated', 'database-changed'];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.removeListener(channel, callback);
-    }
-  },
+  // Note: prefer using the cleanup function returned by on() over calling off() directly.
+  // off() cannot remove the internal subscription wrapper created by on(), so it is a no-op.
+  // It is kept for API compatibility only.
+  off: (_channel, _callback) => {},
   emit: (channel) => {
     const validChannels = ['database-changed'];
     if (validChannels.includes(channel)) {
@@ -252,9 +250,9 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeListener('webview-message', subscription);
     };
   },
-  offMessage: (callback) => {
-    ipcRenderer.removeListener('webview-message', callback);
-  },
+  // Note: prefer using the cleanup function returned by onMessage() over offMessage().
+  // offMessage() cannot remove the internal subscription wrapper; it is a no-op.
+  offMessage: (_callback) => {},
 
   
   // Global shortcut registration (for main window)

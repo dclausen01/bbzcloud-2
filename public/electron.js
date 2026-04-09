@@ -20,6 +20,17 @@ const DatabaseService = require('./services/DatabaseService');
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 let updateCheckTimer;
 
+// Track sessions that already have the will-download handler to prevent duplicates.
+const downloadHandlerSessions = new WeakSet();
+
+// Central registry for secure-file cleanup handlers.
+// Using a Set ensures each handler is only registered once and allows removal.
+const secureFileCleanups = new Set();
+app.on('before-quit', () => {
+  secureFileCleanups.forEach(fn => fn());
+  secureFileCleanups.clear();
+});
+
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 let shouldStartMinimized = false;
@@ -1205,7 +1216,7 @@ ipcMain.handle('save-settings', async (event, settings) => {
       // Update all windows with the new theme
       const windows = BrowserWindow.getAllWindows();
       windows.forEach((win) => {
-        if (!win.isDestroyed() || win !== mainWindow) {
+        if (!win.isDestroyed() && win !== mainWindow) {
           // Send theme change event to all windows
           win.webContents.send('theme-changed', newTheme);
           
@@ -1285,32 +1296,41 @@ ipcMain.handle('get-webview-preload-path', () => {
   return path.join(__dirname, 'webview-preload.js');
 });
 
+// Tracked via event since autoUpdater has no .updateDownloaded property
+let updateDownloaded = false;
+
+const sendUpdateStatus = (msg) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-status', msg);
+  }
+};
+
 autoUpdater.on('checking-for-update', () => {
-  mainWindow.webContents.send('update-status', 'Suche nach Updates...');
+  sendUpdateStatus('Suche nach Updates...');
 });
 
 autoUpdater.on('update-available', (info) => {
   const currentVersion = app.getVersion();
   if (info.version !== currentVersion) {
-    mainWindow.webContents.send('update-status', `Update verfügbar: Version ${info.version}`);
+    sendUpdateStatus(`Update verfügbar: Version ${info.version}`);
   }
 });
 
-autoUpdater.on('update-not-available', (info) => {
-  // Don't send any status message when no update is available
-  mainWindow.webContents.send('update-status', '');
+autoUpdater.on('update-not-available', () => {
+  sendUpdateStatus('');
 });
 
-autoUpdater.on('error', (err) => {
-  mainWindow.webContents.send('update-status', 'Fehler beim Auto-Update.');
+autoUpdater.on('error', () => {
+  sendUpdateStatus('Fehler beim Auto-Update.');
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  mainWindow.webContents.send('update-status', `Download läuft... ${Math.floor(progressObj.percent)}%`);
+  sendUpdateStatus(`Download läuft... ${Math.floor(progressObj.percent)}%`);
 });
 
-autoUpdater.on('update-downloaded', (info) => {
-  mainWindow.webContents.send('update-status', 'Update heruntergeladen. Installation beim nächsten Neustart.');
+autoUpdater.on('update-downloaded', () => {
+  updateDownloaded = true;
+  sendUpdateStatus('Update heruntergeladen. Installation beim nächsten Neustart.');
 });
 
 // Handle update installation
@@ -1527,7 +1547,11 @@ app.on('web-contents-created', (event, contents) => {
     });
   }
 
-  // Set up download handler for this web contents
+  // Set up download handler only once per session.
+  // Multiple webContents share persist:main, so without this guard the handler
+  // would be registered again for every new webview, causing duplicate dialogs.
+  if (!downloadHandlerSessions.has(contents.session)) {
+    downloadHandlerSessions.add(contents.session);
   contents.session.on('will-download', (event, item) => {
     item.on('updated', (event, state) => {
       if (state === 'interrupted') {
@@ -1579,7 +1603,8 @@ app.on('web-contents-created', (event, contents) => {
         mainWindow.webContents.send('download', 'failed');
       }
     });
-  });
+  }); // end will-download
+  } // end downloadHandlerSessions guard
 
   contents.on('will-redirect', (e, url) => {
     if (
@@ -1653,7 +1678,7 @@ app.on('before-quit', async () => {
   }
   
   // Check if we have a downloaded update and install it
-  if (autoUpdater.getFeedURL() && autoUpdater.updateDownloaded) {
+  if (autoUpdater.getFeedURL() && updateDownloaded) {
     await prepareForUpdate();
     autoUpdater.quitAndInstall(false, true);
   }
@@ -1850,9 +1875,10 @@ ipcMain.handle('open-secure-file', async (event, fileId) => {
       }
     };
     
-    // Add cleanup handler for app quit
-    app.on('before-quit', cleanup);
-    
+    // Register cleanup in the central registry so it fires exactly once on quit
+    // and doesn't accumulate duplicate handlers across multiple file opens.
+    secureFileCleanups.add(cleanup);
+
     return { success: true };
   } catch (error) {
     if (updateTimeout) {
