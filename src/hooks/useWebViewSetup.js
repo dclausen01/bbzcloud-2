@@ -193,48 +193,8 @@ export const useWebViewSetup = ({
     eventCleanupsRef.current.set(webview, cleanups);
   }, [applyZoom, onCredentialInjection]);
 
-  /**
-   * Setup context menu for specific webviews
-   * @param {HTMLElement} webview - The webview element
-   * @param {string} id - The webview ID
-   */
-  const setupContextMenu = useCallback((webview, id) => {
-    const contextMenuUrls = [
-      'schul.cloud',
-      'portal.bbz-rd-eck.com',
-      'taskcards.app',
-      'wiki.bbz-rd-eck.com'
-    ];
-
-    const shouldHaveContextMenu = contextMenuUrls.some(url => 
-      webview.getURL().includes(url)
-    );
-
-    if (shouldHaveContextMenu) {
-      const handleContextMenu = async (e) => {
-        e.preventDefault();
-        try {
-          const selectedText = await webview.executeJavaScript('window.getSelection().toString()');
-          if (selectedText) {
-            window.electron.send('showContextMenu', {
-              x: e.x,
-              y: e.y,
-              selectionText: selectedText,
-            });
-          }
-        } catch (error) {
-          console.error('Error getting selected text:', error);
-        }
-      };
-
-      webview.addEventListener('context-menu', handleContextMenu);
-
-      // Store cleanup functions
-      const cleanups = eventCleanupsRef.current.get(webview) || [];
-      cleanups.push(() => webview.removeEventListener('context-menu', handleContextMenu));
-      eventCleanupsRef.current.set(webview, cleanups);
-    }
-  }, []);
+  // Context menu is handled entirely in the main process via contents.on('context-menu')
+  // in electron.js. No renderer-side setup needed.
 
   /**
    * Setup all event handlers for a webview
@@ -250,7 +210,6 @@ export const useWebViewSetup = ({
     setupNavigationHandlers(webview, id);
     setupErrorHandlers(webview, id);
     setupDOMReadyHandlers(webview, id);
-    setupContextMenu(webview, id);
 
     return () => {
       // Cleanup all event listeners for this webview
@@ -264,8 +223,7 @@ export const useWebViewSetup = ({
     setupLoadingHandlers,
     setupNavigationHandlers,
     setupErrorHandlers,
-    setupDOMReadyHandlers,
-    setupContextMenu
+    setupDOMReadyHandlers
   ]);
 
   /**

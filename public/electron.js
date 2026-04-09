@@ -1622,25 +1622,13 @@ app.on('web-contents-created', (event, contents) => {
     }
   });
 
+  // Show context menu in all webviews — previously restricted to specific URLs,
+  // which meant Outlook, BBB, Nextcloud etc. had no context menu at all.
   contents.on('context-menu', (e, params) => {
-    const url = contents.getURL();
-    if (
-      url.includes('schul.cloud') ||
-      url.includes('portal.bbz-rd-eck.com') ||
-      url.includes('taskcards.app') ||
-      url.includes('wiki.bbz-rd-eck.com') ||
-      url.includes('moodle')
-    ) {
-      e.preventDefault();
-      contents.executeJavaScript(`window.getSelection().toString()`)
-        .then(selectedText => {
-          const menu = createContextMenu(contents, selectedText);
-          menu.popup();
-        })
-        .catch(error => {
-          console.error('Error getting selected text:', error);
-        });
-    }
+    e.preventDefault();
+    const selectedText = params.selectionText || '';
+    const menu = createContextMenu(contents, selectedText);
+    menu.popup();
   });
 
   contents.setWindowOpenHandler(({ url }) => {
@@ -1664,7 +1652,35 @@ app.on('web-contents-created', (event, contents) => {
 
 });
 
-Menu.setApplicationMenu(null);
+// On macOS, an application menu with Edit items is required for Cmd+C/V/X/Z/A
+// to work in webviews. macOS routes these through the app responder chain,
+// so without an Edit menu they have no handler. Windows/Linux are unaffected.
+if (process.platform === 'darwin') {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: app.name,
+      submenu: [
+        { label: `Über ${app.name}`, role: 'about' },
+        { type: 'separator' },
+        { label: 'Beenden', role: 'quit' }
+      ]
+    },
+    {
+      label: 'Bearbeiten',
+      submenu: [
+        { label: 'Rückgängig', role: 'undo' },
+        { label: 'Wiederholen', role: 'redo' },
+        { type: 'separator' },
+        { label: 'Ausschneiden', role: 'cut' },
+        { label: 'Kopieren', role: 'copy' },
+        { label: 'Einfügen', role: 'paste' },
+        { label: 'Alles auswählen', role: 'selectAll' }
+      ]
+    }
+  ]));
+} else {
+  Menu.setApplicationMenu(null);
+}
 
 app.on('before-quit', async () => {
   app.isQuitting = true;
