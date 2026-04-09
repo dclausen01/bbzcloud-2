@@ -1429,141 +1429,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     }
   }, [injectCredentials]);
 
-  // Listen for system resume events
+  // Listen for system resume events — simply reset credsAreSet so periodic
+  // login checks can re-authenticate if needed. No token/session clearing!
+  // The main process already reloads all webviews on resume.
   useEffect(() => {
     if (!window.electron || !window.electron.onSystemResumed) {
       return;
     }
     
     try {
-      const unsubscribe = window.electron.onSystemResumed((webviewsToReload) => {
-        webviewsToReload.forEach(id => {
-          const webview = webviewRefs.current[id]?.current;
-          if (webview) {
-            if (id === 'outlook') {
-              // For Outlook, clear credentials state and force complete reload
-              // Under macOS, we need to clear session data to prevent auth issues
-              // Option A: Clear MSAL auth tokens for reliable re-login
-              console.log('[System Resume] Clearing Outlook MSAL tokens and reloading');
-              credsAreSet.current[id] = false;
-              
-              // Clear only OWA-specific auth tokens, not all storage
-              webview.executeJavaScript(`
-                // Clear OWA-specific auth items to force fresh login
-                // These are the common OWA/Exchange auth token keys
-                const owaKeys = [
-                  'msal.token.keys',
-                  'msal.account.keys',
-                  'msal.idtoken',
-                  'msal.accesstoken',
-                  'msal.refreshtoken',
-                  'msal.client.info',
-                  'msal.error.description',
-                  'msal.error',
-                  'msal.token.renew.status',
-                  'msal.interaction.status',
-                  'msal.login.request',
-                  'msal.authority',
-                  'msal.nonce.idtoken',
-                  'msal.state.login',
-                  'msal.state.acquireToken'
-                ];
-                
-                owaKeys.forEach(key => {
-                  if (localStorage.getItem(key)) {
-                    localStorage.removeItem(key);
-                    console.log('[Outlook] Cleared auth key:', key);
-                  }
-                });
-                
-                // Also clear any cookies that might be expired
-                document.cookie.split(';').forEach(cookie => {
-                  const [name] = cookie.split('=');
-                  if (name.trim().startsWith('msal.') || name.trim().includes('auth')) {
-                    document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-                  }
-                });
-                
-                console.log('[Outlook] Auth tokens cleared on system resume');
-              `).then(() => {
-                webview.clearHistory();
-                // Small delay to ensure cleanup is complete
-                setTimeout(() => {
-                  // Force navigation to base OWA URL
-                  webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
-                }, 100);
-              });
-            } else if (id === 'webuntis') {
-              // For WebUntis, check if we're on the authenticator page before reloading
-              webview.executeJavaScript(`
-                const authLabel = document.querySelector('.un-input-group__label');
-                authLabel?.textContent === 'Bestätigungscode';
-              `).then(isAuthPage => {
-                if (!isAuthPage) {
-                  webview.reload();
-                }
-              });
-            } else if (id === 'office') {
-              // For Office, clear credentials state and reload to prevent session loss
-              console.log('[System Resume] Reloading Office webview');
-              credsAreSet.current[id] = false;
-              webview.reload();
-            } else if (id === 'schulcloud') {
-              // For BBZ Chat (schulcloud), check token validity before forcing re-login
-              console.log('[System Resume] Checking BBZ Chat session validity');
-              
-              webview.executeJavaScript(`
-                (async function() {
-                  const token = localStorage.getItem('schulchat_token');
-                  if (!token) {
-                    return { hasToken: false };
-                  }
-                  try {
-                    // Validate token by calling /api/me
-                    const response = await fetch('/api/me', {
-                      headers: { 'Authorization': 'Bearer ' + token }
-                    });
-                    if (response.ok) {
-                      return { hasToken: true, valid: true };
-                    } else {
-                      return { hasToken: true, valid: false, status: response.status };
-                    }
-                  } catch (e) {
-                    // Network error on resume - token might still be valid
-                    return { hasToken: true, valid: true, networkError: true };
-                  }
-                })()
-              `).then((result) => {
-                if (!result.hasToken || !result.valid) {
-                  // Token missing or invalid - need to re-login
-                  console.log('[System Resume] BBZ Chat token invalid or missing, clearing session');
-                  credsAreSet.current[id] = false;
-                  if (result.hasToken && !result.valid) {
-                    // Only remove if it exists and is invalid
-                    webview.executeJavaScript(`
-                      localStorage.removeItem('schulchat_token');
-                      console.log('[BBZ Chat] Invalid token cleared on system resume');
-                    `).then(() => {
-                      webview.reload();
-                    });
-                  } else {
-                    // No token - just reload to trigger login
-                    webview.reload();
-                  }
-                } else {
-                  // Token still valid - don't clear, just reload if needed
-                  console.log('[System Resume] BBZ Chat token still valid, preserving session');
-                  if (result.networkError) {
-                    console.log('[System Resume] Network error during validation, assuming token valid');
-                  }
-                  // Optional: reload to refresh the page state without losing session
-                  // webview.reload(); // Uncomment if visual refresh is needed
-                }
-              });
-            } else {
-              webview.reload();
-            }
-          }
+      const unsubscribe = window.electron.onSystemResumed(() => {
+        console.log('[System Resume] Resetting credsAreSet for all webviews');
+        // Reset all credsAreSet so the periodic login checks (every 5 seconds)
+        // will detect if a re-login is needed and handle it automatically
+        Object.keys(credsAreSet.current).forEach(id => {
+          credsAreSet.current[id] = false;
         });
       });
       return () => unsubscribe();

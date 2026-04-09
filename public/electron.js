@@ -6,9 +6,6 @@ const crypto = require('crypto');
 const compress = util.promisify(zlib.gzip);
 const decompress = util.promisify(zlib.gunzip);
 
-// List of webviews that need special handling on system resume
-// Added 'office' and 'schulcloud' (BBZ Chat) to prevent session loss on macOS resume
-const webviewsToReload = ['outlook', 'webuntis', 'office', 'schulcloud'];
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
@@ -209,73 +206,6 @@ function getOptimizedImage(imagePath, options = {}) {
   return image;
 }
 
-// Enhanced webview session cleanup for macOS
-function cleanupWebviewSessions() {
-  if (process.platform !== 'darwin') return;
-  
-  try {
-    const allWebContents = webContents.getAllWebContents();
-    const webviews = allWebContents.filter(wc => wc.getType() === 'webview');
-    
-    console.log(`[macOS] Found ${webviews.length} webview sessions for cleanup`);
-    
-      webviews.forEach((webview, index) => {
-      try {
-        // Clear cache for webviews that haven't been used recently
-        if (webview.session && !webview.isDestroyed()) {
-          // Get URL before clearing to check if this is BBZ Chat
-          const url = webview.getURL();
-          
-          // Don't clear cache for BBZ Chat to prevent session loss
-          // (chat.bbz-rd-eck.com is already protected in storage cleanup below,
-          // but clearCache() affects all origins in the shared session)
-          if (!url.includes('chat.bbz-rd-eck.com')) {
-            webview.session.clearCache();
-          }
-          
-          // Clear storage data for non-essential webviews.
-          // IMPORTANT: All webviews share the same 'persist:main' Session object.
-          // clearStorageData() without an origin filter would wipe ALL localStorage
-          // for ALL origins (including chat.bbz-rd-eck.com) even if only a moodle
-          // or nextcloud webview triggered this call. Always pass origin so only
-          // the specific webview's data is cleared.
-          if (url && url !== 'about:blank' &&
-              !url.includes('exchange.bbz-rd-eck.de') &&
-              !url.includes('webuntis.com') &&
-              !url.includes('stash.cat') &&
-              !url.includes('chat.bbz-rd-eck.com')) {
-            try {
-              const origin = new URL(url).origin;
-              webview.session.clearStorageData({
-                storages: ['cookies', 'localstorage', 'sessionstorage', 'websql'],
-                origin
-              });
-            } catch (urlError) {
-              console.warn(`[macOS] Could not parse URL for storage cleanup: ${url}`);
-            }
-          }
-        }
-      } catch (error) {
-        console.error(`[macOS] Error cleaning webview ${index}:`, error);
-      }
-    });
-  } catch (error) {
-    console.error('[macOS] Error during webview session cleanup:', error);
-  }
-}
-
-// Setup periodic cleanup for macOS
-if (process.platform === 'darwin') {
-  setInterval(() => {
-    cleanupWebviewSessions();
-    
-    // Force garbage collection if available
-    if (global.gc) {
-      global.gc();
-      console.log('[macOS] Forced garbage collection');
-    }
-  }, 15 * 60 * 1000); // Every 15 minutes
-}
 
 // Update autostart based on settings
 async function updateAutostart() {
@@ -2010,73 +1940,55 @@ app.on('ready', async () => {
     console.error('Error during app initialization:', error);
   }
 
-  // Handle system resume and display change events
+  // Helper: adjust window bounds to stay visible on current displays
+  function adjustWindowBounds(win) {
+    if (!win || win.isDestroyed()) return;
+    const bounds = win.getBounds();
+    const newBounds = ensureWindowBoundsVisible(bounds);
+    if (newBounds !== bounds) {
+      win.setBounds(newBounds);
+    }
+  }
+
+  // Handle system resume: reload all webviews and notify renderer
   powerMonitor.on('resume', async () => {
-    // Check and adjust main window position
+    console.log('[System] Resume detected');
+
+    // Adjust main window position
     if (mainWindow) {
-      const bounds = mainWindow.getBounds();
-      const newBounds = ensureWindowBoundsVisible(bounds);
-      if (newBounds !== bounds) {
-        mainWindow.setBounds(newBounds);
-      }
+      adjustWindowBounds(mainWindow);
 
-      // Only handle specific webviews that need session clearing
-      const webviews = webContents.getAllWebContents().filter(wc => 
-        wc.getType() === 'webview' && 
-        (wc.getURL().includes('exchange.bbz-rd-eck.de/owa') || wc.getURL().includes('webuntis.com'))
+      // Simply reload all webviews — reload() preserves cookies/localStorage
+      const allWebviews = webContents.getAllWebContents().filter(wc =>
+        wc.getType() === 'webview' && !wc.isDestroyed()
       );
-
-      // Clear sessions only for Outlook and WebUntis
-      for (const webview of webviews) {
+      for (const webview of allWebviews) {
         try {
-          const url = webview.getURL();
-          if (url.includes('exchange.bbz-rd-eck.de/owa')) {
-            await webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
-          } else if (url.includes('webuntis.com')) {
-            await webview.loadURL('https://neilo.webuntis.com/WebUntis/?school=bbz-rd-eck#/basic/login');
-          }
+          webview.reload();
         } catch (error) {
-          console.error('Error handling webview session:', error);
+          console.error('[System] Error reloading webview on resume:', error);
         }
       }
 
-      // Notify about all reloads
-      mainWindow.webContents.send('system-resumed', webviewsToReload);
+      // Notify renderer to reset credsAreSet so periodic checks can re-login if needed
+      mainWindow.webContents.send('system-resumed', 'all');
     }
 
-    // Check and adjust all webview windows
-    windowRegistry.forEach((win) => {
-      if (!win.isDestroyed()) {
-        const bounds = win.getBounds();
-        const newBounds = ensureWindowBoundsVisible(bounds);
-        if (newBounds !== bounds) {
-          win.setBounds(newBounds);
-        }
-      }
-    });
+    // Adjust all webview windows
+    windowRegistry.forEach((win) => adjustWindowBounds(win));
   });
 
+  // Handle screen unlock: same as resume
   powerMonitor.on('unlock-screen', () => {
-    // Check and adjust main window position
+    console.log('[System] Screen unlocked');
+
     if (mainWindow) {
-      const bounds = mainWindow.getBounds();
-      const newBounds = ensureWindowBoundsVisible(bounds);
-      if (newBounds !== bounds) {
-        mainWindow.setBounds(newBounds);
-      }
-      mainWindow.webContents.send('system-resumed', webviewsToReload);
+      adjustWindowBounds(mainWindow);
+      // Notify renderer to reset credsAreSet
+      mainWindow.webContents.send('system-resumed', 'all');
     }
 
-    // Check and adjust all webview windows
-    windowRegistry.forEach((win) => {
-      if (!win.isDestroyed()) {
-        const bounds = win.getBounds();
-        const newBounds = ensureWindowBoundsVisible(bounds);
-        if (newBounds !== bounds) {
-          win.setBounds(newBounds);
-        }
-      }
-    });
+    windowRegistry.forEach((win) => adjustWindowBounds(win));
   });
 
   // Handle display changes (monitor connect/disconnect)
