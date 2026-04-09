@@ -1724,33 +1724,32 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             try {
               const needsLogin = await webview.executeJavaScript(`
                 (function() {
-                  // schul.cloud login selectors
-                  const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
+                  // Separate BBZ Chat and schul.cloud logic by URL, because both
+                  // share the same webview ID ('schulcloud') but have different login pages.
+                  // IMPORTANT: 'Verschlüsselungspasswort' appears as a FIELD LABEL on the
+                  // BBZ Chat login form, so it must NOT be used as a logged-in indicator
+                  // when on chat.bbz-rd-eck.com.
+                  const isBbzChatPage = window.location.href.includes('chat.bbz-rd-eck.com');
 
-                  // BBZ Chat (stashcat-chat) login selectors
-                  const bbzChatEmailInput = document.querySelector('input[type="email"]');
-
-                  // Shared: password field present on both login pages
-                  const passwordInput = document.querySelector('input[type="password"]');
-
-                  // schul.cloud logged-in indicators
-                  const loggedInSchulcloud = document.querySelector('.user-menu') ||
-                                 document.querySelector('.dashboard') ||
-                                 document.querySelector('.main-content') ||
-                                 document.body.textContent.includes('Verschlüsselungspasswort') ||
-                                 document.body.textContent.includes('Smartphone');
-
-                  // BBZ Chat logged-in: no login form + token present
-                  const token = localStorage.getItem('schulchat_token');
-                  const bbzChatLoggedIn = !bbzChatEmailInput && !!token;
-
-                  // Generic logged-in indicator (works for both)
-                  const loggedInGeneric = document.body.textContent.includes('Abmelden') ||
-                                 document.body.textContent.includes('Logout');
-
-                  const loggedIn = loggedInSchulcloud || bbzChatLoggedIn || loggedInGeneric;
-
-                  return (schulcloudEmailInput || bbzChatEmailInput || passwordInput) && !loggedIn;
+                  if (isBbzChatPage) {
+                    // BBZ Chat: only consider login form visible + no valid token
+                    const loginForm = document.querySelector('input[type="email"]');
+                    const token = localStorage.getItem('schulchat_token');
+                    return !!loginForm && !token;
+                  } else {
+                    // schul.cloud: 'Verschlüsselungspasswort' appears on the post-login
+                    // encryption setup page, so it IS a valid logged-in indicator here.
+                    const emailInput = document.querySelector('input#username[type="text"]');
+                    const passwordInput = document.querySelector('input[type="password"]');
+                    const loggedIn = document.querySelector('.user-menu') ||
+                                   document.querySelector('.dashboard') ||
+                                   document.querySelector('.main-content') ||
+                                   document.body.textContent.includes('Abmelden') ||
+                                   document.body.textContent.includes('Logout') ||
+                                   document.body.textContent.includes('Verschlüsselungspasswort') ||
+                                   document.body.textContent.includes('Smartphone');
+                    return (emailInput || passwordInput) && !loggedIn;
+                  }
                 })()
               `);
 
@@ -1987,60 +1986,51 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           try {
             const loginState = await webview.executeJavaScript(`
               (async function() {
-                // schul.cloud login selectors
-                const schulcloudEmailInput = document.querySelector('input#username[type="text"]');
+                // Separate BBZ Chat and schul.cloud logic by URL.
+                // 'Verschlüsselungspasswort' is a field LABEL on the BBZ Chat login form
+                // and must NOT be treated as a logged-in indicator on that domain.
+                const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
 
-                // BBZ Chat login selectors (uses email input instead of text)
-                const bbzChatEmailInput = document.querySelector('input[type="email"]');
-
-                // Shared: password field present on both login pages
-                const passwordInput = document.querySelector('input[type="password"]');
-
-                // schul.cloud logged-in indicators
-                const loggedInSchulcloud = document.querySelector('.user-menu') ||
-                               document.querySelector('.dashboard') ||
-                               document.querySelector('.main-content') ||
-                               document.body.textContent.includes('Verschlüsselungspasswort') ||
-                               document.body.textContent.includes('Smartphone');
-
-                // BBZ Chat: check token validity via API
-                let bbzChatTokenValid = false;
-                const currentUrl = window.location.href;
-                const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
-                
                 if (isBbzChat) {
+                  // BBZ Chat: validate token via API, check for visible login form
+                  const loginForm = document.querySelector('input[type="email"]');
                   const token = localStorage.getItem('schulchat_token');
+                  let tokenValid = false;
                   if (token) {
                     try {
                       const response = await fetch('/api/me', {
                         headers: { 'Authorization': 'Bearer ' + token }
                       });
-                      bbzChatTokenValid = response.ok;
+                      tokenValid = response.ok;
                       if (!response.ok) {
-                        // Token invalid - clear it
                         localStorage.removeItem('schulchat_token');
                       }
                     } catch (e) {
-                      // Network error - assume token still valid
-                      bbzChatTokenValid = true;
+                      tokenValid = true; // Network error — assume still valid
                     }
                   }
+                  return {
+                    needsLogin: !!loginForm && !tokenValid,
+                    isBbzChat: true,
+                    hasValidToken: tokenValid
+                  };
+                } else {
+                  // schul.cloud: 'Verschlüsselungspasswort' on post-login page = logged in
+                  const emailInput = document.querySelector('input#username[type="text"]');
+                  const passwordInput = document.querySelector('input[type="password"]');
+                  const loggedIn = document.querySelector('.user-menu') ||
+                                 document.querySelector('.dashboard') ||
+                                 document.querySelector('.main-content') ||
+                                 document.body.textContent.includes('Abmelden') ||
+                                 document.body.textContent.includes('Logout') ||
+                                 document.body.textContent.includes('Verschlüsselungspasswort') ||
+                                 document.body.textContent.includes('Smartphone');
+                  return {
+                    needsLogin: (emailInput || passwordInput) && !loggedIn,
+                    isBbzChat: false,
+                    hasValidToken: false
+                  };
                 }
-
-                // BBZ Chat logged-in: no login form + valid token
-                const bbzChatLoggedIn = !bbzChatEmailInput && bbzChatTokenValid;
-
-                // Generic logged-in indicator (works for both)
-                const loggedInGeneric = document.body.textContent.includes('Abmelden') ||
-                               document.body.textContent.includes('Logout');
-
-                const loggedIn = loggedInSchulcloud || bbzChatLoggedIn || loggedInGeneric;
-
-                return {
-                  needsLogin: (schulcloudEmailInput || bbzChatEmailInput || passwordInput) && !loggedIn,
-                  isBbzChat: isBbzChat,
-                  hasValidToken: bbzChatTokenValid
-                };
               })()
             `);
             
