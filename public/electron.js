@@ -1622,13 +1622,25 @@ app.on('web-contents-created', (event, contents) => {
     }
   });
 
-  // Show context menu in all webviews — previously restricted to specific URLs,
-  // which meant Outlook, BBB, Nextcloud etc. had no context menu at all.
+  // Show our custom Cut/Copy/Paste context menu for all webviews EXCEPT those
+  // that ship their own JavaScript context menus (OWA, BBB, Nextcloud, Office 365).
+  // For those, we let the page handle the contextmenu event itself.
   contents.on('context-menu', (e, params) => {
-    e.preventDefault();
-    const selectedText = params.selectionText || '';
-    const menu = createContextMenu(contents, selectedText);
-    menu.popup();
+    const url = contents.getURL();
+    const hasOwnContextMenu =
+      url.includes('exchange.bbz-rd-eck.de') ||   // OWA
+      url.includes('bbb.bbz-rd-eck.de') ||         // BigBlueButton
+      url.includes('cloud.bbz-rd-eck.de') ||        // Nextcloud
+      url.includes('microsoft.com') ||              // Office 365 / SharePoint
+      url.includes('office.com') ||
+      url.includes('sharepoint.com');
+
+    if (!hasOwnContextMenu) {
+      e.preventDefault();
+      const selectedText = params.selectionText || '';
+      const menu = createContextMenu(contents, selectedText);
+      menu.popup();
+    }
   });
 
   contents.setWindowOpenHandler(({ url }) => {
