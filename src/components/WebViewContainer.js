@@ -1574,27 +1574,32 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
       };
 
-      // Clear any existing interval
+            // Clear any existing interval
       if (notificationCheckIntervalRef.current) {
         clearInterval(notificationCheckIntervalRef.current);
       }
 
-      // Only start checking when DOM is ready.
-      // dom-ready fires on every page load — always clear the previous interval
-      // before creating a new one to prevent multiple concurrent intervals.
-      webview.addEventListener('dom-ready', () => {
-        if (notificationCheckIntervalRef.current) {
-          clearInterval(notificationCheckIntervalRef.current);
-        }
-
-        // Initial check
+      // Start notification checking immediately to fix issue where
+      // notifications were not detected when switching to already-loaded webview
+      const startChecking = () => {
         checkNotifications();
-
+        
         // Set up interval — BBZ Chat title changes are lightweight, check every 5s
         // schul.cloud favicon analysis is heavier, check every 8s
         const interval = isBbzChat ? 5000 : 8000;
         notificationCheckIntervalRef.current = setInterval(checkNotifications, interval);
-      });
+      };
+
+      // Check if webview is already ready (no need to wait for dom-ready)
+      if (webview.isLoading && !webview.isLoading()) {
+        // Webview is already loaded, start checking immediately
+        startChecking();
+      } else {
+        // Webview is still loading, wait for dom-ready then start
+        webview.addEventListener('dom-ready', () => {
+          startChecking();
+        }, { once: true });
+      }
     };
 
     // Set up observer to watch for the webview
