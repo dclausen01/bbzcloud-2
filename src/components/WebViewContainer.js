@@ -1590,15 +1590,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         notificationCheckIntervalRef.current = setInterval(checkNotifications, interval);
       };
 
-      if (webview.isLoading && !webview.isLoading()) {
-              // Webview is already loaded, start checking immediately
-              startChecking();
-            } else {
-              // Webview is still loading, wait for dom-ready then start
-              webview.addEventListener('dom-ready', () => {
-                startChecking();
-              }, { once: true });
-            }
+      webview.addEventListener('dom-ready', () => {
+        startChecking();
+      }, { once: true });
       };
 
     // Set up observer to watch for the webview
