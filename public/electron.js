@@ -36,6 +36,51 @@ const gotTheLock = app.requestSingleInstanceLock();
 let shouldStartMinimized = false;
 let globalTheme = 'light';
 
+// Badge update function (shared between IPC and event-driven title updates)
+function updateBadge(badgeValue) {
+  try {
+    const count = typeof badgeValue === 'number' ? badgeValue : (badgeValue ? 1 : 0);
+    const hasBadge = count > 0;
+
+    if (process.platform === 'win32') {
+      if (hasBadge) {
+        const icon = nativeImage.createFromPath(getAssetPath('icon_badge.png'));
+        if (!icon.isEmpty()) {
+          mainWindow?.setOverlayIcon(icon, `${count} ungelesene Nachricht${count !== 1 ? 'en' : ''}`);
+          mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
+          tray?.setImage(getAssetPath('tray-lowres_badge.png'));
+        }
+      } else {
+        mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
+        mainWindow?.setIcon(getAssetPath('icon.png'));
+        tray?.setImage(getAssetPath('tray-lowres.png'));
+      }
+    } else if (process.platform === 'darwin') {
+      if (hasBadge) {
+        app.dock?.setBadge(String(count));
+        const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
+        if (!badgeIcon.isEmpty()) {
+          tray?.setImage(badgeIcon);
+        }
+      } else {
+        app.dock?.setBadge('');
+        const normalIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
+        if (!normalIcon.isEmpty()) {
+          tray?.setImage(normalIcon);
+        }
+      }
+    } else {
+      if (hasBadge) {
+        tray?.setImage(getAssetPath('tray_badge.png'));
+      } else {
+        tray?.setImage(getAssetPath('tray.png'));
+      }
+    }
+  } catch (error) {
+    console.error('Error updating badge:', error);
+  }
+}
+
 if (!gotTheLock) {
   app.quit();
 } else {
@@ -568,6 +613,22 @@ async function createWindow() {
     return false;
   });
 
+  // Listen for page-title-updated events from webviews (event-driven badge updates)
+  // Only applies to BBZ Chat (schul.cloud uses favicon polling)
+  mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
+    webContents.on('page-title-updated', (event, title, explicitSet) => {
+      try {
+        // Only handle BBZ Chat titles: "(N) BBZ Chat" or "BBZ Chat"
+        if (!title || !title.includes('BBZ Chat')) return;
+        const match = title.match(/^\((\d+)\)/);
+        const unreadCount = match ? parseInt(match[1], 10) : 0;
+        updateBadge(unreadCount);
+      } catch (error) {
+        console.error('Error handling page title update:', error);
+      }
+    });
+  });
+
   mainWindow.once('ready-to-show', async () => {
     const startMinimized = shouldStartMinimized || process.argv.includes('--minimized');
     
@@ -1090,56 +1151,7 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
 });
 
 ipcMain.on('update-badge', (event, badgeValue) => {
-  try {
-    // badgeValue can be:
-    //   - a number (0 = no badge, >0 = unread count from BBZ Chat)
-    //   - a boolean (legacy schul.cloud: true/false)
-    const count = typeof badgeValue === 'number' ? badgeValue : (badgeValue ? 1 : 0);
-    const hasBadge = count > 0;
-
-    if (process.platform === 'win32') {
-      // For Windows:
-      // - Use icon_badge.png for overlay (just the notification dot)
-      if (hasBadge) {
-        const icon = nativeImage.createFromPath(getAssetPath('icon_badge.png'));
-        if (!icon.isEmpty()) {
-          mainWindow?.setOverlayIcon(icon, `${count} ungelesene Nachricht${count !== 1 ? 'en' : ''}`);
-          mainWindow?.setIcon(getAssetPath('icon_badge_combined.png'));
-          tray?.setImage(getAssetPath('tray-lowres_badge.png'));
-        } else {
-          console.log('Error creating overlay icon');
-        }
-      } else {
-        mainWindow?.setOverlayIcon(null, 'Keine Nachrichten');
-        mainWindow?.setIcon(getAssetPath('icon.png'));
-        tray?.setImage(getAssetPath('tray-lowres.png'));
-      }
-    } else if (process.platform === 'darwin') {
-      // For macOS — set dock badge with count
-      if (hasBadge) {
-        app.dock?.setBadge(String(count));
-        const badgeIcon = nativeImage.createFromPath(getAssetPath('tray-lowres_badge.png')).resize({ width: 22, height: 22 });
-        if (!badgeIcon.isEmpty()) {
-          tray?.setImage(badgeIcon);
-        }
-      } else {
-        app.dock?.setBadge('');
-        const normalIcon = nativeImage.createFromPath(getAssetPath('tray-lowres.png')).resize({ width: 22, height: 22 });
-        if (!normalIcon.isEmpty()) {
-          tray?.setImage(normalIcon);
-        }
-      }
-    } else {
-      // For Linux and others
-      if (hasBadge) {
-        tray?.setImage(getAssetPath('tray_badge.png'));
-      } else {
-        tray?.setImage(getAssetPath('tray.png'));
-      }
-    }
-  } catch (error) {
-    console.error('Error updating badge:', error);
-  }
+  updateBadge(badgeValue);
 });
 
 ipcMain.handle('get-credentials', async (event, { service, account }) => {
