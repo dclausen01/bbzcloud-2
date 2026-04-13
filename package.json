@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -37,7 +37,7 @@
     "react-markdown": "^9.0.1",
     "react-router-dom": "^6.28.0",
     "react-scripts": "5.0.1",
-    "sqlite3": "^5.1.7",
+    "sqlite3": "^6.0.1",
     "uuid": "^11.0.3"
   },
   "devDependencies": {

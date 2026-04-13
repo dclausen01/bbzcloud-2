@@ -280,8 +280,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         return;
       }
 
-      // Check login attempt limit (except for Outlook and WebUntis)
-      if (id !== 'outlook' && id !== 'webuntis') {
+      // Check login attempt limit (except for Outlook, WebUntis, and schulcloud)
+      // schulcloud has a multi-step login process (email -> password -> encryption)
+      // and the periodic check may trigger multiple times during this process
+      if (id !== 'outlook' && id !== 'webuntis' && id !== 'schulcloud') {
         if (!loginAttempts.current[id]) {
           loginAttempts.current[id] = 0;
         }
@@ -592,16 +594,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         case 'schulcloud':
           try {
+            console.log('[schul.cloud] === Starting credential injection ===');
+            
             // Get encryption password for schul.cloud / BBZ Chat
             const schulcloudEncryptionResult = await window.electron.getCredentials({
               service: 'bbzcloud',
               account: 'schulcloudEncryptionPassword'
             });
             const schulcloudEncryptionPassword = schulcloudEncryptionResult.success ? schulcloudEncryptionResult.password : null;
+            console.log('[schul.cloud] Encryption password loaded:', schulcloudEncryptionPassword ? 'YES' : 'NO');
 
             // Check if we're on BBZ Chat (chat.bbz-rd-eck.com)
             const currentUrl = webview.getURL();
             const isBbzChat = currentUrl.includes('chat.bbz-rd-eck.com');
+            console.log('[schul.cloud] Current URL:', currentUrl);
+            console.log('[schul.cloud] Is BBZ Chat:', isBbzChat);
 
             // If BBZ Chat, bypass the React login form entirely by calling
             // the API directly. This avoids all React internals / controlled input issues.
@@ -691,9 +698,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }
 
             // Fall back to schul.cloud logic
+            console.log('[schul.cloud] Using schul.cloud login logic');
+            
             // Detect login state using exact schul.cloud selectors
             const loginState = await webview.executeJavaScript(`
               (function() {
+                console.log('[schul.cloud] Detecting login state...');
+                
                 // Look for specific schul.cloud elements
                 const emailInput = document.querySelector('input#username[type="text"]');
                 const passwordInputs = document.querySelectorAll('input[type="password"]');
@@ -701,10 +712,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
                                   Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
                                   document.querySelector('[title*="Anmelden"]');
-                
-                // Check for remember login checkbox (look for the SVG icon structure)
-                const rememberCheckbox = document.querySelector('app-icon[icon="check"]');
-                
+
+                // Check for remember login checkbox (input#stayLoggedInCheck)
+                const rememberCheckbox = document.querySelector('input#stayLoggedInCheck');
+
                 // Find encryption password field
                 let encryptionInput = null;
                 for (const input of passwordInputs) {
@@ -716,15 +727,17 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     break;
                   }
                 }
-                
+
                 // Check if already logged in or on encryption/auth page
+                // IMPORTANT: Only check actual DOM elements for logged-in state
+                // Do NOT check textContent for 'Logout' or 'Abmelden' - these appear in
+                // script tags and cause false positives on the login page!
                 const loggedIn = document.querySelector('.user-menu') ||
                                document.querySelector('.dashboard') ||
-                               document.querySelector('.main-content') ||
-                               document.body.textContent.includes('Abmelden');
-                const onEncryptionPage = document.body.textContent.includes('Verschlüsselungspasswort') || document.body.textContent.includes('Smartphone');
-                
-                return {
+                               document.querySelector('.main-content');
+                const onEncryptionPage = document.body.textContent.includes('Verschlüsselungskennwort') || document.body.textContent.includes('Smartphone');
+
+                const state = {
                   emailInput: !!emailInput,
                   passwordInputs: passwordInputs.length,
                   weiterButton: !!weiterButton,
@@ -735,12 +748,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   loggedIn: !!loggedIn,
                   onEncryptionPage: !!onEncryptionPage,
                   url: window.location.href,
-                  title: document.title
+                  title: document.title,
+                  bodyText: document.body.textContent.substring(0, 200) // First 200 chars for debugging
                 };
+                
+                console.log('[schul.cloud] Login state:', JSON.stringify(state, null, 2));
+                return state;
               })()
             `);
 
-            console.log('schul.cloud login state:', loginState);
+            console.log('[schul.cloud] Login state detected:', JSON.stringify(loginState, null, 2));
 
             if (loginState.loggedIn) {
               // Already logged in or on post-login page, no action needed
@@ -749,151 +766,210 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
             if (loginState.emailInput && !loginState.passwordInputs) {
               // Email page - fill email and click Weiter
+              console.log('[schul.cloud] Email page detected - filling email field');
+              
               const result = await webview.executeJavaScript(`
                 (function() {
-                  const emailInput = document.querySelector('input#username[type="text"]');
-                  const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
-                  
-                  if (emailInput && weiterButton) {
-                    console.log('Filling email:', ${JSON.stringify(emailAddress)});
-                    emailInput.value = ${JSON.stringify(emailAddress)};
-                    emailInput.focus();
+                  try {
+                    const emailInput = document.querySelector('input#username[type="text"]');
+                    const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
+
+                    console.log('[schul.cloud] Email input found:', !!emailInput);
+                    console.log('[schul.cloud] Weiter button found:', !!weiterButton);
+
+                    if (emailInput && weiterButton) {
+                      console.log('[schul.cloud] Filling email:', ${JSON.stringify(emailAddress)});
+                      
+                      // Method 1: Direct value set with native setter override
+                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                      nativeInputValueSetter.call(emailInput, ${JSON.stringify(emailAddress)});
+                      
+                      // Method 2: Also set value directly (fallback)
+                      emailInput.value = ${JSON.stringify(emailAddress)};
+                      
+                      emailInput.focus();
+                      emailInput.select();
+
+                      // Trigger Angular events in correct order
+                      const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
+                      events.forEach(eventType => {
+                        emailInput.dispatchEvent(new Event(eventType, { bubbles: true }));
+                      });
+                      
+                      // Also try React-specific events
+                      emailInput.dispatchEvent(new Event('textInput', { bubbles: true }));
+
+                      console.log('[schul.cloud] Email filled, waiting 1000ms then clicking Weiter...');
+
+                      // Wait then click Weiter button
+                      setTimeout(() => {
+                        console.log('[schul.cloud] Attempting to click Weiter button');
+                        weiterButton.click();
+                        console.log('[schul.cloud] Weiter button clicked');
+                      }, 1000);
+
+                      return 'SUCCESS';
+                    }
                     
-                    // Trigger Angular events
-                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    
-                    // Wait then click Weiter button
-                    setTimeout(() => {
-                      console.log('Clicking Weiter button');
-                      weiterButton.click();
-                    }, 1000);
-                    
-                    return true;
+                    return 'NO_ELEMENTS';
+                  } catch (err) {
+                    console.error('[schul.cloud] Error filling email:', err);
+                    return 'ERROR: ' + err.message;
                   }
-                  return false;
                 })()
               `);
-              
-              console.log('Email injection result:', result);
+
+              console.log('[schul.cloud] Email injection result:', result);
               
             } else if (loginState.passwordInputs && !loginState.onEncryptionPage) {
               // Password page - fill password, check remember me, and submit
+              console.log('[schul.cloud] Password page detected - filling password');
+              
               const result = await webview.executeJavaScript(`
                 (function() {
-                  // Find password input but exclude encryption password field
-                  const allPasswordInputs = document.querySelectorAll('input[type="password"]');
-                  let passwordInput = null;
-                  
-                  // Filter out encryption password field
-                  for (const input of allPasswordInputs) {
-                    const parentAppLabel = input.closest('app-label-input');
-                    const hasEncryptionTestId = parentAppLabel && parentAppLabel.getAttribute('data-test-id') === 'set-private-key-password_pass_if';
-                    const hasEncryptionLabel = parentAppLabel && parentAppLabel.textContent.includes('Verschlüsselungskennwort');
-                    
-                    // Skip if this is the encryption password field
-                    if (hasEncryptionTestId || hasEncryptionLabel) {
-                      console.log('Skipping encryption password field');
-                      continue;
-                    }
-                    
-                    // This should be the regular login password
-                    passwordInput = input;
-                    break;
-                  }
-                  
-                  const rememberCheckbox = document.querySelector('app-icon[icon="check"]');
-                  const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
-                                    Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Anmelden mit Passwort'));
-                  
-                  if (passwordInput) {
-                    console.log('Filling login password (not encryption password)');
-                    passwordInput.value = ${JSON.stringify(password)};
-                    passwordInput.focus();
-                    
-                    // Trigger Angular events
-                    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    
-                    // Click remember login checkbox if available
-                    if (rememberCheckbox) {
-                      console.log('Clicking remember login checkbox');
-                      rememberCheckbox.click();
-                    }
-                    
-                    // Wait then click login button
-                    setTimeout(() => {
-                      if (loginButton) {
-                        console.log('Clicking login button');
-                        loginButton.click();
-                      } else {
-                        // Try to find the parent button element
-                        const parentButton = document.querySelector('button[type="submit"]');
-                        if (parentButton) {
-                          console.log('Clicking parent login button');
-                          parentButton.click();
-                        }
+                  try {
+                    // Find password input but exclude encryption password field
+                    const allPasswordInputs = document.querySelectorAll('input[type="password"]');
+                    let passwordInput = null;
+
+                    console.log('[schul.cloud] Found', allPasswordInputs.length, 'password input(s)');
+
+                    // Filter out encryption password field
+                    for (const input of allPasswordInputs) {
+                      const parentAppLabel = input.closest('app-label-input');
+                      const hasEncryptionTestId = parentAppLabel && parentAppLabel.getAttribute('data-test-id') === 'set-private-key-password_pass_if';
+                      const hasEncryptionLabel = parentAppLabel && parentAppLabel.textContent.includes('Verschlüsselungskennwort');
+
+                      // Skip if this is the encryption password field
+                      if (hasEncryptionTestId || hasEncryptionLabel) {
+                        console.log('[schul.cloud] Skipping encryption password field');
+                        continue;
                       }
-                    }, 1000);
-                    
-                    return true;
-                  } else {
-                    console.log('No valid login password field found (encryption password excluded)');
-                    return false;
+
+                      // This should be the regular login password
+                      passwordInput = input;
+                      console.log('[schul.cloud] Using login password input at index', Array.from(allPasswordInputs).indexOf(input));
+                      break;
+                    }
+
+                    const rememberCheckbox = document.querySelector('input#stayLoggedInCheck');
+                    const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
+                                      Array.from(document.querySelectorAll('button')).find(el => el.textContent.includes('Anmelden mit Passwort'));
+
+                    if (passwordInput) {
+                      console.log('[schul.cloud] Filling login password (not encryption password)');
+                      
+                      // Use native setter to bypass Angular control
+                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                      nativeInputValueSetter.call(passwordInput, ${JSON.stringify(password)});
+                      
+                      // Also set directly as fallback
+                      passwordInput.value = ${JSON.stringify(password)};
+                      
+                      passwordInput.focus();
+
+                      // Trigger Angular events
+                      const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
+                      events.forEach(eventType => {
+                        passwordInput.dispatchEvent(new Event(eventType, { bubbles: true }));
+                      });
+                      passwordInput.dispatchEvent(new Event('textInput', { bubbles: true }));
+
+                      // Click remember login checkbox if available
+                      if (rememberCheckbox) {
+                        console.log('[schul.cloud] Clicking remember login checkbox');
+                        rememberCheckbox.click();
+                      }
+
+                      // Wait then click login button
+                      setTimeout(() => {
+                        if (loginButton) {
+                          console.log('[schul.cloud] Clicking login button');
+                          loginButton.click();
+                        } else {
+                          // Try to find the parent button element
+                          const parentButton = document.querySelector('button[type="submit"]');
+                          if (parentButton) {
+                            console.log('[schul.cloud] Clicking parent login button');
+                            parentButton.click();
+                          } else {
+                            console.log('[schul.cloud] No submit button found!');
+                          }
+                        }
+                      }, 1000);
+
+                      return 'SUCCESS';
+                    } else {
+                      console.log('[schul.cloud] No valid login password field found (encryption password excluded)');
+                      return 'NO_PASSWORD_FIELD';
+                    }
+                  } catch (err) {
+                    console.error('[schul.cloud] Error filling password:', err);
+                    return 'ERROR: ' + err.message;
                   }
                 })()
               `);
-              
-              console.log('Password injection result:', result);
+
+              console.log('[schul.cloud] Password injection result:', result);
               
             } else if (loginState.onEncryptionPage && schulcloudEncryptionPassword) {
               // Encryption password page - need to click "Durch dein Verschlüsselungskennwort" first, then fill password
+              console.log('[schul.cloud] Encryption page detected - handling encryption password');
+              
               const pageState = await webview.executeJavaScript(`
                 (function() {
+                  console.log('[schul.cloud] Checking encryption page state...');
+                  
                   // Check for "Durch dein Verschlüsselungskennwort" button (with data-icon="password")
-                  const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                  const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn =>
                     btn.textContent.includes('Durch dein Verschlüsselungskennwort')
                   );
-                  
+
                   const passwordInputs = document.querySelectorAll('input[type="password"]');
-                  const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
+                  const weiterButton = Array.from(document.querySelectorAll('button')).find(btn =>
                     btn.textContent.includes('Weiter')
                   );
-                  
-                  return {
+
+                  const state = {
                     hasEncryptionButton: !!encryptionButton,
                     passwordInputCount: passwordInputs.length,
                     hasWeiterButton: !!weiterButton,
                     // Check if password field is already visible (after clicking encryption button)
                     passwordInputVisible: passwordInputs.length > 0 && passwordInputs[0].offsetParent !== null
                   };
+                  
+                  console.log('[schul.cloud] Encryption page state:', JSON.stringify(state, null, 2));
+                  return state;
                 })()
               `);
 
-              console.log('schul.cloud encryption page state:', pageState);
+              console.log('[schul.cloud] Encryption page state:', JSON.stringify(pageState, null, 2));
 
               // Wait a bit for the page to settle
               await new Promise(resolve => setTimeout(resolve, 500));
 
               // Check if we need to click the encryption button first
               if (pageState.hasEncryptionButton) {
+                console.log('[schul.cloud] Clicking encryption button first');
+                
                 // Click "Durch dein Verschlüsselungskennwort" button
-                await webview.executeJavaScript(`
+                const clicked = await webview.executeJavaScript(`
                   (function() {
-                    const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => 
+                    const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn =>
                       btn.textContent.includes('Durch dein Verschlüsselungskennwort')
                     );
                     if (encryptionButton) {
-                      console.log('Clicking Durch dein Verschlüsselungskennwort button');
+                      console.log('[schul.cloud] Clicking encryption button');
                       encryptionButton.click();
                       return true;
                     }
+                    console.log('[schul.cloud] Encryption button not found!');
                     return false;
                   })()
                 `);
 
+                console.log('[schul.cloud] Encryption button clicked:', clicked);
+                
                 // Wait for password field to appear
                 await new Promise(resolve => setTimeout(resolve, 1500));
               }
@@ -901,54 +977,85 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               // Now fill encryption password and click Weiter
               const result = await webview.executeJavaScript(`
                 (function() {
-                  const passwordInputs = document.querySelectorAll('input[type="password"]');
-                  const weiterButton = Array.from(document.querySelectorAll('button')).find(btn => 
-                    btn.textContent.includes('Weiter')
-                  );
+                  try {
+                    const passwordInputs = document.querySelectorAll('input[type="password"]');
+                    const weiterButton = Array.from(document.querySelectorAll('button')).find(btn =>
+                      btn.textContent.includes('Weiter')
+                    );
 
-                  // Find the visible password input
-                  let encryptionInput = null;
-                  for (const input of passwordInputs) {
-                    if (input.offsetParent !== null) {
-                      encryptionInput = input;
-                      break;
-                    }
-                  }
+                    console.log('[schul.cloud] Found', passwordInputs.length, 'password input(s) on encryption page');
 
-                  if (!encryptionInput && passwordInputs.length > 0) {
-                    encryptionInput = passwordInputs[0];
-                  }
-                  
-                  if (encryptionInput && ${JSON.stringify(schulcloudEncryptionPassword)}) {
-                    console.log('Filling encryption password:', ${JSON.stringify(schulcloudEncryptionPassword)});
-                    encryptionInput.value = ${JSON.stringify(schulcloudEncryptionPassword)};
-                    encryptionInput.focus();
-                    
-                    // Trigger Angular events
-                    encryptionInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    encryptionInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    encryptionInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    
-                    // Wait then click Weiter button
-                    setTimeout(() => {
-                      if (weiterButton) {
-                        console.log('Clicking Weiter button');
-                        weiterButton.click();
+                    // Find the visible password input
+                    let encryptionInput = null;
+                    for (const input of passwordInputs) {
+                      if (input.offsetParent !== null) {
+                        encryptionInput = input;
+                        console.log('[schul.cloud] Found visible encryption input');
+                        break;
                       }
-                    }, 1000);
-                    
-                    return true;
-                  } else {
-                    console.log('No encryption password field found or no password set');
-                    return false;
+                    }
+
+                    if (!encryptionInput && passwordInputs.length > 0) {
+                      encryptionInput = passwordInputs[0];
+                      console.log('[schul.cloud] Using first password input as fallback');
+                    }
+
+                    if (encryptionInput && ${JSON.stringify(schulcloudEncryptionPassword)}) {
+                      console.log('[schul.cloud] Filling encryption password');
+                      
+                      // Use native setter
+                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                      nativeInputValueSetter.call(encryptionInput, ${JSON.stringify(schulcloudEncryptionPassword)});
+                      
+                      encryptionInput.value = ${JSON.stringify(schulcloudEncryptionPassword)};
+                      encryptionInput.focus();
+
+                      // Trigger Angular events
+                      const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
+                      events.forEach(eventType => {
+                        encryptionInput.dispatchEvent(new Event(eventType, { bubbles: true }));
+                      });
+                      encryptionInput.dispatchEvent(new Event('textInput', { bubbles: true }));
+
+                      console.log('[schul.cloud] Encryption password filled, waiting then clicking Weiter...');
+
+                      // Wait then click Weiter button
+                      setTimeout(() => {
+                        if (weiterButton) {
+                          console.log('[schul.cloud] Clicking Weiter button');
+                          weiterButton.click();
+                        } else {
+                          console.log('[schul.cloud] No Weiter button found!');
+                        }
+                      }, 1000);
+
+                      return 'SUCCESS';
+                    } else {
+                      console.log('[schul.cloud] No encryption password field or password set');
+                      return 'NO_FIELD_OR_PASSWORD';
+                    }
+                  } catch (err) {
+                    console.error('[schul.cloud] Error filling encryption password:', err);
+                    return 'ERROR: ' + err.message;
                   }
                 })()
               `);
-              
-              console.log('Encryption password injection result:', result);
+
+              console.log('[schul.cloud] Encryption password injection result:', result);
+            } else {
+              // No login state matched - log detailed info for debugging
+              console.log('[schul.cloud] No login action taken - state does not match any condition');
+              console.log('[schul.cloud] Conditions:');
+              console.log('  - emailInput:', loginState.emailInput);
+              console.log('  - passwordInputs:', loginState.passwordInputs);
+              console.log('  - onEncryptionPage:', loginState.onEncryptionPage);
+              console.log('  - loggedIn:', loginState.loggedIn);
+              console.log('  - hasEncryptionInput:', loginState.hasEncryptionInput);
+              console.log('  - schulcloudEncryptionPassword:', schulcloudEncryptionPassword ? 'SET' : 'NOT SET');
             }
           } catch (error) {
-            console.error('Error during schul.cloud login:', error);
+            console.error('[schul.cloud] Error during schul.cloud login:', error);
+            console.error('[schul.cloud] Error stack:', error.stack);
           }
           break;
 
@@ -1338,51 +1445,157 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
             if (ncLoginState.adfsButton) {
               // Click the BBZ ADFS button to initiate SAML login
-              await webview.executeJavaScript(`
+              console.log('[Nextcloud] ADFS button found - initiating SAML login');
+              
+              const result = await webview.executeJavaScript(`
                 (function() {
-                  const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
-                                     Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
-                  if (adfsButton) {
-                    console.log('Clicking Nextcloud BBZ ADFS button, href:', adfsButton.href);
-                    // .click() on anchor elements doesn't reliably trigger navigation in Electron webviews
-                    // Use direct navigation instead
-                    if (adfsButton.href) {
-                      window.location.href = adfsButton.href;
-                    } else {
-                      // Fallback: dispatch a real mouse event
-                      adfsButton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                  try {
+                    const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
+                                       Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
+                    
+                    if (adfsButton) {
+                      console.log('[Nextcloud] Found ADFS button');
+                      console.log('[Nextcloud] Button href (raw):', adfsButton.getAttribute('href'));
+                      console.log('[Nextcloud] Button href (resolved):', adfsButton.href);
+                      
+                      // Method 1: Try creating a proper URL with decoded entities
+                      let targetUrl = adfsButton.href;
+                      
+                      // Decode HTML entities in URL
+                      if (targetUrl) {
+                        const textarea = document.createElement('textarea');
+                        textarea.innerHTML = targetUrl;
+                        targetUrl = textarea.value;
+                        console.log('[Nextcloud] Decoded URL:', targetUrl);
+                      }
+                      
+                      if (targetUrl) {
+                        console.log('[Nextcloud] Navigating to decoded URL');
+                        window.location.href = targetUrl;
+                        return 'NAVIGATED';
+                      }
+                      
+                      // Method 2: Fallback - dispatch proper mouse events
+                      console.log('[Nextcloud] Fallback: dispatching mouse events');
+                      const clickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        detail: 1,
+                        button: 0
+                      });
+                      adfsButton.dispatchEvent(clickEvent);
+                      return 'CLICK_DISPATCHED';
                     }
-                    return true;
+                    
+                    console.log('[Nextcloud] ADFS button not found!');
+                    return 'BUTTON_NOT_FOUND';
+                  } catch (err) {
+                    console.error('[Nextcloud] Error clicking ADFS button:', err);
+                    return 'ERROR: ' + err.message;
                   }
-                  return false;
                 })()
               `);
+              
+              console.log('[Nextcloud] ADFS button click result:', result);
             } else if (ncLoginState.userNameInput && ncLoginState.passwordInput && ncLoginState.submitButton) {
               // ADFS login form - fill credentials (same form as Outlook)
-              await webview.executeJavaScript(
-                `document.querySelector('#userNameInput').value = ${JSON.stringify(emailAddress)}; void(0);`
-              );
-              await webview.executeJavaScript(
-                `document.querySelector('#passwordInput').value = ${JSON.stringify(password)}; void(0);`
-              );
-              await webview.executeJavaScript(
-                `document.querySelector('#submitButton').click();`
-              );
-            } else if (ncLoginState.jaButton) {
-              // "Stay signed in?" page - click Ja
-              await webview.executeJavaScript(`
+              console.log('[Nextcloud] ADFS login form detected - filling credentials');
+              
+              const result = await webview.executeJavaScript(`
                 (function() {
-                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                  if (jaButton) {
-                    setTimeout(() => jaButton.click(), 500);
-                    return true;
+                  try {
+                    const userNameInput = document.querySelector('#userNameInput');
+                    const passwordInput = document.querySelector('#passwordInput');
+                    const submitButton = document.querySelector('#submitButton');
+
+                    console.log('[Nextcloud] Filling ADFS credentials');
+                    console.log('[Nextcloud] Username:', ${JSON.stringify(emailAddress)});
+
+                    // Fill username with native setter
+                    if (userNameInput) {
+                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                      nativeInputValueSetter.call(userNameInput, ${JSON.stringify(emailAddress)});
+                      userNameInput.value = ${JSON.stringify(emailAddress)};
+                      
+                      // Trigger events
+                      userNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      userNameInput.dispatchEvent(new Event('change', { bubbles: true }));
+                      console.log('[Nextcloud] Username filled');
+                    }
+
+                    // Fill password with native setter
+                    if (passwordInput) {
+                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                      nativeInputValueSetter.call(passwordInput, ${JSON.stringify(password)});
+                      passwordInput.value = ${JSON.stringify(password)};
+                      
+                      // Trigger events
+                      passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+                      console.log('[Nextcloud] Password filled');
+                    }
+
+                    // Click submit button after a short delay
+                    if (submitButton) {
+                      setTimeout(() => {
+                        console.log('[Nextcloud] Clicking submit button');
+                        submitButton.click();
+                      }, 500);
+                    }
+
+                    return 'SUCCESS';
+                  } catch (err) {
+                    console.error('[Nextcloud] Error filling ADFS credentials:', err);
+                    return 'ERROR: ' + err.message;
                   }
-                  return false;
                 })()
               `);
+              
+              console.log('[Nextcloud] ADFS credential injection result:', result);
+            } else if (ncLoginState.jaButton) {
+              // "Stay signed in?" page - click Ja
+              console.log('[Nextcloud] "Stay signed in?" page detected - clicking Ja');
+              
+              const result = await webview.executeJavaScript(`
+                (function() {
+                  try {
+                    const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                    
+                    if (jaButton) {
+                      console.log('[Nextcloud] Found Ja button, clicking in 500ms');
+                      setTimeout(() => {
+                        jaButton.click();
+                        console.log('[Nextcloud] Ja button clicked');
+                      }, 500);
+                      return 'SUCCESS';
+                    }
+                    
+                    console.log('[Nextcloud] Ja button not found!');
+                    return 'BUTTON_NOT_FOUND';
+                  } catch (err) {
+                    console.error('[Nextcloud] Error clicking Ja button:', err);
+                    return 'ERROR: ' + err.message;
+                  }
+                })()
+              `);
+              
+              console.log('[Nextcloud] Ja button click result:', result);
+            } else {
+              // No login state matched - log for debugging
+              console.log('[Nextcloud] No login action taken - state does not match any condition');
+              console.log('[Nextcloud] Conditions:');
+              console.log('  - adfsButton:', ncLoginState.adfsButton);
+              console.log('  - userNameInput:', ncLoginState.userNameInput);
+              console.log('  - passwordInput:', ncLoginState.passwordInput);
+              console.log('  - submitButton:', ncLoginState.submitButton);
+              console.log('  - jaButton:', ncLoginState.jaButton);
+              console.log('  - loggedIn:', ncLoginState.loggedIn);
+              console.log('  - url:', ncLoginState.url);
             }
           } catch (error) {
-            console.error('Error during Nextcloud login:', error);
+            console.error('[Nextcloud] Error during Nextcloud login:', error);
+            console.error('[Nextcloud] Error stack:', error.stack);
           }
           break;
 
@@ -1392,7 +1605,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         // direct API login approach (POST /api/login).
       }
 
-      credsAreSet.current[id] = true;
+      // IMPORTANT: For schulcloud, DON'T set credsAreSet to true automatically.
+      // schulcloud has a multi-step login (email -> password -> encryption) and we need
+      // the periodic check to keep triggering until fully logged in.
+      // Only set credsAreSet for other apps that complete login in one shot.
+      if (id !== 'schulcloud') {
+        credsAreSet.current[id] = true;
+      }
     } catch (error) {
       console.error(`Error injecting credentials for ${id}:`, error);
     }
@@ -1720,6 +1939,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // whether a login form is visible (= not logged in).
           const checkSchulCloudLogin = async () => {
             try {
+              const currentUrl = await webview.executeJavaScript(`window.location.href`);
+              const isBbzChatPage = currentUrl.includes('chat.bbz-rd-eck.com');
+              
               const needsLogin = await webview.executeJavaScript(`
                 (function() {
                   // Separate BBZ Chat and schul.cloud logic by URL, because both
@@ -1735,29 +1957,50 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     const token = localStorage.getItem('schulchat_token');
                     return !!loginForm && !token;
                   } else {
-                    // schul.cloud: 'Verschlüsselungspasswort' appears on the post-login
-                    // encryption setup page, so it IS a valid logged-in indicator here.
+                    // schul.cloud: Only check actual DOM elements for logged-in state
+                    // Do NOT check textContent for 'Logout' or 'Abmelden' - these appear in
+                    // script tags and cause false positives on the login page!
                     const emailInput = document.querySelector('input#username[type="text"]');
-                    const passwordInput = document.querySelector('input[type="password"]');
+                    const passwordInputs = document.querySelectorAll('input[type="password"]');
                     const loggedIn = document.querySelector('.user-menu') ||
                                    document.querySelector('.dashboard') ||
-                                   document.querySelector('.main-content') ||
-                                   document.body.textContent.includes('Abmelden') ||
-                                   document.body.textContent.includes('Logout') ||
-                                   document.body.textContent.includes('Verschlüsselungspasswort') ||
-                                   document.body.textContent.includes('Smartphone');
-                    return (emailInput || passwordInput) && !loggedIn;
+                                   document.querySelector('.main-content');
+                    
+                    // Also detect encryption page - look for the "Durch dein Verschlüsselungskennwort" button
+                    const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn =>
+                      btn.textContent.includes('Durch dein Verschlüsselungskennwort')
+                    );
+                    const onEncryptionPage = !!encryptionButton || document.body.textContent.includes('Verschlüsselungskennwort');
+                                   
+                    const needsLogin = ((emailInput || passwordInputs.length > 0) && !loggedIn) || (onEncryptionPage && !loggedIn);
+                    
+                    // Log for debugging (visible in WebView console)
+                    if (emailInput || passwordInputs.length > 0 || onEncryptionPage) {
+                      console.log('[schul.cloud periodic] Login form detected, emailInput:', !!emailInput, 'passwordInputs:', passwordInputs.length, 'onEncryptionPage:', onEncryptionPage);
+                      console.log('[schul.cloud periodic] loggedIn indicators:', {
+                        userMenu: !!document.querySelector('.user-menu'),
+                        dashboard: !!document.querySelector('.dashboard'),
+                        mainContent: !!document.querySelector('.main-content'),
+                        hasAbmelden: document.body.textContent.includes('Abmelden'),
+                        hasLogout: document.body.textContent.includes('Logout'),
+                        hasEncryption: document.body.textContent.includes('Verschlüsselungskennwort'),
+                        hasSmartphone: document.body.textContent.includes('Smartphone')
+                      });
+                      console.log('[schul.cloud periodic] needsLogin:', needsLogin);
+                    }
+                    
+                    return needsLogin;
                   }
                 })()
               `);
 
               if (needsLogin) {
-                console.log('schul.cloud/BBZ Chat periodic check: Login needed, triggering injection');
+                console.log('[schul.cloud periodic] Login needed on', isBbzChatPage ? 'BBZ Chat' : 'schul.cloud', '- triggering injection');
                 credsAreSet.current[id] = false;
                 await injectCredentials(webview, id);
               }
             } catch (error) {
-              // Silent fail - page might not be ready
+              console.log('[schul.cloud periodic] Check error:', error.message);
             }
           };
 
@@ -1981,9 +2224,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         } else if (id === 'schulcloud') {
           // For schul.cloud AND BBZ Chat (both use the 'schulcloud' webview ID),
           // check for login forms after navigation using selectors for both services
+          console.log(`[schulcloud did-navigate] Navigation detected, URL:`, webview.getURL());
+          
           try {
             const loginState = await webview.executeJavaScript(`
               (async function() {
+                console.log('[schulcloud did-navigate] Checking login state...');
+                
                 // Separate BBZ Chat and schul.cloud logic by URL.
                 // 'Verschlüsselungspasswort' is a field LABEL on the BBZ Chat login form
                 // and must NOT be treated as a logged-in indicator on that domain.
@@ -2007,41 +2254,63 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       tokenValid = true; // Network error — assume still valid
                     }
                   }
-                  return {
+                  
+                  const state = {
                     needsLogin: !!loginForm && !tokenValid,
                     isBbzChat: true,
-                    hasValidToken: tokenValid
+                    hasValidToken: tokenValid,
+                    hasLoginForm: !!loginForm
                   };
+                  console.log('[schulcloud did-navigate] BBZ Chat state:', JSON.stringify(state, null, 2));
+                  return state;
                 } else {
-                  // schul.cloud: 'Verschlüsselungspasswort' on post-login page = logged in
+                  // schul.cloud: 'Verschlüsselungskennwort' on post-login page = logged in
                   const emailInput = document.querySelector('input#username[type="text"]');
-                  const passwordInput = document.querySelector('input[type="password"]');
+                  const passwordInputs = document.querySelectorAll('input[type="password"]');
+
+                  // IMPORTANT: Only check actual DOM elements for logged-in state
+                  // Do NOT check textContent for 'Logout' or 'Abmelden' - these appear in
+                  // script tags and cause false positives on the login page!
                   const loggedIn = document.querySelector('.user-menu') ||
                                  document.querySelector('.dashboard') ||
-                                 document.querySelector('.main-content') ||
-                                 document.body.textContent.includes('Abmelden') ||
-                                 document.body.textContent.includes('Logout') ||
-                                 document.body.textContent.includes('Verschlüsselungspasswort') ||
-                                 document.body.textContent.includes('Smartphone');
-                  return {
-                    needsLogin: (emailInput || passwordInput) && !loggedIn,
+                                 document.querySelector('.main-content');
+                                 
+                  // Also detect encryption page - look for the "Durch dein Verschlüsselungskennwort" button
+                  const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn =>
+                    btn.textContent.includes('Durch dein Verschlüsselungskennwort')
+                  );
+                  const onEncryptionPage = !!encryptionButton || document.body.textContent.includes('Verschlüsselungskennwort');
+
+                  const state = {
+                    needsLogin: ((emailInput || passwordInputs.length > 0) && !loggedIn) || (onEncryptionPage && !loggedIn),
                     isBbzChat: false,
-                    hasValidToken: false
+                    hasValidToken: false,
+                    emailInput: !!emailInput,
+                    passwordInputs: passwordInputs.length,
+                    onEncryptionPage: onEncryptionPage,
+                    hasEncryptionButton: !!encryptionButton,
+                    loggedIn: !!loggedIn
                   };
+                  console.log('[schulcloud did-navigate] schul.cloud state:', JSON.stringify(state, null, 2));
+                  return state;
                 }
               })()
             `);
-            
+
+            console.log('[schulcloud did-navigate] Login state received:', JSON.stringify(loginState, null, 2));
+
             if (loginState.needsLogin) {
-              console.log(`[${id}] Login needed detected, triggering credential injection`);
+              console.log(`[schulcloud did-navigate] Login needed detected, triggering credential injection`);
               credsAreSet.current[id] = false;
               await injectCredentials(webview, id);
             } else if (loginState.isBbzChat && !loginState.hasValidToken) {
               // BBZ Chat with invalid token but no visible login form
               // This happens when token expires but page shows empty chats
-              console.log(`[${id}] BBZ Chat token invalid, forcing re-login`);
+              console.log(`[schulcloud did-navigate] BBZ Chat token invalid, forcing re-login`);
               credsAreSet.current[id] = false;
               await injectCredentials(webview, id);
+            } else {
+              console.log(`[schulcloud did-navigate] No login needed, already logged in or no form detected`);
             }
           } catch (error) {
             // Silent fail - page might not be ready
