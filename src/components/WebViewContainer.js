@@ -618,28 +618,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const loginResult = await webview.executeJavaScript(`
                 (async function() {
                   try {
-                    // Check if already logged in (token exists AND is valid)
+                    // Check if token exists in localStorage
                     const existingToken = localStorage.getItem('schulchat_token');
                     if (existingToken) {
-                      try {
-                        const meResp = await fetch('/api/me', {
-                          headers: { 'Authorization': 'Bearer ' + existingToken }
-                        });
-                        if (meResp.ok) {
-                          console.log('[BBZ Chat] Token valid, already logged in');
-                          return 'ALREADY_LOGGED_IN';
-                        }
-                        // Token expired / invalid — remove it and continue to login
-                        console.log('[BBZ Chat] Token invalid (status ' + meResp.status + '), clearing');
-                        localStorage.removeItem('schulchat_token');
-                      } catch (e) {
-                        // Network error — keep token, don't force re-login
-                        console.log('[BBZ Chat] Token validation network error, assuming OK');
-                        return 'ALREADY_LOGGED_IN';
-                      }
+                      // Trust the token — if invalid, the app will handle auth on next navigation
+                      console.log('[BBZ Chat] Token found, assuming valid');
+                      return 'ALREADY_LOGGED_IN';
                     }
 
-                    console.log('[BBZ Chat] Calling /api/login directly...');
+                    console.log('[BBZ Chat] No token, calling /api/login...');
                     const response = await fetch('/api/login', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
