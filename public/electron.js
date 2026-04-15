@@ -2016,27 +2016,15 @@ app.on('ready', async () => {
     }
   }
 
-  // Handle system resume: reload all webviews and notify renderer
+  // Handle system resume: notify renderer to reload webviews with special handling
   powerMonitor.on('resume', async () => {
     console.log('[System] Resume detected');
 
     // Adjust main window position
     if (mainWindow) {
       adjustWindowBounds(mainWindow);
-
-      // Simply reload all webviews — reload() preserves cookies/localStorage
-      const allWebviews = webContents.getAllWebContents().filter(wc =>
-        wc.getType() === 'webview' && !wc.isDestroyed()
-      );
-      for (const webview of allWebviews) {
-        try {
-          webview.reload();
-        } catch (error) {
-          console.error('[System] Error reloading webview on resume:', error);
-        }
-      }
-
-      // Notify renderer to reset credsAreSet so periodic checks can re-login if needed
+      // Notify renderer — WebViewContainer.js handles webview reloads with special
+      // logic per app (Outlook: loadURL, WebUntis: check auth page, etc.)
       mainWindow.webContents.send('system-resumed', 'all');
     }
 

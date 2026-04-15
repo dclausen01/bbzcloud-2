@@ -1635,23 +1635,63 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     }
   }, [injectCredentials]);
 
-  // Listen for system resume events — simply reset credsAreSet so periodic
-  // login checks can re-authenticate if needed. No token/session clearing!
-  // The main process already reloads all webviews on resume.
+  // Listen for system resume events — reload webviews with special handling per app
   useEffect(() => {
     if (!window.electron || !window.electron.onSystemResumed) {
       return;
     }
-    
-    try {
-      const unsubscribe = window.electron.onSystemResumed(() => {
-        console.log('[System Resume] Resetting credsAreSet for all webviews');
-        // Reset all credsAreSet so the periodic login checks (every 5 seconds)
-        // will detect if a re-login is needed and handle it automatically
-        Object.keys(credsAreSet.current).forEach(id => {
-          credsAreSet.current[id] = false;
-        });
+
+    const handleSystemResume = () => {
+      console.log('[System Resume] Handling webview reloads');
+
+      // Reset all credsAreSet so periodic checks can re-authenticate if needed
+      Object.keys(credsAreSet.current).forEach(id => {
+        credsAreSet.current[id] = false;
       });
+
+      // Reload webviews with special handling per app
+      Object.keys(webviewRefs.current).forEach(id => {
+        const webview = webviewRefs.current[id]?.current;
+        if (!webview) return;
+
+        try {
+          if (id === 'outlook') {
+            // Outlook: Force complete reload by loading the URL directly
+            console.log('[System Resume] Outlook: forcing complete reload');
+            webview.clearHistory();
+            webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
+          } else if (id === 'webuntis') {
+            // WebUntis: Only reload if not on the authenticator page
+            webview.executeJavaScript(`
+              (function() {
+                const authLabel = document.querySelector('.un-input-group__label');
+                return authLabel?.textContent === 'Bestätigungscode';
+              })()
+            `).then(isAuthPage => {
+              if (isAuthPage) {
+                console.log('[System Resume] WebUntis: skipping reload (auth page active)');
+              } else {
+                console.log('[System Resume] WebUntis: reloading');
+                webview.reload();
+              }
+            }).catch(() => {
+              // If JS execution fails, just reload
+              console.log('[System Resume] WebUntis: reloading (JS check failed)');
+              webview.reload();
+            });
+          } else {
+            // BBZ Chat, Nextcloud, and others: Simple reload preserves session
+            console.log('[System Resume]', id + ': reloading');
+            webview.reload();
+          }
+        } catch (error) {
+          console.warn('[System Resume] Error reloading webview', id, error);
+        }
+      });
+    };
+
+    try {
+      const unsubscribe = window.electron.onSystemResumed(handleSystemResume);
       return () => unsubscribe();
     } catch (error) {
       console.warn('Error setting up system resume listener:', error);

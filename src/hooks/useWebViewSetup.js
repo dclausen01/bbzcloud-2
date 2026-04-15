@@ -247,36 +247,6 @@ export const useWebViewSetup = ({
   }, []);
 
   /**
-   * Handle system resume events
-   * @param {Array} webviewsToReload - Array of webview IDs to reload
-   * @param {Object} webviewRefs - Ref object containing webview references
-   */
-  const handleSystemResume = useCallback((webviewsToReload, webviewRefs) => {
-    webviewsToReload.forEach(id => {
-      const webview = webviewRefs.current[id]?.current;
-      if (webview) {
-        if (id === 'outlook') {
-          // For Outlook, clear credentials state and force complete reload
-          webview.clearHistory();
-          webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
-        } else if (id === 'webuntis') {
-          // For WebUntis, check if we're on the authenticator page before reloading
-          webview.executeJavaScript(`
-            const authLabel = document.querySelector('.un-input-group__label');
-            authLabel?.textContent === 'Bestätigungscode';
-          `).then(isAuthPage => {
-            if (!isAuthPage) {
-              webview.reload();
-            }
-          });
-        } else {
-          webview.reload();
-        }
-      }
-    });
-  }, []);
-
-  /**
    * Cleanup all event listeners
    */
   const cleanup = useCallback(() => {
@@ -299,7 +269,6 @@ export const useWebViewSetup = ({
     setupWebView,
     createWebViewProps,
     applyZoom,
-    handleSystemResume,
     cleanup,
   };
 };
