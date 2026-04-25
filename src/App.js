@@ -59,6 +59,8 @@ import {
   InputRightElement,
   VStack,
   Text,
+  Center,
+  Spinner,
 } from '@chakra-ui/react';
 
 // Context and Components
@@ -101,6 +103,14 @@ import {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Get theme-aware background color without violating hooks rules
+ * (useColorModeValue cannot be called inside conditional JSX blocks)
+ */
+const getWelcomeBg = (colorMode) => colorMode === 'dark' ? 'gray.900' : 'gray.50';
+const getWelcomeTextColor = (colorMode) => colorMode === 'dark' ? 'gray.500' : 'gray.400';
+const getWelcomeSpinnerEmpty = (colorMode) => colorMode === 'dark' ? 'gray.600' : 'gray.200';
+
+/**
  * Main App Component
  * 
  * This component manages the entire application state and coordinates
@@ -113,7 +123,7 @@ function App() {
   
   console.log('App component rendering...');
   
-  const { setColorMode } = useColorMode();
+  const { colorMode, setColorMode } = useColorMode();
   const { settings } = useSettings();
   const toast = useToast();
   
@@ -145,6 +155,7 @@ function App() {
   const [dbPath, setDbPath] = useState('');
   const [activeWebView, setActiveWebView] = useState(null);
   const [appIconPath, setAppIconPath] = useState('');
+  const [appLogoPath, setAppLogoPath] = useState('');
   const [currentUrl, setCurrentUrl] = useState('');
   const [hasUpdate, setHasUpdate] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
@@ -531,6 +542,8 @@ function App() {
       try {
         const iconPath = await window.electron.getAssetPath('icon.png');
         setAppIconPath(iconPath);
+        const logoPath = await window.electron.getAssetPath('logo.png');
+        setAppLogoPath(logoPath);
       } catch (error) {
         console.warn('Error loading app icon:', error);
       }
@@ -1057,7 +1070,7 @@ function App() {
           MAIN CONTENT AREA - WEBVIEW CONTAINER
           ======================================================================== */}
       <Box flex="1" position="relative" overflow="hidden">
-        {!isLoadingEmail && (
+        {!isLoadingEmail && !showWelcomeModal && (
           <WebViewContainer
             ref={webViewRef}
             activeWebView={activeWebView}
@@ -1073,7 +1086,34 @@ function App() {
             }}
           />
         )}
-        
+        {showWelcomeModal && (
+          <Center h="100%" bg={getWelcomeBg(colorMode)}>
+            <VStack spacing={8}>
+              {appLogoPath ? (
+                <Image
+                  src={`file://${appLogoPath}`}
+                  alt="BBZ Cloud Logo"
+                  maxW="320px"
+                  maxH="120px"
+                  objectFit="contain"
+                  opacity={0.85}
+                />
+              ) : (
+                <Text fontSize="2xl" fontWeight="bold" color={getWelcomeTextColor(colorMode)}>
+                  BBZ Cloud
+                </Text>
+              )}
+              <Spinner
+                thickness="3px"
+                speed="0.8s"
+                emptyColor={getWelcomeSpinnerEmpty(colorMode)}
+                color="blue.500"
+                size="lg"
+              />
+            </VStack>
+          </Center>
+        )}
+
       </Box>
 
       {/* ========================================================================
