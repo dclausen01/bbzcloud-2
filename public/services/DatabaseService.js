@@ -232,6 +232,17 @@ class DatabaseService {
                     )
                 `, (err) => { if (err) reject(err); });
 
+                // Credentials table for encrypted fallback storage
+                this.db.run(`
+                    CREATE TABLE IF NOT EXISTS credentials (
+                        service TEXT NOT NULL,
+                        account TEXT NOT NULL,
+                        encrypted_value TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        PRIMARY KEY (service, account)
+                    )
+                `, (err) => { if (err) reject(err); });
+
                 // Custom apps table -- resolve/reject from last statement's callback
                 // so we only resolve after all prior serialized statements have completed.
                 this.db.run(`
@@ -784,6 +795,128 @@ class DatabaseService {
                     (err) => {
                         if (err) reject(err);
                         else resolve(true);
+                    }
+                );
+            });
+        });
+    }
+
+    // Credential operations (encrypted fallback storage)
+    setEncryptionKey(key) {
+        this.encryptionKey = key;
+    }
+
+    async saveCredential(service, account, value) {
+        if (!this.encryptionKey) {
+            throw new Error('Encryption key not set');
+        }
+        return this.withConnection(async () => {
+            const timestamp = Date.now();
+            const encrypted = CryptoJS.AES.encrypt(
+                JSON.stringify(value),
+                this.encryptionKey
+            ).toString();
+
+            return new Promise((resolve, reject) => {
+                this.db.run(
+                    `INSERT OR REPLACE INTO credentials (service, account, encrypted_value, updated_at)
+                     VALUES (?, ?, ?, ?)`,
+                    [service, account, encrypted, timestamp],
+                    (err) => {
+                        if (err) reject(err);
+                        else resolve(true);
+                    }
+                );
+            });
+        });
+    }
+
+    async getCredential(service, account) {
+        if (!this.encryptionKey) {
+            throw new Error('Encryption key not set');
+        }
+        return this.withConnection(async () => {
+            return new Promise((resolve, reject) => {
+                this.db.get(
+                    'SELECT encrypted_value FROM credentials WHERE service = ? AND account = ?',
+                    [service, account],
+                    (err, row) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        if (!row) {
+                            resolve(null);
+                            return;
+                        }
+                        try {
+                            const decrypted = CryptoJS.AES.decrypt(row.encrypted_value, this.encryptionKey);
+                            const value = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
+                            resolve(value);
+                        } catch (error) {
+                            console.error('Credential decryption error:', error);
+                            reject(new Error('Failed to decrypt credential'));
+                        }
+                    }
+                );
+            });
+        });
+    }
+
+    async getAllCredentials(service) {
+        if (!this.encryptionKey) {
+            throw new Error('Encryption key not set');
+        }
+        return this.withConnection(async () => {
+            return new Promise((resolve, reject) => {
+                this.db.all(
+                    'SELECT account, encrypted_value FROM credentials WHERE service = ?',
+                    [service],
+                    (err, rows) => {
+                        if (err) {
+                            reject(err);
+                            return;
+                        }
+                        const result = {};
+                        for (const row of rows) {
+                            try {
+                                const decrypted = CryptoJS.AES.decrypt(row.encrypted_value, this.encryptionKey);
+                                result[row.account] = JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
+                            } catch (error) {
+                                console.error(`Failed to decrypt credential ${row.account}:`, error);
+                            }
+                        }
+                        resolve(result);
+                    }
+                );
+            });
+        });
+    }
+
+    async deleteCredential(service, account) {
+        return this.withConnection(async () => {
+            return new Promise((resolve, reject) => {
+                this.db.run(
+                    'DELETE FROM credentials WHERE service = ? AND account = ?',
+                    [service, account],
+                    (err) => {
+                        if (err) reject(err);
+                        else resolve(true);
+                    }
+                );
+            });
+        });
+    }
+
+    async hasCredentials(service) {
+        return this.withConnection(async () => {
+            return new Promise((resolve, reject) => {
+                this.db.get(
+                    'SELECT COUNT(*) as count FROM credentials WHERE service = ?',
+                    [service],
+                    (err, row) => {
+                        if (err) reject(err);
+                        else resolve((row?.count || 0) > 0);
                     }
                 );
             });

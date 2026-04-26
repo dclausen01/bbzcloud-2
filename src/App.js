@@ -133,6 +133,12 @@ function App() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [welcomeStep, setWelcomeStep] = useState(1); // 1: credentials, 2: database location
 
+  // DB Password Modal State - Handles fallback decryption when keytar is empty
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [dbPasswordInput, setDbPasswordInput] = useState('');
+  const [passwordModalError, setPasswordModalError] = useState('');
+  const [passwordModalLoading, setPasswordModalLoading] = useState(false);
+
   // User Credentials State - Stored securely via Electron keytar
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -337,7 +343,18 @@ function App() {
 
         // Show welcome modal for new users (no email saved)
         if (!emailResult.success || !emailResult.password) {
-          setShowWelcomeModal(true);
+          // Check if we have credentials in the database fallback
+          try {
+            const dbCheck = await window.electron.hasDbCredentials({ service: 'bbzcloud' });
+            if (dbCheck.success && dbCheck.hasCredentials) {
+              setShowPasswordModal(true);
+            } else {
+              setShowWelcomeModal(true);
+            }
+          } catch (dbError) {
+            console.warn('Error checking DB credentials:', dbError);
+            setShowWelcomeModal(true);
+          }
         }
       } catch (error) {
         console.error('Error loading initial data:', error);
@@ -473,6 +490,40 @@ function App() {
         status: 'error',
         duration: UI_CONFIG.TOAST_DURATION,
       });
+    }
+  };
+
+  /**
+   * Handle database password submission for fallback credential recovery
+   * Decrypts credentials from DB and restores them to keytar
+   */
+  const handleDbPasswordSubmit = async () => {
+    if (!dbPasswordInput) return;
+
+    setPasswordModalLoading(true);
+    setPasswordModalError('');
+
+    try {
+      // Set the encryption key in the database service
+      const keyResult = await window.electron.setDbEncryptionKey({ password: dbPasswordInput });
+      if (!keyResult.success) {
+        throw new Error(keyResult.error || 'Fehler beim Setzen des Verschlüsselungsschlüssels');
+      }
+
+      // Restore all credentials from DB to keytar
+      const restoreResult = await window.electron.restoreCredentialsFromDb({ service: 'bbzcloud' });
+      if (!restoreResult.success) {
+        throw new Error(restoreResult.error || 'Fehler beim Wiederherstellen der Anmeldedaten');
+      }
+
+      // Close modal and reload to apply changes
+      setShowPasswordModal(false);
+      await sleep(1000);
+      window.location.reload();
+    } catch (error) {
+      console.error('Error decrypting database credentials:', error);
+      setPasswordModalError(error.message || 'Falsches Passwort. Bitte versuchen Sie es erneut.');
+      setPasswordModalLoading(false);
     }
   };
 
@@ -1070,7 +1121,7 @@ function App() {
           MAIN CONTENT AREA - WEBVIEW CONTAINER
           ======================================================================== */}
       <Box flex="1" position="relative" overflow="hidden">
-        {!isLoadingEmail && !showWelcomeModal && (
+        {!isLoadingEmail && !showWelcomeModal && !showPasswordModal && (
           <WebViewContainer
             ref={webViewRef}
             activeWebView={activeWebView}
@@ -1227,6 +1278,71 @@ function App() {
           SHORTCUTS MODAL
           ======================================================================== */}
       <ShortcutsModal isOpen={isShortcutsOpen} onClose={onShortcutsClose} />
+
+      {/* ========================================================================
+          DB PASSWORD MODAL - FALLBACK CREDENTIAL RECOVERY
+          ======================================================================== */}
+      <Modal isOpen={showPasswordModal} onClose={() => {}} closeOnOverlayClick={false}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Anmeldedaten wiederherstellen</ModalHeader>
+          <ModalBody>
+            <VStack spacing={4} align="stretch">
+              <Text>
+                Es wurden gespeicherte Anmeldedaten in der Datenbank gefunden.
+                Bitte geben Sie Ihr Passwort ein, um diese zu entschlüsseln.
+              </Text>
+              <FormControl isRequired>
+                <FormLabel>Passwort</FormLabel>
+                <InputGroup>
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={dbPasswordInput}
+                    onChange={(e) => setDbPasswordInput(e.target.value)}
+                    placeholder="Ihr Passwort"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleDbPasswordSubmit();
+                      }
+                    }}
+                  />
+                  <InputRightElement width="4.5rem">
+                    <Button h="1.75rem" size="sm" onClick={() => setShowPassword(!showPassword)}>
+                      {showPassword ? 'Verbergen' : 'Zeigen'}
+                    </Button>
+                  </InputRightElement>
+                </InputGroup>
+              </FormControl>
+              {passwordModalError && (
+                <Text color="red.500" fontSize="sm">
+                  {passwordModalError}
+                </Text>
+              )}
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Flex justify="space-between" width="100%">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setShowWelcomeModal(true);
+                }}
+              >
+                Neue Anmeldedaten eingeben
+              </Button>
+              <Button
+                colorScheme="blue"
+                onClick={handleDbPasswordSubmit}
+                isDisabled={!dbPasswordInput}
+                isLoading={passwordModalLoading}
+              >
+                Wiederherstellen
+              </Button>
+            </Flex>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       {/* ========================================================================
           WELCOME MODAL - FIRST-TIME USER SETUP

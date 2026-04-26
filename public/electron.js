@@ -212,6 +212,22 @@ const store = new Store({
   clearInvalidConfig: true
 });
 
+// Parse --db-path command line argument BEFORE initializing DatabaseService
+// so that the database is created/opened at the correct location
+const dbPathArg = process.argv.find(arg => arg.startsWith('--db-path='));
+if (dbPathArg) {
+  const customDbPath = dbPathArg.split('=')[1];
+  if (customDbPath) {
+    try {
+      const resolvedPath = path.resolve(customDbPath);
+      store.set('databasePath', resolvedPath);
+      console.log('[CLI] Database path set to:', resolvedPath);
+    } catch (error) {
+      console.error('[CLI] Error resolving database path:', error);
+    }
+  }
+}
+
 // Initialize database service
 const db = new DatabaseService();
 
@@ -1142,10 +1158,44 @@ app.on('before-quit', () => {
 
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
   try {
+    // Always save to keytar (primary storage)
     await keytar.setPassword(service, account, password);
+    
+    // Also save to database as encrypted fallback
+    try {
+      // If saving the password account, set it as encryption key first
+      // so that subsequent credential saves in the same batch succeed
+      if (account === 'password') {
+        db.setEncryptionKey(password);
+      }
+      await db.saveCredential(service, account, password);
+    } catch (dbError) {
+      // Log but don't fail if DB save doesn't work (e.g. encryption key not set yet)
+      console.warn('[Credentials] DB fallback save failed:', dbError.message);
+    }
+    
     return { success: true };
   } catch (error) {
     console.error('Error in save-credentials:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-credentials', async (event, { service, account }) => {
+  try {
+    // Delete from keytar
+    await keytar.deletePassword(service, account);
+    
+    // Also delete from database fallback
+    try {
+      await db.deleteCredential(service, account);
+    } catch (dbError) {
+      console.warn('[Credentials] DB fallback delete failed:', dbError.message);
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error in delete-credentials:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1156,10 +1206,64 @@ ipcMain.on('update-badge', (event, badgeValue) => {
 
 ipcMain.handle('get-credentials', async (event, { service, account }) => {
   try {
+    // Try keytar first (primary storage)
     const password = await getCredentials(service, account);
-    return { success: true, password };
+    if (password) {
+      return { success: true, password, fromDb: false };
+    }
+    
+    // Fallback: try database
+    try {
+      const dbValue = await db.getCredential(service, account);
+      if (dbValue) {
+        return { success: true, password: dbValue, fromDb: true };
+      }
+    } catch (dbError) {
+      console.warn('[Credentials] DB fallback read failed:', dbError.message);
+    }
+    
+    return { success: true, password: null, fromDb: false };
   } catch (error) {
     console.error('Error in get-credentials:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Check if database has stored credentials for a service
+ipcMain.handle('has-db-credentials', async (event, { service }) => {
+  try {
+    const hasCreds = await db.hasCredentials(service);
+    return { success: true, hasCredentials: hasCreds };
+  } catch (error) {
+    console.error('Error in has-db-credentials:', error);
+    return { success: false, error: error.message, hasCredentials: false };
+  }
+});
+
+// Set the database encryption key (used when keytar is empty and user enters password)
+ipcMain.handle('set-db-encryption-key', async (event, { password }) => {
+  try {
+    db.setEncryptionKey(password);
+    return { success: true };
+  } catch (error) {
+    console.error('Error in set-db-encryption-key:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Restore all credentials from DB to keytar (used after successful DB decryption)
+ipcMain.handle('restore-credentials-from-db', async (event, { service }) => {
+  try {
+    const creds = await db.getAllCredentials(service);
+    const accounts = Object.keys(creds);
+    
+    for (const account of accounts) {
+      await keytar.setPassword(service, account, creds[account]);
+    }
+    
+    return { success: true, restoredCount: accounts.length };
+  } catch (error) {
+    console.error('Error in restore-credentials-from-db:', error);
     return { success: false, error: error.message };
   }
 });

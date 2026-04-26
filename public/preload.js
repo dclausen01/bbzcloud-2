@@ -10,11 +10,36 @@ contextBridge.exposeInMainWorld('electron', {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveCredentials: (data) => ipcRenderer.invoke('save-credentials', data),
+  deleteCredentials: (data) => ipcRenderer.invoke('delete-credentials', data),
   getCredentials: async (data) => {
     try {
       return await ipcRenderer.invoke('get-credentials', data);
     } catch (error) {
       console.error('Error getting credentials:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  hasDbCredentials: async (data) => {
+    try {
+      return await ipcRenderer.invoke('has-db-credentials', data);
+    } catch (error) {
+      console.error('Error checking DB credentials:', error);
+      return { success: false, error: error.message, hasCredentials: false };
+    }
+  },
+  setDbEncryptionKey: async (data) => {
+    try {
+      return await ipcRenderer.invoke('set-db-encryption-key', data);
+    } catch (error) {
+      console.error('Error setting DB encryption key:', error);
+      return { success: false, error: error.message };
+    }
+  },
+  restoreCredentialsFromDb: async (data) => {
+    try {
+      return await ipcRenderer.invoke('restore-credentials-from-db', data);
+    } catch (error) {
+      console.error('Error restoring credentials from DB:', error);
       return { success: false, error: error.message };
     }
   },
