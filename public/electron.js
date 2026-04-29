@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor, screen, globalShortcut, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, nativeImage, Menu, Tray, dialog, webContents, powerMonitor, screen, globalShortcut, powerSaveBlocker, session } = require('electron');
 const path = require('path');
 const zlib = require('zlib');
 const util = require('util');
@@ -897,9 +897,10 @@ async function getCredentials(service, account) {
   }
 }
 
-function createContextMenu(webContents, selectedText) {
+function createContextMenu(webContents, selectedText, spellItems = []) {
   return Menu.buildFromTemplate([
-    { 
+    ...spellItems,
+    {
       label: 'Ausschneiden',
       accelerator: 'CmdOrCtrl+X',
       role: 'cut'
@@ -1754,7 +1755,24 @@ app.on('web-contents-created', (event, contents) => {
     if (!hasOwnContextMenu) {
       e.preventDefault();
       const selectedText = params.selectionText || '';
-      const menu = createContextMenu(contents, selectedText);
+
+      const spellItems = [];
+      if (params.misspelledWord) {
+        const suggestions = params.dictionarySuggestions ?? [];
+        suggestions.forEach(s => {
+          spellItems.push({ label: s, click: () => contents.replaceMisspelling(s) });
+        });
+        if (suggestions.length > 0) {
+          spellItems.push({ type: 'separator' });
+        }
+        spellItems.push({
+          label: 'Zum Wörterbuch hinzufügen',
+          click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+        });
+        spellItems.push({ type: 'separator' });
+      }
+
+      const menu = createContextMenu(contents, selectedText, spellItems);
       menu.popup();
     }
   });
@@ -2077,6 +2095,13 @@ app.on('ready', async () => {
       }
     }
     
+    // Configure spell checker: prevent Google CDN downloads, use system/OS dictionaries
+    const ses = session.fromPartition('persist:main');
+    ses.setSpellCheckerDictionaryDownloadURL('https://localhost/disabled');
+    if (process.platform !== 'darwin') {
+      ses.setSpellCheckerLanguages(['de', 'en-GB']);
+    }
+
     await copyAssetsIfNeeded();
     createTray();
     createSplashWindow();
