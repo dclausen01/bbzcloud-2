@@ -4,6 +4,8 @@ import {
   Box,
   Flex,
   Progress,
+  Spinner,
+  VStack,
   useToast,
   useColorMode,
   Image as ChakraImage,
@@ -107,6 +109,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
   const [imageError, setImageError] = useState(false);
+  // BBZ Chat (chat.bbz-rd-eck.com) auto-login state — drives a large overlay
+  // that masks the login form while credentials are being injected, so the
+  // user sees a single smooth loading state instead of a brief login screen.
+  const [bbzChatLoginActive, setBbzChatLoginActive] = useState(false);
+  const [hasBbzChatCredentials, setHasBbzChatCredentials] = useState(false);
   // Use a ref (not state) so reads inside useCallback closures always see the latest value
   // immediately — React state batching would cause stale reads otherwise.
   const credsAreSet = useRef({});
@@ -212,6 +219,39 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       console.warn('Error setting up theme change listener:', error);
     }
   }, [setColorMode]);
+
+  // Check whether all credentials needed for BBZ Chat auto-login are stored.
+  // Re-check periodically so that saving credentials in Settings takes effect
+  // without an app restart.
+  useEffect(() => {
+    if (!window.electron || !window.electron.getCredentials) return;
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const [emailResult, passwordResult, encResult] = await Promise.all([
+          window.electron.getCredentials({ service: 'bbzcloud', account: 'email' }),
+          window.electron.getCredentials({ service: 'bbzcloud', account: 'password' }),
+          window.electron.getCredentials({ service: 'bbzcloud', account: 'schulcloudEncryptionPassword' }),
+        ]);
+        const ok = !!(
+          emailResult?.success && emailResult.password?.trim() &&
+          passwordResult?.success && passwordResult.password?.trim() &&
+          encResult?.success && encResult.password?.trim()
+        );
+        if (!cancelled) setHasBbzChatCredentials(ok);
+      } catch (error) {
+        if (!cancelled) setHasBbzChatCredentials(false);
+      }
+    };
+
+    refresh();
+    const interval = setInterval(refresh, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Listen for download progress
   useEffect(() => {
@@ -1893,6 +1933,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Loading state handlers
       addWebviewListener(webview, 'did-start-loading', () => {
         setIsLoading(prev => ({ ...prev, [id]: true }));
+
+        // While the BBZ Chat page is loading, optimistically show the overlay
+        // so the user doesn't see a flash of the login form. The periodic /
+        // navigate checks will hide it again once the user is logged in.
+        // Also clear the overlay if this webview navigates away from BBZ Chat
+        // (e.g. user toggled useBbzChat off in settings).
+        if (id === 'schulcloud') {
+          try {
+            const url = webview.getURL?.() || '';
+            if (url.includes('chat.bbz-rd-eck.com')) {
+              setBbzChatLoginActive(true);
+            } else if (url) {
+              setBbzChatLoginActive(false);
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
       });
 
       addWebviewListener(webview, 'did-stop-loading', async () => {
@@ -2020,6 +2078,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   }
                 })()
               `);
+
+              // Drive the BBZ Chat loading overlay: show while the login form
+              // is still visible on chat.bbz-rd-eck.com, hide once the user
+              // is logged in or the webview navigates away from BBZ Chat.
+              if (isBbzChatPage && needsLogin) {
+                setBbzChatLoginActive(true);
+              } else {
+                setBbzChatLoginActive(false);
+              }
 
               if (needsLogin) {
                 console.log('[schul.cloud periodic] Login needed on', isBbzChatPage ? 'BBZ Chat' : 'schul.cloud', '- triggering injection');
@@ -2326,6 +2393,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
             console.log('[schulcloud did-navigate] Login state received:', JSON.stringify(loginState, null, 2));
 
+            // Drive the BBZ Chat loading overlay state.
+            if (loginState.isBbzChat && (loginState.needsLogin || !loginState.hasValidToken)) {
+              setBbzChatLoginActive(true);
+            } else {
+              setBbzChatLoginActive(false);
+            }
+
             if (loginState.needsLogin) {
               console.log(`[schulcloud did-navigate] Login needed detected, triggering credential injection`);
               credsAreSet.current[id] = false;
@@ -2593,6 +2667,32 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 right="0"
                 zIndex="1"
               />
+            )}
+            {id === 'schulcloud' && bbzChatLoginActive && hasBbzChatCredentials && (
+              <Flex
+                position="absolute"
+                top="0"
+                left="0"
+                right="0"
+                bottom="0"
+                bg={colorMode === 'light' ? 'white' : 'gray.800'}
+                zIndex="2"
+                align="center"
+                justify="center"
+              >
+                <VStack spacing="6">
+                  <Spinner
+                    size="xl"
+                    thickness="4px"
+                    speed="0.8s"
+                    color="blue.500"
+                    emptyColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
+                  />
+                  <Text fontSize="lg" color={colorMode === 'light' ? 'gray.700' : 'gray.200'}>
+                    BBZ Chat wird geladen...
+                  </Text>
+                </VStack>
+              </Flex>
             )}
             <webview
               ref={ref}
