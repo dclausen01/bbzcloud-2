@@ -1,6 +1,6 @@
 {
   "name": "bbzcloud",
-  "version": "2.4.5",
+  "version": "2.4.6",
   "description": "Die Desktop-App für die BBZ Cloud - eine All-in-One-Plattform für Unterricht und Zusammenarbeit",
   "main": "public/electron.js",
   "homepage": "./",
@@ -24,6 +24,8 @@
     "@uiw/react-md-editor": "^4.0.5",
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
+    "dictionary-de": "^3.0.0",
+    "dictionary-en-gb": "^3.0.0",
     "electron-is-dev": "^2.0.0",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.8.0",
@@ -87,6 +89,16 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "node_modules/dictionary-de",
+        "to": "dictionaries/de",
+        "filter": ["index.aff", "index.dic"]
+      },
+      {
+        "from": "node_modules/dictionary-en-gb",
+        "to": "dictionaries/en-GB",
+        "filter": ["index.aff", "index.dic"]
       }
     ],
     "directories": {
