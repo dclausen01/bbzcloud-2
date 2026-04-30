@@ -430,7 +430,7 @@ const DeleteFolderModal = ({ isOpen, onClose, onConfirm, folderName, todoCount }
   );
 };
 
-const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }) => {
+const TodoList = ({ isVisible, onReminderCountChange }) => {
   const [todoState, setTodoState] = useState({
     todos: [],
     folders: ['Default'],
@@ -549,14 +549,6 @@ const TodoList = ({ initialText, onTextAdded, isVisible, onReminderCountChange }
       isClosable: true,
     });
   }, [inputValue, todoState.selectedFolder, toast]);
-
-  // Handle initialText changes
-  useEffect(() => {
-    if (initialText) {
-      handleAddTodo(initialText);
-      onTextAdded();
-    }
-  }, [initialText, handleAddTodo, onTextAdded]);
 
   const handleAddFolder = () => {
     const trimmedName = newFolderName.trim();

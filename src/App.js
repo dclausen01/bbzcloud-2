@@ -165,7 +165,6 @@ function App() {
   const [currentUrl, setCurrentUrl] = useState('');
   const [hasUpdate, setHasUpdate] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
-  const [contextMenuText, setContextMenuText] = useState('');
   const [isDebugMode, setIsDebugMode] = useState(false);
 
   // Refs for WebView management
@@ -531,35 +530,6 @@ function App() {
   // EVENT LISTENERS AND SIDE EFFECTS
   // ============================================================================
   
-  /**
-   * Handle todo additions from context menu
-   * This allows users to right-click on text and add it as a todo
-   */
-  useEffect(() => {
-    if (!window.electron || !window.electron.onAddTodo) {
-      return;
-    }
-    
-    try {
-      const unsubscribe = window.electron.onAddTodo((text) => {
-        setContextMenuText(text);
-        onTodoOpen();
-      });
-      return () => unsubscribe();
-    } catch (error) {
-      console.warn('Error setting up todo context menu listener:', error);
-    }
-  }, [onTodoOpen]);
-
-  /**
-   * Clear context menu text when todo drawer closes
-   */
-  useEffect(() => {
-    if (!isTodoOpen) {
-      setContextMenuText('');
-    }
-  }, [isTodoOpen]);
-
   /**
    * Listen for application update status
    * Shows a red dot on settings button when updates are available
@@ -1206,9 +1176,7 @@ function App() {
             />
           </Flex>
           <Box p={4} overflowY="auto" flex="1">
-            <TodoList 
-              initialText={contextMenuText} 
-              onTextAdded={() => setContextMenuText('')}
+            <TodoList
               isVisible={isTodoOpen}
               onReminderCountChange={setReminderCount}
             />
