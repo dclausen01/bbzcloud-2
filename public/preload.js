@@ -133,14 +133,6 @@ contextBridge.exposeInMainWorld('electron', {
     }
   },
   
-  // Context menu todo addition listener
-  onAddTodo: (callback) => {
-    const subscription = (_event, text) => callback(text);
-    ipcRenderer.on('add-todo', subscription);
-    return () => {
-      ipcRenderer.removeListener('add-todo', subscription);
-    };
-  },
   // Secure Documents functionality
   checkSecureStoreAccess: async () => {
     try {

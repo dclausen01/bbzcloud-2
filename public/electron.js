@@ -915,15 +915,6 @@ function createContextMenu(webContents, selectedText, spellItems = []) {
       accelerator: 'CmdOrCtrl+V',
       role: 'paste'
     },
-    { type: 'separator' },
-    {
-      label: 'Als Todo hinzufügen',
-      click: () => {
-        if (selectedText) {
-          mainWindow.webContents.send('add-todo', selectedText);
-        }
-      }
-    }
   ]);
 }
 
