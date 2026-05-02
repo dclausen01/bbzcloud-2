@@ -295,6 +295,13 @@ class ViewManager {
     else entry.view.webContents.reload();
   }
 
+  reloadAll(ignoreCache = false) {
+    for (const entry of this.views.values()) {
+      if (ignoreCache) entry.view.webContents.reloadIgnoringCache();
+      else entry.view.webContents.reload();
+    }
+  }
+
   goBack(appId) {
     const entry = this.views.get(appId);
     if (entry && entry.view.webContents.canGoBack()) entry.view.webContents.goBack();

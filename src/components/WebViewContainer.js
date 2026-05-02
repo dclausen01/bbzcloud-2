@@ -439,12 +439,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             try {
               const currentUrl = wcvUrlsRef.current[appId] || '';
               const isBbzChatPage = currentUrl.includes('chat.bbz-rd-eck.com');
-              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
+              const needsLogin = await window.electron.view.executeJavaScript(appId, `(async function() {
                 const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
                 if (isBbzChat) {
                   const loginForm = document.querySelector('input[type="email"]');
+                  if (!loginForm) return false;
                   const token = localStorage.getItem('schulchat_token');
-                  return !!loginForm && !token;
+                  if (!token) return true;
+                  // Validate token; remove if expired so re-login proceeds
+                  try {
+                    const r = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+                    if (!r.ok) {
+                      localStorage.removeItem('schulchat_token');
+                      return true;
+                    }
+                    return false;
+                  } catch (_) {
+                    return false; // network error — assume valid
+                  }
                 }
                 const emailInput = document.querySelector('input#username[type="text"]');
                 const passwordInputs = document.querySelectorAll('input[type="password"]');
@@ -459,6 +471,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 setBbzChatLoginActive(false);
               }
               if (needsLogin) {
+                credsAreSet.current[appId] = false;
                 injectCredentials(getWcvProxy(appId), appId);
               }
             } catch (_) {}
@@ -917,12 +930,25 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const loginResult = await webview.executeJavaScript(`
                 (async function() {
                   try {
-                    // Check if token exists in localStorage
+                    // Check if token exists in localStorage and validate it
                     const existingToken = localStorage.getItem('schulchat_token');
                     if (existingToken) {
-                      // Trust the token — if invalid, the app will handle auth on next navigation
-                      console.log('[BBZ Chat] Token found, assuming valid');
-                      return 'ALREADY_LOGGED_IN';
+                      try {
+                        const me = await fetch('/api/me', {
+                          headers: { 'Authorization': 'Bearer ' + existingToken }
+                        });
+                        if (me.ok) {
+                          console.log('[BBZ Chat] Token validated via /api/me');
+                          return 'ALREADY_LOGGED_IN';
+                        }
+                        // Token expired/invalid — remove and fall through to fresh login
+                        console.log('[BBZ Chat] Existing token invalid, removing and re-logging in');
+                        localStorage.removeItem('schulchat_token');
+                      } catch (e) {
+                        // Network error — trust the token to avoid logging the user out unnecessarily
+                        console.log('[BBZ Chat] Token validation network error, trusting token');
+                        return 'ALREADY_LOGGED_IN';
+                      }
                     }
 
                     console.log('[BBZ Chat] No token, calling /api/login...');

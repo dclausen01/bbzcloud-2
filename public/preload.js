@@ -328,6 +328,7 @@ contextBridge.exposeInMainWorld('electron', {
     destroy: (appId) => ipcRenderer.invoke('view:destroy', { appId }),
     navigate: (appId, url) => ipcRenderer.invoke('view:navigate', { appId, url }),
     reload: (appId, ignoreCache) => ipcRenderer.invoke('view:reload', { appId, ignoreCache }),
+    reloadAll: (ignoreCache) => ipcRenderer.invoke('view:reloadAll', { ignoreCache }),
     goBack: (appId) => ipcRenderer.invoke('view:goBack', { appId }),
     goForward: (appId) => ipcRenderer.invoke('view:goForward', { appId }),
     executeJavaScript: (appId, code, userGesture) =>

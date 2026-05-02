@@ -932,11 +932,13 @@ function App() {
                 webViewRef.current.reload();
               }
               break;
-            case 'reload-all':
+            case 'reload-all': {
+              if (window.electron?.view?.reloadAll) window.electron.view.reloadAll();
               const webviews = document.querySelectorAll('webview');
               webviews.forEach(webview => webview.reload());
               announceToScreenReader('Alle Webviews werden neu geladen');
               break;
+            }
             case 'toggle-fullscreen':
               if (window.electron && window.electron.toggleFullscreen) {
                 window.electron.toggleFullscreen();
@@ -1086,6 +1088,7 @@ function App() {
         if (webViewRef.current) webViewRef.current.reload();
         break;
       case 'reload-all': {
+        if (window.electron?.view?.reloadAll) window.electron.view.reloadAll();
         const webviews = document.querySelectorAll('webview');
         webviews.forEach(webview => webview.reload());
         announceToScreenReader('Alle Webviews werden neu geladen');
