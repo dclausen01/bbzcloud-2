@@ -2760,9 +2760,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               left="0"
               right="0"
               bottom="0"
-              // Keep in DOM so bounds are available, but pointer-events off when inactive
+              // Keep in DOM so bounds are observable; pointer-events stay off
+              // because the WebContentsView (composited above) receives real input.
               visibility={isActive ? 'visible' : 'hidden'}
-              pointerEvents={isActive ? 'none' : 'none'}
+              pointerEvents="none"
               zIndex={isActive ? 1 : 0}
             >
               {isLoading[id] && (

@@ -356,6 +356,46 @@ contextBridge.exposeInMainWorld('electron', {
       return () => ipcRenderer.removeListener('view:badge-update', sub);
     },
   },
+
+  // -------------------------------------------------------------------------
+  // Overlay window API  (overlay:* channels)
+  // -------------------------------------------------------------------------
+  overlay: {
+    // Called by the main React app to show the overlay with a payload
+    // (e.g. { surface: 'commandPalette', commands: [...] })
+    open: (payload) => ipcRenderer.invoke('overlay:open', payload),
+    hide: () => ipcRenderer.invoke('overlay:hide'),
+
+    // Fire-and-forget — sent from the overlay surface to the main window
+    // (e.g. { type: 'command', id: 'nav-moodle' } or { type: 'close' })
+    sendAction: (action) => ipcRenderer.send('overlay:action', action),
+
+    // Subscribe to overlay events.
+    // - onOpen: receives the payload from main when the overlay should render
+    // - onHide: notification that the overlay is being hidden
+    // - onAction: forwarded actions from the overlay (used by main window)
+    // - onClosed: notification that the overlay was dismissed (used by main window)
+    onOpen: (callback) => {
+      const sub = (_e, payload) => callback(payload);
+      ipcRenderer.on('overlay:open', sub);
+      return () => ipcRenderer.removeListener('overlay:open', sub);
+    },
+    onHide: (callback) => {
+      const sub = () => callback();
+      ipcRenderer.on('overlay:hide', sub);
+      return () => ipcRenderer.removeListener('overlay:hide', sub);
+    },
+    onAction: (callback) => {
+      const sub = (_e, action) => callback(action);
+      ipcRenderer.on('overlay:action', sub);
+      return () => ipcRenderer.removeListener('overlay:action', sub);
+    },
+    onClosed: (callback) => {
+      const sub = () => callback();
+      ipcRenderer.on('overlay:closed', sub);
+      return () => ipcRenderer.removeListener('overlay:closed', sub);
+    },
+  },
 });
 
 

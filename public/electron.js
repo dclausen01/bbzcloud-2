@@ -16,6 +16,7 @@ const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 const DatabaseService = require('./services/DatabaseService');
 const viewManager = require('./services/ViewManager');
+const overlayWindow = require('./services/OverlayWindow');
 
 // Update check interval (15 minutes)
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
@@ -617,6 +618,9 @@ async function createWindow() {
     path.join(__dirname, 'webview-preload.js'),
     createWebviewWindow
   );
+
+  // Initialise overlay window manager (CommandPalette etc.)
+  overlayWindow.init(mainWindow, { isDev });
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -2303,6 +2307,23 @@ ipcMain.handle('view:clearHistory', (_e, { appId }) => {
 // Fire-and-forget bounds update (called on every animation frame during resize)
 ipcMain.on('view:setBounds', (_e, rect) => {
   viewManager.setBounds(rect);
+});
+
+// ============================================================================
+// Overlay window IPC handlers (overlay:*)
+// ============================================================================
+
+ipcMain.handle('overlay:open', (_e, payload) => {
+  overlayWindow.open(payload);
+});
+
+ipcMain.handle('overlay:hide', () => {
+  overlayWindow.hide();
+});
+
+// Fire-and-forget action from the overlay surface back to the main window.
+ipcMain.on('overlay:action', (_e, action) => {
+  overlayWindow.forwardActionToMain(action);
 });
 
 app.on('activate', async () => {
