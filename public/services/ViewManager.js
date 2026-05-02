@@ -268,6 +268,16 @@ class ViewManager {
     if (this.activeViewId === appId) this.activeViewId = null;
   }
 
+  // Temporarily hide/show the currently active view WITHOUT changing
+  // activeViewId. Used by the renderer to make space for popups/tooltips/menus
+  // that can't otherwise be drawn over the native WebContentsView.
+  setActiveVisible(visible) {
+    if (!this.activeViewId) return;
+    const entry = this.views.get(this.activeViewId);
+    if (!entry) return;
+    entry.view.setVisible(!!visible);
+  }
+
   destroy(appId) {
     const entry = this.views.get(appId);
     if (!entry) return;

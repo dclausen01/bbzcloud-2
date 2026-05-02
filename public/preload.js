@@ -325,6 +325,8 @@ contextBridge.exposeInMainWorld('electron', {
     create: (opts) => ipcRenderer.invoke('view:create', opts),
     show: (appId) => ipcRenderer.invoke('view:show', { appId }),
     hide: (appId) => ipcRenderer.invoke('view:hide', { appId }),
+    // Temporarily hide/show the active view to make space for popups/menus/tooltips
+    setActiveVisible: (visible) => ipcRenderer.invoke('view:setActiveVisible', { visible }),
     destroy: (appId) => ipcRenderer.invoke('view:destroy', { appId }),
     navigate: (appId, url) => ipcRenderer.invoke('view:navigate', { appId, url }),
     reload: (appId, ignoreCache) => ipcRenderer.invoke('view:reload', { appId, ignoreCache }),

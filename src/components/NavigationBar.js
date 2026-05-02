@@ -9,6 +9,7 @@ import {
   useColorMode,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
+import { wcvOverlayGuard } from '../utils/wcvOverlayGuard';
 
 function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const { colorMode } = useColorMode();
@@ -68,7 +69,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
         .filter(([_, config]) => config.visible)
         .map(([id, config]) => (
           <ButtonGroup key={id} size="sm" isAttached variant="outline" spacing={0}>
-            <Tooltip label={!showText ? config.title : undefined} placement="top">
+            <Tooltip label={!showText ? config.title : undefined} placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
                 <Button
                   onClick={(e) => {
                     e.preventDefault();
@@ -91,7 +92,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
                 {showText && config.title}
               </Button>
             </Tooltip>
-            <Tooltip label="In neuem Fenster öffnen" placement="top">
+            <Tooltip label="In neuem Fenster öffnen" placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
               <IconButton
                 aria-label={`${config.title} in neuem Fenster öffnen`}
                 icon={<span>↗️</span>}

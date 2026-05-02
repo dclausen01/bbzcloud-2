@@ -60,6 +60,7 @@ import {
 // Context and Components
 import { useSettings } from './context/SettingsContext';
 import { URLS } from './utils/constants';
+import { wcvOverlayGuard } from './utils/wcvOverlayGuard';
 import NavigationBar from './components/NavigationBar';
 import WebViewContainer from './components/WebViewContainer';
 import SettingsPanel from './components/SettingsPanel';
@@ -1212,7 +1213,7 @@ function App() {
             {activeWebView && (
               <Flex gap={1} flexShrink={1} minW={0}>
                 <ButtonGroup size="sm" isAttached variant="outline">
-                  <Tooltip label="Zurück" placement="top">
+                  <Tooltip label="Zurück" placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
                     <IconButton
                       icon={<span>←</span>}
                       onClick={() => handleWebViewNavigation('goBack')}
@@ -1220,7 +1221,7 @@ function App() {
                       height="28px"
                     />
                   </Tooltip>
-                  <Tooltip label="Vorwärts" placement="top">
+                  <Tooltip label="Vorwärts" placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
                     <IconButton
                       icon={<span>→</span>}
                       onClick={() => handleWebViewNavigation('goForward')}
@@ -1228,7 +1229,7 @@ function App() {
                       height="28px"
                     />
                   </Tooltip>
-                  <Tooltip label="Neu laden" placement="top">
+                  <Tooltip label="Neu laden" placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
                     <IconButton
                       icon={<span>↻</span>}
                       onClick={() => handleWebViewNavigation('reload')}
@@ -1238,7 +1239,7 @@ function App() {
                   </Tooltip>
                 </ButtonGroup>
 
-                <Tooltip label="Link kopieren" placement="top">
+                <Tooltip label="Link kopieren" placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
                   <IconButton
                     icon={<span>📋</span>}
                     onClick={handleCopyUrl}
@@ -1248,7 +1249,7 @@ function App() {
                   />
                 </Tooltip>
 
-                <Tooltip label="Drucken" placement="top">
+                <Tooltip label="Drucken" placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
                   <IconButton
                     icon={<span>🖨️</span>}
                     onClick={() => webViewRef.current?.print()}
@@ -1274,7 +1275,7 @@ function App() {
 
             {/* Settings button with update indicator */}
             <ButtonGroup size="sm" position="relative">
-              <Tooltip label="Einstellungen" placement="top">
+              <Tooltip label="Einstellungen" placement="top" onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
                 <IconButton
                   aria-label="Einstellungen öffnen"
                   icon={<span>⚙️</span>}

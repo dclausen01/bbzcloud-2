@@ -10,12 +10,13 @@ import {
   useColorMode,
   Badge,
 } from '@chakra-ui/react';
+import { wcvOverlayGuard } from '../utils/wcvOverlayGuard';
 
 function DocumentsMenu({ onNavigate, reminderCount = 0 }) {
   const { colorMode } = useColorMode();
 
   return (
-    <Menu>
+    <Menu onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
       <MenuButton
         as={Button}
         rightIcon={<span>▼</span>}

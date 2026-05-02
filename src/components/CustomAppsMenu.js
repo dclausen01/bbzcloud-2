@@ -12,6 +12,7 @@ import {
   IconButton,
   Image,
 } from '@chakra-ui/react';
+import { wcvOverlayGuard } from '../utils/wcvOverlayGuard';
 
 function CustomAppsMenu({ apps, standardApps, onAppClick, onNewWindow }) {
   const { colorMode } = useColorMode();
@@ -36,7 +37,7 @@ function CustomAppsMenu({ apps, standardApps, onAppClick, onNewWindow }) {
   }
 
   return (
-    <Menu>
+    <Menu onOpen={wcvOverlayGuard.enter} onClose={wcvOverlayGuard.exit}>
       <MenuButton
         as={Button}
         rightIcon={<span>▼</span>}
