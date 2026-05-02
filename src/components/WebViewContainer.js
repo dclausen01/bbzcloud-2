@@ -21,14 +21,12 @@ import { useViewBoundsBinding } from '../hooks/useWebContentsView';
 // Phase 2a: wiki, fobizz, taskcards (no auto-login), bbb (simple form-fill)
 // Phase 2b: cryptpad (popup override only), schulportal (periodic form check),
 //           nextcloud (multi-step ADFS/SAML), office (multi-step MS login)
-//
-// Remaining (Phase 2c):
-//   outlook    — multi-step ADFS chain + clearHistory recovery
-//   schulcloud — multi-step BBZ Chat / schul.cloud + encryption password
-//   webuntis   — React-fiber valueTracker injection (most fragile)
+// Phase 2c: outlook (ADFS + clearHistory), schulcloud/BBZ Chat (multi-step +
+//           encryption password), webuntis (React-fiber valueTracker injection)
 const WCV_APPS = new Set([
   'moodle', 'wiki', 'fobizz', 'taskcards', 'bbb',
   'cryptpad', 'schulportal', 'nextcloud', 'office',
+  'outlook', 'schulcloud', 'webuntis',
 ]);
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
@@ -335,15 +333,25 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     };
   }, [activeWebView, applyZoom]);
 
-  // Track navigation URL for WCV apps (used by getWcvProxy)
+  // Track navigation URL for WCV apps (used by getWcvProxy); also drive the
+  // BBZ Chat loading overlay state when the schulcloud WCV navigates.
   useEffect(() => {
     const unsubscribe = window.electron.view.onEvent((event) => {
       if (!WCV_APPS.has(event.appId)) return;
       if (event.type === 'did-navigate' || event.type === 'did-navigate-in-page') {
         wcvUrlsRef.current[event.appId] = event.url;
+        if (event.appId === 'schulcloud' && event.type === 'did-navigate') {
+          if (event.url && event.url.includes('chat.bbz-rd-eck.com')) {
+            setBbzChatLoginActive(true); // refined to false once login is confirmed
+          } else if (event.url) {
+            setBbzChatLoginActive(false);
+          }
+        }
       }
     });
     return unsubscribe;
+  // setBbzChatLoginActive is a stable React setState setter
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Loading state for WCV apps — mirrors what the webview events do for regular apps
@@ -441,6 +449,65 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             } catch (_) {}
           }, 5000);
 
+        } else if (appId === 'outlook') {
+          // Each ADFS navigation step fires dom-ready — reset so every step can inject
+          credsAreSet.current[appId] = false;
+          injectCredentials(proxy, appId);
+
+        } else if (appId === 'schulcloud') {
+          // schulcloud never sets credsAreSet = true (multi-step login manages its own state)
+          injectCredentials(proxy, appId);
+          // 5s periodic check — mirrors the webview's checkSchulCloudLogin interval
+          clearInterval(wcvIntervalsRef.current[appId]);
+          wcvIntervalsRef.current[appId] = setInterval(async () => {
+            try {
+              const currentUrl = wcvUrlsRef.current[appId] || '';
+              const isBbzChatPage = currentUrl.includes('chat.bbz-rd-eck.com');
+              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
+                const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
+                if (isBbzChat) {
+                  const loginForm = document.querySelector('input[type="email"]');
+                  const token = localStorage.getItem('schulchat_token');
+                  return !!loginForm && !token;
+                }
+                const emailInput = document.querySelector('input#username[type="text"]');
+                const passwordInputs = document.querySelectorAll('input[type="password"]');
+                const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
+                const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => btn.textContent.includes('Durch dein Verschlüsselungskennwort'));
+                const onEncryptionPage = !!encryptionButton || document.body.textContent.includes('Verschlüsselungskennwort');
+                return ((emailInput || passwordInputs.length > 0) && !loggedIn) || (onEncryptionPage && !loggedIn);
+              })()`);
+              if (isBbzChatPage && needsLogin) {
+                setBbzChatLoginActive(true);
+              } else {
+                setBbzChatLoginActive(false);
+              }
+              if (needsLogin) {
+                injectCredentials(getWcvProxy(appId), appId);
+              }
+            } catch (_) {}
+          }, 5000);
+
+        } else if (appId === 'webuntis') {
+          // 2s interval (same as webview path) — WebUntis login form loads async
+          credsAreSet.current[appId] = false;
+          injectCredentials(proxy, appId);
+          clearInterval(wcvIntervalsRef.current[appId]);
+          wcvIntervalsRef.current[appId] = setInterval(async () => {
+            try {
+              const isLoginPage = await window.electron.view.executeJavaScript(appId, `(function() {
+                const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
+                const passInput = document.querySelector('input[type="password"]');
+                const authLabel = document.querySelector('.un-input-group__label');
+                return (form || passInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+              })()`);
+              if (isLoginPage) {
+                credsAreSet.current[appId] = false;
+                injectCredentials(getWcvProxy(appId), appId);
+              }
+            } catch (_) {}
+          }, 2000);
+
         } else {
           injectCredentials(proxy, appId);
         }
@@ -469,6 +536,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   }, [activeWcvId]);
 
   useViewBoundsBinding(activeWcvAnchorRef, activeWcvId);
+
+  // Forward badge-count updates sent by ViewManager (via page-title-updated for
+  // BBZ Chat) to the main-process tray icon via the existing update-badge channel.
+  useEffect(() => {
+    if (!window.electron?.view?.onBadgeUpdate) return;
+    const unsubscribe = window.electron.view.onBadgeUpdate(({ count }) => {
+      window.electron.send('update-badge', count);
+    });
+    return unsubscribe;
+  }, []);
 
   // -------------------------------------------------------------------------
 
@@ -1895,45 +1972,48 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         credsAreSet.current[id] = false;
       });
 
-      // Reload webviews with special handling per app
+      // Reload webviews (legacy path) with special handling per app
       Object.keys(webviewRefs.current).forEach(id => {
         const webview = webviewRefs.current[id]?.current;
         if (!webview) return;
 
         try {
-          if (id === 'outlook') {
-            // Outlook: Force complete reload by loading the URL directly
-            console.log('[System Resume] Outlook: forcing complete reload');
-            webview.clearHistory();
-            webview.loadURL('https://exchange.bbz-rd-eck.de/owa/');
-          } else if (id === 'webuntis') {
-            // WebUntis: Only reload if not on the authenticator page
-            webview.executeJavaScript(`
-              (function() {
-                const authLabel = document.querySelector('.un-input-group__label');
-                return authLabel?.textContent === 'Bestätigungscode';
-              })()
-            `).then(isAuthPage => {
-              if (isAuthPage) {
-                console.log('[System Resume] WebUntis: skipping reload (auth page active)');
-              } else {
-                console.log('[System Resume] WebUntis: reloading');
-                webview.reload();
-              }
-            }).catch(() => {
-              // If JS execution fails, just reload
-              console.log('[System Resume] WebUntis: reloading (JS check failed)');
-              webview.reload();
-            });
-          } else {
-            // BBZ Chat, Nextcloud, and others: Simple reload preserves session
-            console.log('[System Resume]', id + ': reloading');
-            webview.reload();
-          }
+          // Legacy webview reload (apps not yet migrated to WCV)
+          console.log('[System Resume] webview', id + ': reloading');
+          webview.reload();
         } catch (error) {
           console.warn('[System Resume] Error reloading webview', id, error);
         }
       });
+
+      // Reload WCV apps with special handling
+      for (const id of WCV_APPS) {
+        try {
+          if (id === 'outlook') {
+            console.log('[System Resume] WCV outlook: forcing complete reload');
+            window.electron.view.clearHistory(id)
+              .then(() => window.electron.view.navigate(id, 'https://exchange.bbz-rd-eck.de/owa/'))
+              .catch(() => window.electron.view.navigate(id, 'https://exchange.bbz-rd-eck.de/owa/'));
+          } else if (id === 'webuntis') {
+            window.electron.view.executeJavaScript(id, `(function() {
+              const authLabel = document.querySelector('.un-input-group__label');
+              return authLabel?.textContent === 'Bestätigungscode';
+            })()`).then(isAuthPage => {
+              if (isAuthPage) {
+                console.log('[System Resume] WCV webuntis: skipping (auth page active)');
+              } else {
+                console.log('[System Resume] WCV webuntis: reloading');
+                window.electron.view.reload(id);
+              }
+            }).catch(() => window.electron.view.reload(id));
+          } else {
+            console.log('[System Resume] WCV', id + ': reloading');
+            window.electron.view.reload(id);
+          }
+        } catch (error) {
+          console.warn('[System Resume] Error reloading WCV', id, error);
+        }
+      }
     };
 
     try {
@@ -2031,92 +2111,83 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     });
   };
 
-  // Set up SchulCloud / BBZ Chat notification checking with MutationObserver.
-  // For BBZ Chat (useBbzChat=true): parse document.title for "(N) BBZ Chat" pattern
-  // For schul.cloud (useBbzChat=false): use favicon red-dot pixel analysis (legacy)
+  // Set up SchulCloud / BBZ Chat notification checking.
+  // For BBZ Chat (useBbzChat=true): ViewManager already detects the "(N) BBZ Chat"
+  //   title pattern and sends view:badge-update → forwarded to update-badge above.
+  //   No renderer polling needed.
+  // For schul.cloud (useBbzChat=false): favicon red-dot pixel analysis every 8s.
+  //   Uses view.executeJavaScript for WCV, webview.executeJavaScript for legacy.
   useEffect(() => {
-    let observer = null;
     const isBbzChat = settings.useBbzChat;
 
-    const setupNotificationChecking = (webview) => {
-      if (!webview) return;
-
-      const checkNotifications = async () => {
-        try {
-          if (isBbzChat) {
-            // BBZ Chat: parse document.title for unread count
-            // Format: "(N) BBZ Chat" for N unread, "BBZ Chat" for none
-            const title = await webview.executeJavaScript(`document.title`);
-            const match = title && title.match(/^\((\d+)\)/);
-            const unreadCount = match ? parseInt(match[1], 10) : 0;
-            window.electron.send('update-badge', unreadCount);
-          } else {
-            // schul.cloud: favicon red-dot pixel analysis (legacy)
-            const faviconData = await webview.executeJavaScript(`
-              document.querySelector('link[rel="icon"][type="image/png"]')?.href;
-            `);
-
-            if (!faviconData) return;
-
-            const hasNotification = await checkForNotifications(faviconData);
-            window.electron.send('update-badge', hasNotification ? 1 : 0);
-          }
-        } catch (error) {
-          // Silent fail and try again next interval
-        }
-      };
-
-            // Clear any existing interval
-      if (notificationCheckIntervalRef.current) {
-        clearInterval(notificationCheckIntervalRef.current);
-      }
-
-      // Start notification checking immediately to fix issue where
-      // notifications were not detected when switching to already-loaded webview
-      const startChecking = () => {
-        checkNotifications();
-        
-        // Set up interval — BBZ Chat title changes are lightweight, check every 5s
-        // schul.cloud favicon analysis is heavier, check every 8s
-        const interval = isBbzChat ? 5000 : 8000;
-        notificationCheckIntervalRef.current = setInterval(checkNotifications, interval);
-      };
-
-      webview.addEventListener('dom-ready', () => {
-        startChecking();
-      }, { once: true });
-      };
-
-    // Set up observer to watch for the webview
-    observer = new MutationObserver((mutations) => {
-      const schulcloudWebview = document.querySelector('#wv-schulcloud');
-      if (schulcloudWebview) {
-        setupNotificationChecking(schulcloudWebview);
-        observer.disconnect();
-      }
-    });
-
-    // Start observing with a configuration
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    // Check immediately in case the webview already exists
-    const existingWebview = document.querySelector('#wv-schulcloud');
-    if (existingWebview) {
-      setupNotificationChecking(existingWebview);
-      observer.disconnect();
+    // Clear any stale interval from the previous run
+    if (notificationCheckIntervalRef.current) {
+      clearInterval(notificationCheckIntervalRef.current);
     }
 
-    // Cleanup function
+    if (isBbzChat) {
+      // BBZ Chat badge is handled by ViewManager → onBadgeUpdate useEffect above.
+      return;
+    }
+
+    // schul.cloud: favicon pixel analysis
+    const checkNotifications = async () => {
+      try {
+        let faviconData;
+        if (WCV_APPS.has('schulcloud')) {
+          faviconData = await window.electron.view.executeJavaScript('schulcloud',
+            `document.querySelector('link[rel="icon"][type="image/png"]')?.href`
+          );
+        } else {
+          const wv = document.querySelector('#wv-schulcloud');
+          if (!wv) return;
+          faviconData = await wv.executeJavaScript(
+            `document.querySelector('link[rel="icon"][type="image/png"]')?.href`
+          );
+        }
+        if (!faviconData) return;
+        const hasNotification = await checkForNotifications(faviconData);
+        window.electron.send('update-badge', hasNotification ? 1 : 0);
+      } catch (_) {}
+    };
+
+    notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
+    checkNotifications();
+
+    let unsubWcvEvent = null;
+    let observer = null;
+
+    if (WCV_APPS.has('schulcloud')) {
+      // Restart interval on each WCV page load
+      unsubWcvEvent = window.electron.view.onEvent((event) => {
+        if (event.appId === 'schulcloud' && event.type === 'dom-ready') {
+          clearInterval(notificationCheckIntervalRef.current);
+          notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
+          checkNotifications();
+        }
+      });
+    } else {
+      // Legacy webview path: wait for #wv-schulcloud to appear, then restart on dom-ready
+      const setupForWebview = (webview) => {
+        webview.addEventListener('dom-ready', () => {
+          clearInterval(notificationCheckIntervalRef.current);
+          notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
+          checkNotifications();
+        }, { once: true });
+      };
+      observer = new MutationObserver(() => {
+        const wv = document.querySelector('#wv-schulcloud');
+        if (wv) { setupForWebview(wv); observer.disconnect(); }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      const existingWv = document.querySelector('#wv-schulcloud');
+      if (existingWv) { setupForWebview(existingWv); observer.disconnect(); }
+    }
+
     return () => {
-      if (observer) {
-        observer.disconnect();
-      }
-      if (notificationCheckIntervalRef.current) {
-        clearInterval(notificationCheckIntervalRef.current);
-      }
+      if (unsubWcvEvent) unsubWcvEvent();
+      if (observer) observer.disconnect();
+      if (notificationCheckIntervalRef.current) clearInterval(notificationCheckIntervalRef.current);
     };
   }, [settings.useBbzChat]); // Re-run when switching between BBZ Chat and schul.cloud
 
