@@ -1109,7 +1109,7 @@ function App() {
     }
   }, [isCommandPaletteOpen, overlayCommands]);
 
-  // Listen for actions from the overlay (command selections, close requests).
+  // Listen for actions from the overlay (command selections, menu items, close requests).
   useEffect(() => {
     if (!window.electron?.overlay) return;
     const unsub = window.electron.overlay.onAction((action) => {
@@ -1119,10 +1119,18 @@ function App() {
         onCommandPaletteClose();
       } else if (action.type === 'close') {
         onCommandPaletteClose();
+      } else if (action.type === 'menu-navigate') {
+        if (action.id === 'todo') openTodo();
+        else if (action.id === 'secure-documents') openSecureDocs();
+      } else if (action.type === 'app-select') {
+        handleCustomAppClick(action.app);
+      } else if (action.type === 'app-new-window') {
+        handleOpenInNewWindow(action.url, action.title);
       }
     });
     return unsub;
-  }, [dispatchCommand, onCommandPaletteClose]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatchCommand, onCommandPaletteClose, openTodo, openSecureDocs]);
 
   // The overlay can also close itself (e.g. on blur). Sync our state when that
   // happens so the next toggle reopens it correctly.
@@ -1203,8 +1211,6 @@ function App() {
             <CustomAppsMenu
               apps={settings.customApps}
               standardApps={settings.standardApps}
-              onAppClick={handleCustomAppClick}
-              onNewWindow={handleOpenInNewWindow}
             />
 
             {/* WebView navigation controls - only shown when a webview is active */}
@@ -1250,16 +1256,7 @@ function App() {
             )}
 
             {/* Documents menu (Todo and Secure Documents) */}
-            <DocumentsMenu
-              reminderCount={reminderCount}
-              onNavigate={(view) => {
-                if (view === 'todo') {
-                  openTodo();
-                } else if (view === 'secure-documents') {
-                  openSecureDocs();
-                }
-              }}
-            />
+            <DocumentsMenu reminderCount={reminderCount} />
 
             {/* Settings button with update indicator */}
             <ButtonGroup size="sm" position="relative">
