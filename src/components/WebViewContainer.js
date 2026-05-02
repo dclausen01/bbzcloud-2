@@ -30,24 +30,6 @@ const WCV_APPS = new Set([
 ]);
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
-  const [preloadPath, setPreloadPath] = useState('');
-
-  // Get the correct preload script path from main process
-  useEffect(() => {
-    const getPreloadPath = async () => {
-      try {
-        if (window.electron && window.electron.getWebviewPreloadPath) {
-          const path = await window.electron.getWebviewPreloadPath();
-          setPreloadPath(path);
-          console.log('[WebViewContainer] Got preload path:', path);
-        }
-      } catch (error) {
-        console.warn('Error getting webview preload path:', error);
-      }
-    };
-    getPreloadPath();
-  }, []);
-
   // Expose navigation methods through ref
   React.useImperativeHandle(ref, () => ({
     goBack: () => {
@@ -139,7 +121,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // immediately — React state batching would cause stale reads otherwise.
   const credsAreSet = useRef({});
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
-  const [failedWebviews, setFailedWebviews] = useState({}); // eslint-disable-line no-unused-vars
   const loginAttempts = useRef({}); // Track login attempts per app (max 3 per session)
   const failedLogins = useRef({}); // Track fatal login failures (e.g. invalid credentials)
   const MAX_LOGIN_ATTEMPTS = 3;
@@ -185,11 +166,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     const webview = webviewRefs.current[id]?.current;
     if (webview) {
       webview.reload();
-      setFailedWebviews(prev => {
-        const newState = { ...prev };
-        delete newState[id];
-        return newState;
-      });
     }
   };
   const toast = useToast();
@@ -1927,37 +1903,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for webview messages
-  useEffect(() => {
-    if (!window.electron || !window.electron.onMessage) {
-      return;
-    }
-    
-    try {
-      const messageHandler = (message) => {
-        if (message.type === 'webuntis-needs-login') {
-          const webview = document.querySelector('#wv-webuntis');
-          if (webview) {
-            credsAreSet.current["webuntis"] = false;
-            injectCredentials(webview, 'webuntis');
-          }
-        }
-      };
-
-      const unsubscribe = window.electron.onMessage(messageHandler);
-
-      return () => {
-        if (unsubscribe && typeof unsubscribe === 'function') {
-          unsubscribe();
-        } else if (window.electron && window.electron.offMessage) {
-          window.electron.offMessage(messageHandler);
-        }
-      };
-    } catch (error) {
-      console.warn('Error setting up message listener:', error);
-    }
-  }, [injectCredentials]);
-
   // Listen for system resume events — reload webviews with special handling per app
   useEffect(() => {
     if (!window.electron || !window.electron.onSystemResumed) {
@@ -1972,13 +1917,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         credsAreSet.current[id] = false;
       });
 
-      // Reload webviews (legacy path) with special handling per app
+      // Reload dropdown app webviews
       Object.keys(webviewRefs.current).forEach(id => {
         const webview = webviewRefs.current[id]?.current;
         if (!webview) return;
-
         try {
-          // Legacy webview reload (apps not yet migrated to WCV)
           console.log('[System Resume] webview', id + ': reloading');
           webview.reload();
         } catch (error) {
@@ -2039,17 +1982,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   }, []);
 
   useEffect(() => {
-    // Initialize webviews for all standard apps
-    Object.entries(standardApps).forEach(([id, config]) => {
-      if (config.visible && !webviewRefs.current[id]) {
-        webviewRefs.current[id] = React.createRef();
-      }
-    });
-
     // Cleanup old dynamic webview refs when switching apps
-    if (activeWebView && isDropdownApp(activeWebView.id)) {
+    if (activeWebView && !Object.keys(standardApps).includes(activeWebView.id.toLowerCase())) {
       Object.keys(webviewRefs.current).forEach(id => {
-        if (isDropdownApp(id) && id !== activeWebView.id) {
+        if (!Object.keys(standardApps).includes(id.toLowerCase()) && id !== activeWebView.id) {
           delete webviewRefs.current[id];
         }
       });
@@ -2116,11 +2052,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   //   title pattern and sends view:badge-update → forwarded to update-badge above.
   //   No renderer polling needed.
   // For schul.cloud (useBbzChat=false): favicon red-dot pixel analysis every 8s.
-  //   Uses view.executeJavaScript for WCV, webview.executeJavaScript for legacy.
   useEffect(() => {
     const isBbzChat = settings.useBbzChat;
 
-    // Clear any stale interval from the previous run
     if (notificationCheckIntervalRef.current) {
       clearInterval(notificationCheckIntervalRef.current);
     }
@@ -2130,21 +2064,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       return;
     }
 
-    // schul.cloud: favicon pixel analysis
+    // schul.cloud: favicon pixel analysis via WCV
     const checkNotifications = async () => {
       try {
-        let faviconData;
-        if (WCV_APPS.has('schulcloud')) {
-          faviconData = await window.electron.view.executeJavaScript('schulcloud',
-            `document.querySelector('link[rel="icon"][type="image/png"]')?.href`
-          );
-        } else {
-          const wv = document.querySelector('#wv-schulcloud');
-          if (!wv) return;
-          faviconData = await wv.executeJavaScript(
-            `document.querySelector('link[rel="icon"][type="image/png"]')?.href`
-          );
-        }
+        const faviconData = await window.electron.view.executeJavaScript('schulcloud',
+          `document.querySelector('link[rel="icon"][type="image/png"]')?.href`
+        );
         if (!faviconData) return;
         const hasNotification = await checkForNotifications(faviconData);
         window.electron.send('update-badge', hasNotification ? 1 : 0);
@@ -2154,48 +2079,26 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
     checkNotifications();
 
-    let unsubWcvEvent = null;
-    let observer = null;
-
-    if (WCV_APPS.has('schulcloud')) {
-      // Restart interval on each WCV page load
-      unsubWcvEvent = window.electron.view.onEvent((event) => {
-        if (event.appId === 'schulcloud' && event.type === 'dom-ready') {
-          clearInterval(notificationCheckIntervalRef.current);
-          notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
-          checkNotifications();
-        }
-      });
-    } else {
-      // Legacy webview path: wait for #wv-schulcloud to appear, then restart on dom-ready
-      const setupForWebview = (webview) => {
-        webview.addEventListener('dom-ready', () => {
-          clearInterval(notificationCheckIntervalRef.current);
-          notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
-          checkNotifications();
-        }, { once: true });
-      };
-      observer = new MutationObserver(() => {
-        const wv = document.querySelector('#wv-schulcloud');
-        if (wv) { setupForWebview(wv); observer.disconnect(); }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-      const existingWv = document.querySelector('#wv-schulcloud');
-      if (existingWv) { setupForWebview(existingWv); observer.disconnect(); }
-    }
+    // Restart interval on each WCV page load
+    const unsubWcvEvent = window.electron.view.onEvent((event) => {
+      if (event.appId === 'schulcloud' && event.type === 'dom-ready') {
+        clearInterval(notificationCheckIntervalRef.current);
+        notificationCheckIntervalRef.current = setInterval(checkNotifications, 8000);
+        checkNotifications();
+      }
+    });
 
     return () => {
-      if (unsubWcvEvent) unsubWcvEvent();
-      if (observer) observer.disconnect();
+      unsubWcvEvent();
       if (notificationCheckIntervalRef.current) clearInterval(notificationCheckIntervalRef.current);
     };
   }, [settings.useBbzChat]); // Re-run when switching between BBZ Chat and schul.cloud
 
+  // Event listener setup for dropdown (custom) app webviews only.
+  // All standard apps are handled via WebContentsView.
   useEffect(() => {
-    // Track event listeners for cleanup
     const eventCleanups = new Map();
 
-    // Helper to add event listener with cleanup
     const addWebviewListener = (webview, event, handler) => {
       webview.addEventListener(event, handler);
       const cleanups = eventCleanups.get(webview) || [];
@@ -2203,590 +2106,39 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       eventCleanups.set(webview, cleanups);
     };
 
-    // Set up event listeners for all webviews
     const setupWebviewListeners = (webview) => {
       const id = webview.id.replace('wv-', '').toLowerCase();
 
-      // Loading state handlers
       addWebviewListener(webview, 'did-start-loading', () => {
         setIsLoading(prev => ({ ...prev, [id]: true }));
-
-        // While the BBZ Chat page is loading, optimistically show the overlay
-        // so the user doesn't see a flash of the login form. The periodic /
-        // navigate checks will hide it again once the user is logged in.
-        // Also clear the overlay if this webview navigates away from BBZ Chat
-        // (e.g. user toggled useBbzChat off in settings).
-        if (id === 'schulcloud') {
-          try {
-            const url = webview.getURL?.() || '';
-            if (url.includes('chat.bbz-rd-eck.com')) {
-              setBbzChatLoginActive(true);
-            } else if (url) {
-              setBbzChatLoginActive(false);
-            }
-          } catch (e) {
-            // ignore
-          }
-        }
       });
 
-      addWebviewListener(webview, 'did-stop-loading', async () => {
+      addWebviewListener(webview, 'did-stop-loading', () => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
-
-        // For WebUntis, check for login form after loading finishes
-        if (id === 'webuntis') {
-          const isLoginPage = await webview.executeJavaScript(`
-            (function() {
-              const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-              const passwordInput = document.querySelector('input[type="password"]');
-              const authLabel = document.querySelector('.un-input-group__label');
-              return (form || passwordInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
-            })()
-          `);
-          
-          if (isLoginPage) {
-            credsAreSet.current[id] = false;
-            await injectCredentials(webview, id);
-          }
-        }
       });
 
-      // Load completion handler
       addWebviewListener(webview, 'dom-ready', async () => {
         if (activeWebView && activeWebView.id === id) {
           onNavigate(webview.getURL());
         }
-
-        // Apply zoom after a short delay to ensure webview is ready
         setTimeout(async () => {
           await applyZoom(webview, id);
         }, 1000);
-        
-        // For WebUntis, check for login form initially and set up periodic check
-        if (id === 'webuntis') {
-          const checkLoginForm = async () => {
-            const isLoginPage = await webview.executeJavaScript(`
-              (function() {
-                const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-                const passwordInput = document.querySelector('input[type="password"]');
-                const authLabel = document.querySelector('.un-input-group__label');
-                return (form || passwordInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
-              })()
-            `);
-            
-            if (isLoginPage) {
-              credsAreSet.current[id] = false;
-              await injectCredentials(webview, id);
-            }
-          };
-
-          // Initial check
-          await checkLoginForm();
-          
-          // Set up periodic check
-          const interval = setInterval(checkLoginForm, 2000);
-          eventCleanups.get(webview)?.push(() => clearInterval(interval));
-        } else if (id === 'schulcloud') {
-          // For schul.cloud AND BBZ Chat (both use the 'schulcloud' webview ID).
-          //
-          // IMPORTANT: Call injectCredentials directly on dom-ready (like generic apps)
-          // AND set up a periodic check as fallback. The useEffect cleanup can clear
-          // the periodic interval, and since dom-ready won't fire again, the periodic
-          // check alone is unreliable. The direct call ensures at least one attempt.
-          await injectCredentials(webview, id);
-
-          // Periodic check for schul.cloud AND BBZ Chat login state.
-          // Token validation for BBZ Chat is now handled inside injectCredentials
-          // itself (via /api/me), so the periodic check only needs to detect
-          // whether a login form is visible (= not logged in).
-          const checkSchulCloudLogin = async () => {
-            try {
-              const currentUrl = await webview.executeJavaScript(`window.location.href`);
-              const isBbzChatPage = currentUrl.includes('chat.bbz-rd-eck.com');
-              
-              const needsLogin = await webview.executeJavaScript(`
-                (function() {
-                  // Separate BBZ Chat and schul.cloud logic by URL, because both
-                  // share the same webview ID ('schulcloud') but have different login pages.
-                  // IMPORTANT: 'Verschlüsselungspasswort' appears as a FIELD LABEL on the
-                  // BBZ Chat login form, so it must NOT be used as a logged-in indicator
-                  // when on chat.bbz-rd-eck.com.
-                  const isBbzChatPage = window.location.href.includes('chat.bbz-rd-eck.com');
-
-                  if (isBbzChatPage) {
-                    // BBZ Chat: only consider login form visible + no valid token
-                    const loginForm = document.querySelector('input[type="email"]');
-                    const token = localStorage.getItem('schulchat_token');
-                    return !!loginForm && !token;
-                  } else {
-                    // schul.cloud: Only check actual DOM elements for logged-in state
-                    // Do NOT check textContent for 'Logout' or 'Abmelden' - these appear in
-                    // script tags and cause false positives on the login page!
-                    const emailInput = document.querySelector('input#username[type="text"]');
-                    const passwordInputs = document.querySelectorAll('input[type="password"]');
-                    const loggedIn = document.querySelector('.user-menu') ||
-                                   document.querySelector('.dashboard') ||
-                                   document.querySelector('.main-content');
-                    
-                    // Also detect encryption page - look for the "Durch dein Verschlüsselungskennwort" button
-                    const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn =>
-                      btn.textContent.includes('Durch dein Verschlüsselungskennwort')
-                    );
-                    const onEncryptionPage = !!encryptionButton || document.body.textContent.includes('Verschlüsselungskennwort');
-                                   
-                    const needsLogin = ((emailInput || passwordInputs.length > 0) && !loggedIn) || (onEncryptionPage && !loggedIn);
-                    
-                    // Log for debugging (visible in WebView console)
-                    if (emailInput || passwordInputs.length > 0 || onEncryptionPage) {
-                      console.log('[schul.cloud periodic] Login form detected, emailInput:', !!emailInput, 'passwordInputs:', passwordInputs.length, 'onEncryptionPage:', onEncryptionPage);
-                      console.log('[schul.cloud periodic] loggedIn indicators:', {
-                        userMenu: !!document.querySelector('.user-menu'),
-                        dashboard: !!document.querySelector('.dashboard'),
-                        mainContent: !!document.querySelector('.main-content'),
-                        hasAbmelden: document.body.textContent.includes('Abmelden'),
-                        hasLogout: document.body.textContent.includes('Logout'),
-                        hasEncryption: document.body.textContent.includes('Verschlüsselungskennwort'),
-                        hasSmartphone: document.body.textContent.includes('Smartphone')
-                      });
-                      console.log('[schul.cloud periodic] needsLogin:', needsLogin);
-                    }
-                    
-                    return needsLogin;
-                  }
-                })()
-              `);
-
-              // Drive the BBZ Chat loading overlay: show while the login form
-              // is still visible on chat.bbz-rd-eck.com, hide once the user
-              // is logged in or the webview navigates away from BBZ Chat.
-              if (isBbzChatPage && needsLogin) {
-                setBbzChatLoginActive(true);
-              } else {
-                setBbzChatLoginActive(false);
-              }
-
-              if (needsLogin) {
-                console.log('[schul.cloud periodic] Login needed on', isBbzChatPage ? 'BBZ Chat' : 'schul.cloud', '- triggering injection');
-                credsAreSet.current[id] = false;
-                await injectCredentials(webview, id);
-              }
-            } catch (error) {
-              console.log('[schul.cloud periodic] Check error:', error.message);
-            }
-          };
-
-          // Set up periodic check every 5 seconds as fallback
-          const interval = setInterval(checkSchulCloudLogin, 5000);
-          eventCleanups.get(webview)?.push(() => clearInterval(interval));
-        } else if (id === 'office') {
-          // For Office, check for Microsoft login forms periodically
-          const checkOfficeLogin = async () => {
-            try {
-              const needsLogin = await webview.executeJavaScript(`
-                (function() {
-                  // Check for specific Office.com elements using exact selectors
-                  const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                  const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                  const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                  const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                  const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                  
-                  // Check if already logged in (look for Office apps or user menu)
-                  const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]') ||
-                                   document.body.textContent.includes('Office') ||
-                                   document.body.textContent.includes('Microsoft 365');
-                  
-                  // We need login if we see any login elements and not logged in
-                  return (emailInput || passwordInput || weiterButton || anmeldenButton || jaButton || emailTile) && !officeApps;
-                })()
-              `);
-              
-              if (needsLogin) {
-                credsAreSet.current[id] = false;
-                await injectCredentials(webview, id);
-              }
-            } catch (error) {
-              // Silent fail - page might not be ready
-            }
-          };
-
-          // Initial check
-          await checkOfficeLogin();
-
-          // Set up periodic check every 5 seconds
-          const interval = setInterval(checkOfficeLogin, 5000);
-          eventCleanups.get(webview)?.push(() => clearInterval(interval));
-        } else if (id === 'nextcloud') {
-          // For Nextcloud, check periodically for BBZ ADFS button or ADFS login form
-          const checkNextcloudLogin = async () => {
-            try {
-              const needsLogin = await webview.executeJavaScript(`
-                (function() {
-                  const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
-                                     Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
-                  const userNameInput = document.querySelector('#userNameInput');
-                  const passwordInput = document.querySelector('#passwordInput');
-                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-
-                  const loggedIn = document.querySelector('#header') ||
-                                   document.querySelector('.app-navigation') ||
-                                   document.querySelector('#nextcloud') ||
-                                   window.location.href.includes('/apps/');
-
-                  return (adfsButton || userNameInput || passwordInput || jaButton) && !loggedIn;
-                })()
-              `);
-
-              if (needsLogin) {
-                credsAreSet.current[id] = false;
-                await injectCredentials(webview, id);
-              }
-            } catch (error) {
-              // Silent fail - page might not be ready
-            }
-          };
-
-          // Initial check
-          await checkNextcloudLogin();
-
-          // Set up periodic check every 5 seconds
-          const ncInterval = setInterval(checkNextcloudLogin, 5000);
-          eventCleanups.get(webview)?.push(() => clearInterval(ncInterval));
-        } else if (id === 'antraege') {
-          // For Anträge, check for agorum login form periodically
-          const checkAntraegeLogin = async () => {
-            try {
-              const needsLogin = await webview.executeJavaScript(`
-                (function() {
-                  // Check for agorum login form elements
-                  const usernameField = document.querySelector('input[autocomplete="username"]');
-                  const passwordField = document.querySelector('input[autocomplete="current-password"]');
-                  const loginButton = Array.from(document.querySelectorAll('a.x-btn')).find(btn => 
-                    btn.textContent.includes('Anmelden')
-                  );
-                  
-                  // Check if already logged in (look for agorum workspace elements)
-                  const loggedIn = document.querySelector('.x-workspace') ||
-                                 document.querySelector('.x-desktop') ||
-                                 document.body.textContent.includes('Abmelden');
-                  
-                  // We need login if we see login form and not logged in
-                  return (usernameField && passwordField && loginButton) && !loggedIn;
-                })()
-              `);
-              
-              if (needsLogin) {
-                console.log('Anträge periodic check: Login needed, triggering injection');
-                credsAreSet.current[id] = false;
-                await injectCredentials(webview, id);
-              }
-            } catch (error) {
-              // Silent fail - page might not be ready
-            }
-          };
-
-          // Initial check
-          await checkAntraegeLogin();
-          
-          // Set up periodic check every 5 seconds
-          const interval = setInterval(checkAntraegeLogin, 5000);
-          eventCleanups.get(webview)?.push(() => clearInterval(interval));
-        } else if (id === 'schulportal') {
-          // For Schulportal, check for login form periodically
-          const checkSchulportalLogin = async () => {
-            try {
-              const needsLogin = await webview.executeJavaScript(`
-                (function() {
-                  const usernameField = document.querySelector('input#username');
-                  const passwordField = document.querySelector('input#password');
-                  const submitButton = document.querySelector('input#kc-login[type="submit"]');
-                  
-                  // If fields exist, we probably need to login
-                  return !!(usernameField && passwordField && submitButton);
-                })()
-              `);
-              
-              if (needsLogin) {
-                credsAreSet.current[id] = false;
-                await injectCredentials(webview, id);
-              }
-            } catch (error) {
-              // Silent fail
-            }
-          };
-
-          // Initial check
-          await checkSchulportalLogin();
-          
-          // Set up periodic check every 5 seconds
-          const interval = setInterval(checkSchulportalLogin, 5000);
-          eventCleanups.get(webview)?.push(() => clearInterval(interval));
-        } else {
-          await injectCredentials(webview, id);
-        }
-
-        // Override CryptPad's popup detection for cryptpad URLs
-        if (webview.getURL().includes('cryptpad')) {
-          await webview.executeJavaScript(`
-            // Override popup detection
-            window.open = new Proxy(window.open, {
-              apply: function(target, thisArg, args) {
-                // Call original window.open
-                const result = Reflect.apply(target, thisArg, args);
-                // Force CryptPad to think popups are allowed
-                if (!result) {
-                  return { closed: false };
-                }
-                return result;
-              }
-            });
-            // Clear any existing popup warning messages
-            const popupWarning = document.querySelector('.cp-popup-warning');
-            if (popupWarning) {
-              popupWarning.remove();
-            }
-          `);
-        }
-
-        // Context menu setup (only add once)
-        if (
-          webview.getURL().includes('schul.cloud') ||
-          webview.getURL().includes('portal.bbz-rd-eck.com') ||
-          webview.getURL().includes('taskcards.app') ||
-          webview.getURL().includes('wiki.bbz-rd-eck.com')
-        ) {
-          const contextMenuHandler = async (e) => {
-            e.preventDefault();
-            try {
-              const selectedText = await webview.executeJavaScript(`window.getSelection().toString()`);
-              if (selectedText) {
-                window.electron.send('showContextMenu', {
-                  x: e.x,
-                  y: e.y,
-                  selectionText: selectedText,
-                });
-              }
-            } catch (error) {
-              console.error('Error getting selected text:', error);
-            }
-          };
-          addWebviewListener(webview, 'context-menu', contextMenuHandler);
-        }
+        await injectCredentials(webview, id);
       });
 
-      // Navigation handler with smarter session detection
-      addWebviewListener(webview, 'did-navigate', async () => {
-        // For WebUntis, check for login form after each navigation
-        if (id === 'webuntis') {
-          const isLoginPage = await webview.executeJavaScript(`
-            (function() {
-              const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-              const passwordInput = document.querySelector('input[type="password"]');
-              const authLabel = document.querySelector('.un-input-group__label');
-              return (form || passwordInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
-            })()
-          `);
-          
-          if (isLoginPage) {
-            credsAreSet.current[id] = false;
-            await injectCredentials(webview, id);
-          }
-        } else if (id === 'schulcloud') {
-          // For schul.cloud AND BBZ Chat (both use the 'schulcloud' webview ID),
-          // check for login forms after navigation using selectors for both services
-          console.log(`[schulcloud did-navigate] Navigation detected, URL:`, webview.getURL());
-          
-          try {
-            const loginState = await webview.executeJavaScript(`
-              (async function() {
-                console.log('[schulcloud did-navigate] Checking login state...');
-                
-                // Separate BBZ Chat and schul.cloud logic by URL.
-                // 'Verschlüsselungspasswort' is a field LABEL on the BBZ Chat login form
-                // and must NOT be treated as a logged-in indicator on that domain.
-                const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
-
-                if (isBbzChat) {
-                  // BBZ Chat: validate token via API, check for visible login form
-                  const loginForm = document.querySelector('input[type="email"]');
-                  const token = localStorage.getItem('schulchat_token');
-                  let tokenValid = false;
-                  if (token) {
-                    try {
-                      const response = await fetch('/api/me', {
-                        headers: { 'Authorization': 'Bearer ' + token }
-                      });
-                      tokenValid = response.ok;
-                      if (!response.ok) {
-                        localStorage.removeItem('schulchat_token');
-                      }
-                    } catch (e) {
-                      tokenValid = true; // Network error — assume still valid
-                    }
-                  }
-                  
-                  const state = {
-                    needsLogin: !!loginForm && !tokenValid,
-                    isBbzChat: true,
-                    hasValidToken: tokenValid,
-                    hasLoginForm: !!loginForm
-                  };
-                  console.log('[schulcloud did-navigate] BBZ Chat state:', JSON.stringify(state, null, 2));
-                  return state;
-                } else {
-                  // schul.cloud: 'Verschlüsselungskennwort' on post-login page = logged in
-                  const emailInput = document.querySelector('input#username[type="text"]');
-                  const passwordInputs = document.querySelectorAll('input[type="password"]');
-
-                  // IMPORTANT: Only check actual DOM elements for logged-in state
-                  // Do NOT check textContent for 'Logout' or 'Abmelden' - these appear in
-                  // script tags and cause false positives on the login page!
-                  const loggedIn = document.querySelector('.user-menu') ||
-                                 document.querySelector('.dashboard') ||
-                                 document.querySelector('.main-content');
-                                 
-                  // Also detect encryption page - look for the "Durch dein Verschlüsselungskennwort" button
-                  const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn =>
-                    btn.textContent.includes('Durch dein Verschlüsselungskennwort')
-                  );
-                  const onEncryptionPage = !!encryptionButton || document.body.textContent.includes('Verschlüsselungskennwort');
-
-                  const state = {
-                    needsLogin: ((emailInput || passwordInputs.length > 0) && !loggedIn) || (onEncryptionPage && !loggedIn),
-                    isBbzChat: false,
-                    hasValidToken: false,
-                    emailInput: !!emailInput,
-                    passwordInputs: passwordInputs.length,
-                    onEncryptionPage: onEncryptionPage,
-                    hasEncryptionButton: !!encryptionButton,
-                    loggedIn: !!loggedIn
-                  };
-                  console.log('[schulcloud did-navigate] schul.cloud state:', JSON.stringify(state, null, 2));
-                  return state;
-                }
-              })()
-            `);
-
-            console.log('[schulcloud did-navigate] Login state received:', JSON.stringify(loginState, null, 2));
-
-            // Drive the BBZ Chat loading overlay state.
-            if (loginState.isBbzChat && (loginState.needsLogin || !loginState.hasValidToken)) {
-              setBbzChatLoginActive(true);
-            } else {
-              setBbzChatLoginActive(false);
-            }
-
-            if (loginState.needsLogin) {
-              console.log(`[schulcloud did-navigate] Login needed detected, triggering credential injection`);
-              credsAreSet.current[id] = false;
-              await injectCredentials(webview, id);
-            } else if (loginState.isBbzChat && !loginState.hasValidToken) {
-              // BBZ Chat with invalid token but no visible login form
-              // This happens when token expires but page shows empty chats
-              console.log(`[schulcloud did-navigate] BBZ Chat token invalid, forcing re-login`);
-              credsAreSet.current[id] = false;
-              await injectCredentials(webview, id);
-            } else {
-              console.log(`[schulcloud did-navigate] No login needed, already logged in or no form detected`);
-            }
-          } catch (error) {
-            // Silent fail - page might not be ready
-          }
-        } else if (id === 'office') {
-          // For Office, check for login forms after navigation
-          try {
-            const needsLogin = await webview.executeJavaScript(`
-              (function() {
-                const emailInput = document.querySelector('input[type="email"], input[placeholder*="E-Mail-Adresse"], input[placeholder*="Telefonnummer"]');
-                const passwordInput = document.querySelector('input[type="password"]');
-                const microsoftLogo = document.querySelector('img[alt*="Microsoft"], .ms-logo');
-                
-                const orgEmailInput = document.querySelector('input[type="email"], input[name="email"], input[id*="email"]');
-                const orgPasswordInput = document.querySelector('input[type="password"], input[name="password"], input[id*="password"]');
-                const orgLoginButton = document.querySelector('input[type="submit"], button[type="submit"]');
-                
-                const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
-                
-                const hasMicrosoftLogin = (emailInput || passwordInput) && microsoftLogo;
-                const hasOrgLogin = orgEmailInput && orgPasswordInput && orgLoginButton && !microsoftLogo;
-                
-                return (hasMicrosoftLogin || hasOrgLogin) && !officeApps;
-              })()
-            `);
-            
-            if (needsLogin) {
-              credsAreSet.current[id] = false;
-              await injectCredentials(webview, id);
-            }
-          } catch (error) {
-            // Silent fail - page might not be ready
-          }
-        } else if (id === 'nextcloud') {
-          // For Nextcloud, check for BBZ ADFS button or ADFS login form after navigation
-          try {
-            const needsLogin = await webview.executeJavaScript(`
-              (function() {
-                const adfsButton = document.querySelector('a[href*="user_saml/saml/login"]') ||
-                                   Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
-                const userNameInput = document.querySelector('#userNameInput');
-                const passwordInput = document.querySelector('#passwordInput');
-                const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-
-                const loggedIn = document.querySelector('#header') ||
-                                 document.querySelector('.app-navigation') ||
-                                 document.querySelector('#nextcloud') ||
-                                 window.location.href.includes('/apps/');
-
-                return (adfsButton || userNameInput || passwordInput || jaButton) && !loggedIn;
-              })()
-            `);
-
-            if (needsLogin) {
-              credsAreSet.current[id] = false;
-              await injectCredentials(webview, id);
-            }
-          } catch (error) {
-            // Silent fail - page might not be ready
-          }
-        }
-      });
-
-      // Error handler with retry mechanism
       let errorTimeouts = {};
-      
       addWebviewListener(webview, 'did-fail-load', (error) => {
         setIsLoading(prev => ({ ...prev, [id]: false }));
-        
         if (!isStartupPeriod && error.errorCode < -3) {
-          // Clear any existing timeout for this webview
-          if (errorTimeouts[id]) {
-            clearTimeout(errorTimeouts[id]);
-          }
-          
-          // Set a new timeout to check if the error persists
+          if (errorTimeouts[id]) clearTimeout(errorTimeouts[id]);
           errorTimeouts[id] = setTimeout(async () => {
             try {
-              // Try to reload the webview
               webview.reload();
-              
-              // Wait 5 seconds to see if it loads successfully
               await new Promise(resolve => setTimeout(resolve, 5000));
-              
-              // Check if the webview is now working
               const isWorking = await webview.executeJavaScript('true').catch(() => false);
-              
               if (!isWorking) {
-                // If still not working, show the error message
                 const errorMessage = getErrorMessage(error);
-                setFailedWebviews(prev => ({
-                  ...prev,
-                  [id]: {
-                    error: errorMessage,
-                    timestamp: new Date().toISOString()
-                  }
-                }));
-
                 const toastId = `error-${id}-${Date.now()}`;
                 toast({
                   id: toastId,
@@ -2794,8 +2146,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   description: (
                     <Flex direction="column" gap={2}>
                       <Text>{errorMessage}</Text>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         onClick={() => {
                           handleRetryWebview(id);
                           toast.close(toastId);
@@ -2810,17 +2162,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   isClosable: true,
                 });
               }
-            } catch (error) {
-              console.error('Error in retry mechanism:', error);
+            } catch (e) {
+              console.error('Error in retry mechanism:', e);
             }
-          }, 3000); // Wait 3 seconds before attempting retry
+          }, 3000);
         }
+        return () => {
+          Object.values(errorTimeouts).forEach(timeout => clearTimeout(timeout));
+        };
       });
-
-      // Cleanup error timeouts
-      return () => {
-        Object.values(errorTimeouts).forEach(timeout => clearTimeout(timeout));
-      };
     };
 
     // Set up listeners for existing webviews
@@ -2953,75 +2303,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           );
         }
 
-        // Regular webview apps (unchanged)
-        const ref = webviewRefs.current[id] = webviewRefs.current[id] || React.createRef();
-
-        return (
-          <Box
-            key={id}
-            position="absolute"
-            top="0"
-            left="0"
-            right="0"
-            bottom="0"
-            display={isActive ? 'block' : 'none'}
-            visibility={isActive ? 'visible' : 'hidden'}
-            zIndex={isActive ? 1 : 0}
-          >
-            {isLoading[id] && (
-              <Progress
-                size="xs"
-                isIndeterminate
-                position="absolute"
-                top="0"
-                left="0"
-                right="0"
-                zIndex="1"
-              />
-            )}
-            {id === 'schulcloud' && bbzChatLoginActive && hasBbzChatCredentials && (
-              <Flex
-                position="absolute"
-                top="0"
-                left="0"
-                right="0"
-                bottom="0"
-                bg={colorMode === 'light' ? 'white' : 'gray.800'}
-                zIndex="2"
-                align="center"
-                justify="center"
-              >
-                <VStack spacing="6">
-                  <Spinner
-                    size="xl"
-                    thickness="4px"
-                    speed="0.8s"
-                    color="blue.500"
-                    emptyColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
-                  />
-                  <Text fontSize="lg" color={colorMode === 'light' ? 'gray.700' : 'gray.200'}>
-                    BBZ Chat wird geladen...
-                  </Text>
-                </VStack>
-              </Flex>
-            )}
-            <webview
-              ref={ref}
-              id={`wv-${id}`}
-              src={config.url}
-              preload={preloadPath || undefined}
-              style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-              }}
-              allowpopups="true"
-              partition="persist:main"
-              webpreferences="nativeWindowOpen=yes,javascript=yes,plugins=yes,contextIsolation=no,devTools=yes"
-              useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            />
-          </Box>
-        );
+        return null;
       })}
 
       {/* Dynamic Webview for Dropdown Apps */}
@@ -3049,36 +2331,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           )}
           <webview
             ref={(el) => {
-              if (el && !webviewRefs.current[activeWebView.id]) {
+              if (el) {
                 webviewRefs.current[activeWebView.id] = { current: el };
-                // Set up event listeners for the dynamic webview
-                const setupWebviewListeners = document.querySelectorAll('webview');
-                setupWebviewListeners.forEach(webview => {
-                  if (webview === el) {
-                    const id = webview.id.replace('wv-', '').toLowerCase();
-                    // Loading state handlers
-                    webview.addEventListener('did-start-loading', () => {
-                      setIsLoading(prev => ({ ...prev, [id]: true }));
-                    });
-                    webview.addEventListener('did-stop-loading', () => {
-                      setIsLoading(prev => ({ ...prev, [id]: false }));
-                    });
-                    
-                    // DOM Ready handler for credentials and zoom
-                    webview.addEventListener('dom-ready', async () => {
-                      // Apply zoom
-                      await applyZoom(webview, id);
-                      
-                      // Attempt credential injection
-                      await injectCredentials(webview, id);
-                    });
-
-                    // Apply zoom (fallback)
-                    setTimeout(async () => {
-                      await applyZoom(webview, id);
-                    }, 1000);
-                  }
-                });
               }
             }}
             id={`wv-${activeWebView.id}`}
