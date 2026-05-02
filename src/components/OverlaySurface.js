@@ -9,13 +9,33 @@
  * (download toasts, notifications, etc.).
  */
 
-import React, { useState, useEffect } from 'react';
-import { Box, Flex } from '@chakra-ui/react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
+import { Box, Flex, useColorMode } from '@chakra-ui/react';
 import CommandPaletteUI from './CommandPaletteUI';
 
 const OverlaySurface = () => {
   const [activeSurface, setActiveSurface] = useState(null);
   const [payload, setPayload] = useState(null);
+  const { setColorMode } = useColorMode();
+
+  // Belt-and-braces: keep body/html transparent in case any later JS sets it.
+  useLayoutEffect(() => {
+    document.documentElement.style.backgroundColor = 'transparent';
+    document.body.style.backgroundColor = 'transparent';
+  }, []);
+
+  // Listen for theme changes broadcast from the main window when the user
+  // toggles light/dark in Settings. Chakra reads localStorage only on mount,
+  // so without this the overlay would stay stale until reload.
+  useEffect(() => {
+    if (!window.electron?.onThemeChanged) return;
+    const unsub = window.electron.onThemeChanged((nextTheme) => {
+      if (nextTheme === 'light' || nextTheme === 'dark') {
+        setColorMode(nextTheme);
+      }
+    });
+    return unsub;
+  }, [setColorMode]);
 
   useEffect(() => {
     if (!window.electron?.overlay) return;

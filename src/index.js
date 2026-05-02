@@ -22,6 +22,12 @@ const container = document.getElementById('root');
 const root = createRoot(container);
 
 if (surface === 'overlay') {
+  // The overlay BrowserWindow uses `transparent: true`, so the HTML/body
+  // backgrounds must also be transparent — otherwise Chakra's global body
+  // bg paints opaque and we lose the see-through effect.
+  document.documentElement.style.backgroundColor = 'transparent';
+  document.body.style.backgroundColor = 'transparent';
+
   root.render(
     <React.StrictMode>
       <ChakraProvider theme={theme}>

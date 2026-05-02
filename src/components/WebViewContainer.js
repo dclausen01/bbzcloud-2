@@ -16,7 +16,18 @@ import { useSettings } from '../context/SettingsContext';
 import { useViewBoundsBinding } from '../hooks/useWebContentsView';
 
 // Apps migrated to WebContentsView. Add more IDs here as migration progresses.
-const WCV_APPS = new Set(['moodle']);
+//
+// Phase 0: moodle (simple form-fill login)
+// Phase 2a: wiki, fobizz, taskcards (no auto-login), bbb (simple form-fill)
+//
+// Remaining (Phase 2b+):
+//   nextcloud  — multi-step ADFS / SAML (similar to outlook)
+//   cryptpad   — needs popup detection override
+//   schulportal — periodic login form check
+//   outlook    — multi-step ADFS chain + clearHistory recovery
+//   schulcloud — multi-step BBZ Chat / schul.cloud + encryption password
+//   webuntis   — React-fiber valueTracker injection (most fragile)
+const WCV_APPS = new Set(['moodle', 'wiki', 'fobizz', 'taskcards', 'bbb']);
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   const [preloadPath, setPreloadPath] = useState('');

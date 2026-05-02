@@ -228,8 +228,12 @@ class ViewManager {
 
     this._installEventForwarding(appId, view);
     this._installShortcutHandler(appId, view);
-    this._installContextMenu(appId, view);
-    this._installWindowOpenHandler(appId, view);
+    // Note: context-menu and setWindowOpenHandler are already installed in
+    // electron.js's app.on('web-contents-created') handler — which fires for
+    // every webContents, including those inside WebContentsView. Adding them
+    // here as well would cause duplicate menus to pop on right-click.
+    // _installContextMenu / _installWindowOpenHandler are kept as dead code
+    // for reference but no longer called.
 
     this.mainWindow.contentView.addChildView(view);
     view.setVisible(false);
