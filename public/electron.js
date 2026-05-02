@@ -2260,10 +2260,6 @@ ipcMain.handle('view:hide', (_e, { appId }) => {
   viewManager.hide(appId);
 });
 
-ipcMain.handle('view:setActiveVisible', (_e, { visible }) => {
-  viewManager.setActiveVisible(visible);
-});
-
 ipcMain.handle('view:destroy', (_e, { appId }) => {
   viewManager.destroy(appId);
 });
