@@ -17,17 +17,19 @@ import { useViewBoundsBinding } from '../hooks/useWebContentsView';
 
 // Apps migrated to WebContentsView. Add more IDs here as migration progresses.
 //
-// Phase 0: moodle (simple form-fill login)
+// Phase 0:  moodle (simple form-fill login)
 // Phase 2a: wiki, fobizz, taskcards (no auto-login), bbb (simple form-fill)
+// Phase 2b: cryptpad (popup override only), schulportal (periodic form check),
+//           nextcloud (multi-step ADFS/SAML), office (multi-step MS login)
 //
-// Remaining (Phase 2b+):
-//   nextcloud  — multi-step ADFS / SAML (similar to outlook)
-//   cryptpad   — needs popup detection override
-//   schulportal — periodic login form check
+// Remaining (Phase 2c):
 //   outlook    — multi-step ADFS chain + clearHistory recovery
 //   schulcloud — multi-step BBZ Chat / schul.cloud + encryption password
 //   webuntis   — React-fiber valueTracker injection (most fragile)
-const WCV_APPS = new Set(['moodle', 'wiki', 'fobizz', 'taskcards', 'bbb']);
+const WCV_APPS = new Set([
+  'moodle', 'wiki', 'fobizz', 'taskcards', 'bbb',
+  'cryptpad', 'schulportal', 'nextcloud', 'office',
+]);
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   const [preloadPath, setPreloadPath] = useState('');
@@ -124,6 +126,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const wcvAnchorRefs = useRef({});
   // last known URL per WCV app (updated via view:event)
   const wcvUrlsRef = useRef({});
+  // periodic login-check intervals for WCV apps that need them
+  const wcvIntervalsRef = useRef({});
   const [isLoading, setIsLoading] = useState({});
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
@@ -308,10 +312,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         console.error(`[WCV] Failed to create view for ${id}:`, err)
       );
     }
-    // Cleanup: destroy WCV views when the component unmounts
+    // Cleanup: destroy WCV views and clear any periodic intervals on unmount
     return () => {
       for (const id of WCV_APPS) {
         window.electron.view.destroy(id).catch(() => {});
+        clearInterval(wcvIntervalsRef.current[id]);
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -350,10 +355,95 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       } else if (event.type === 'did-stop-loading') {
         setIsLoading(prev => ({ ...prev, [event.appId]: false }));
       } else if (event.type === 'dom-ready') {
-        // Inject credentials and apply zoom on dom-ready, same as webview
-        const proxy = getWcvProxy(event.appId);
-        applyZoom(null, event.appId);
-        injectCredentials(proxy, event.appId);
+        const appId = event.appId;
+        const proxy = getWcvProxy(appId);
+        applyZoom(null, appId);
+
+        if (appId === 'cryptpad') {
+          // No credential injection; just suppress the "popups blocked" warning
+          proxy.executeJavaScript(`
+            window.open = new Proxy(window.open, {
+              apply(target, thisArg, args) {
+                const result = Reflect.apply(target, thisArg, args);
+                return result || { closed: false };
+              }
+            });
+            const warn = document.querySelector('.cp-popup-warning');
+            if (warn) warn.remove();
+          `).catch(() => {});
+
+        } else if (appId === 'schulportal') {
+          // Reset on each dom-ready so session-expiry triggers re-injection
+          credsAreSet.current[appId] = false;
+          injectCredentials(proxy, appId);
+          // Periodic check in case login form reappears without a navigation
+          clearInterval(wcvIntervalsRef.current[appId]);
+          wcvIntervalsRef.current[appId] = setInterval(async () => {
+            try {
+              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
+                const u = document.querySelector('input#username');
+                const p = document.querySelector('input#password');
+                const s = document.querySelector('input#kc-login[type="submit"]');
+                return !!(u && p && s);
+              })()`);
+              if (needsLogin) {
+                credsAreSet.current[appId] = false;
+                injectCredentials(getWcvProxy(appId), appId);
+              }
+            } catch (_) {}
+          }, 5000);
+
+        } else if (appId === 'nextcloud') {
+          // Multi-step ADFS chain: reset on every dom-ready so each step can inject
+          credsAreSet.current[appId] = false;
+          injectCredentials(proxy, appId);
+          clearInterval(wcvIntervalsRef.current[appId]);
+          wcvIntervalsRef.current[appId] = setInterval(async () => {
+            try {
+              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
+                const adfs = document.querySelector('a[href*="user_saml/saml/login"]') ||
+                             Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
+                const u = document.querySelector('#userNameInput');
+                const p = document.querySelector('#passwordInput');
+                const ja = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                const ok = document.querySelector('#header') || document.querySelector('.app-navigation') ||
+                           document.querySelector('#nextcloud') || window.location.href.includes('/apps/');
+                return (adfs || u || p || ja) && !ok;
+              })()`);
+              if (needsLogin) {
+                credsAreSet.current[appId] = false;
+                injectCredentials(getWcvProxy(appId), appId);
+              }
+            } catch (_) {}
+          }, 5000);
+
+        } else if (appId === 'office') {
+          // Multi-step Microsoft login: reset on every dom-ready
+          credsAreSet.current[appId] = false;
+          injectCredentials(proxy, appId);
+          clearInterval(wcvIntervalsRef.current[appId]);
+          wcvIntervalsRef.current[appId] = setInterval(async () => {
+            try {
+              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
+                const email = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
+                const pass  = document.querySelector('input[name="passwd"]#i0118[type="password"]');
+                const weiter   = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
+                const anmelden = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
+                const ja   = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                const tile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
+                const ok   = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
+                return (email || pass || weiter || anmelden || ja || tile) && !ok;
+              })()`);
+              if (needsLogin) {
+                credsAreSet.current[appId] = false;
+                injectCredentials(getWcvProxy(appId), appId);
+              }
+            } catch (_) {}
+          }, 5000);
+
+        } else {
+          injectCredentials(proxy, appId);
+        }
       }
     });
     return unsubscribe;
