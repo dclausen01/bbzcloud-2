@@ -2272,6 +2272,10 @@ ipcMain.handle('view:reload', (_e, { appId, ignoreCache }) => {
   viewManager.reload(appId, ignoreCache);
 });
 
+ipcMain.handle('view:reloadAll', (_e, { ignoreCache } = {}) => {
+  viewManager.reloadAll(ignoreCache);
+});
+
 ipcMain.handle('view:goBack', (_e, { appId }) => {
   viewManager.goBack(appId);
 });
