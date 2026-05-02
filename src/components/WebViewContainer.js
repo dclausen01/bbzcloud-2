@@ -13,6 +13,10 @@ import {
   Button,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
+import { useViewBoundsBinding } from '../hooks/useWebContentsView';
+
+// Apps migrated to WebContentsView. Add more IDs here as migration progresses.
+const WCV_APPS = new Set(['moodle']);
 
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   const [preloadPath, setPreloadPath] = useState('');
@@ -37,16 +41,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   React.useImperativeHandle(ref, () => ({
     goBack: () => {
       if (!activeWebView) return;
-      
-      const webview = webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`);
-      
+      const id = activeWebView.id;
+      if (WCV_APPS.has(id)) {
+        window.electron.view.goBack(id);
+        return;
+      }
+      const webview = webviewRefs.current[id]?.current ||
+        document.querySelector(`#wv-${id}`);
       if (webview && webview.src && webview.getWebContentsId) {
         try {
-          // Check if webview is ready and can go back
-          if (typeof webview.canGoBack === 'function' && webview.canGoBack()) {
-            webview.goBack();
-          }
+          if (typeof webview.canGoBack === 'function' && webview.canGoBack()) webview.goBack();
         } catch (error) {
           console.warn('Error navigating back:', error);
         }
@@ -54,16 +58,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     },
     goForward: () => {
       if (!activeWebView) return;
-      
-      const webview = webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`);
-      
+      const id = activeWebView.id;
+      if (WCV_APPS.has(id)) {
+        window.electron.view.goForward(id);
+        return;
+      }
+      const webview = webviewRefs.current[id]?.current ||
+        document.querySelector(`#wv-${id}`);
       if (webview && webview.src && webview.getWebContentsId) {
         try {
-          // Check if webview is ready and can go forward
-          if (typeof webview.canGoForward === 'function' && webview.canGoForward()) {
-            webview.goForward();
-          }
+          if (typeof webview.canGoForward === 'function' && webview.canGoForward()) webview.goForward();
         } catch (error) {
           console.warn('Error navigating forward:', error);
         }
@@ -71,16 +75,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     },
     reload: () => {
       if (!activeWebView) return;
-      
-      const webview = webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`);
-      
+      const id = activeWebView.id;
+      if (WCV_APPS.has(id)) {
+        window.electron.view.reload(id);
+        return;
+      }
+      const webview = webviewRefs.current[id]?.current ||
+        document.querySelector(`#wv-${id}`);
       if (webview && webview.src) {
         try {
-          // Check if webview is ready before reloading
-          if (typeof webview.reload === 'function') {
-            webview.reload();
-          }
+          if (typeof webview.reload === 'function') webview.reload();
         } catch (error) {
           console.warn('Error reloading webview:', error);
         }
@@ -88,16 +92,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     },
     print: () => {
       if (!activeWebView) return;
-      
-      const webview = webviewRefs.current[activeWebView.id]?.current ||
-        document.querySelector(`#wv-${activeWebView.id}`);
-      
+      const id = activeWebView.id;
+      if (WCV_APPS.has(id)) {
+        window.electron.view.print(id);
+        return;
+      }
+      const webview = webviewRefs.current[id]?.current ||
+        document.querySelector(`#wv-${id}`);
       if (webview && webview.src && webview.getWebContentsId) {
         try {
-          // Check if webview is ready before printing
-          if (typeof webview.print === 'function') {
-            webview.print();
-          }
+          if (typeof webview.print === 'function') webview.print();
         } catch (error) {
           console.warn('Error printing webview:', error);
         }
@@ -105,6 +109,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     }
   }));
   const webviewRefs = useRef({});
+  // anchor refs for WCV apps — the <div> whose bounds we report to the main process
+  const wcvAnchorRefs = useRef({});
+  // last known URL per WCV app (updated via view:event)
+  const wcvUrlsRef = useRef({});
   const [isLoading, setIsLoading] = useState({});
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
@@ -176,14 +184,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const { settings, isLoading: isSettingsLoading } = useSettings();
   const notificationCheckIntervalRef = useRef(null);
 
-  // Apply zoom level to a webview
+  // Apply zoom level to a webview or WCV
   const applyZoom = useCallback(async (webview, id) => {
-    if (!webview) return;
-
     try {
       const zoomFactor = settings.globalZoom;
-      
-      // Get webContentsId from webview
+      if (WCV_APPS.has(id)) {
+        await window.electron.view.setZoomFactor(id, zoomFactor);
+        return;
+      }
+      if (!webview) return;
       const webContentsId = await webview.getWebContentsId();
       if (webContentsId) {
         await window.electron.setZoomFactor(webContentsId, zoomFactor);
@@ -274,6 +283,102 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       console.warn('Error setting up download progress listener:', error);
     }
   }, []);
+
+  // -------------------------------------------------------------------------
+  // WebContentsView lifecycle
+  // -------------------------------------------------------------------------
+
+  // Create WCV apps on mount (mirroring the webview preload logic).
+  useEffect(() => {
+    if (!standardApps) return;
+    for (const [id, config] of Object.entries(standardApps)) {
+      if (!WCV_APPS.has(id) || !config.visible) continue;
+      window.electron.view.create({ appId: id, url: config.url }).catch((err) =>
+        console.error(`[WCV] Failed to create view for ${id}:`, err)
+      );
+    }
+    // Cleanup: destroy WCV views when the component unmounts
+    return () => {
+      for (const id of WCV_APPS) {
+        window.electron.view.destroy(id).catch(() => {});
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Show/hide WCV views when the active app changes; apply zoom on show.
+  useEffect(() => {
+    if (!activeWebView) return;
+    const id = activeWebView.id;
+    if (!WCV_APPS.has(id)) return;
+    window.electron.view.show(id);
+    // Apply current zoom to the newly visible view
+    applyZoom(null, id);
+    return () => {
+      window.electron.view.hide(id);
+    };
+  }, [activeWebView, applyZoom]);
+
+  // Track navigation URL for WCV apps (used by getWcvProxy)
+  useEffect(() => {
+    const unsubscribe = window.electron.view.onEvent((event) => {
+      if (!WCV_APPS.has(event.appId)) return;
+      if (event.type === 'did-navigate' || event.type === 'did-navigate-in-page') {
+        wcvUrlsRef.current[event.appId] = event.url;
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // Loading state for WCV apps — mirrors what the webview events do for regular apps
+  useEffect(() => {
+    const unsubscribe = window.electron.view.onEvent((event) => {
+      if (!WCV_APPS.has(event.appId)) return;
+      if (event.type === 'did-start-loading') {
+        setIsLoading(prev => ({ ...prev, [event.appId]: true }));
+      } else if (event.type === 'did-stop-loading') {
+        setIsLoading(prev => ({ ...prev, [event.appId]: false }));
+      } else if (event.type === 'dom-ready') {
+        // Inject credentials and apply zoom on dom-ready, same as webview
+        const proxy = getWcvProxy(event.appId);
+        applyZoom(null, event.appId);
+        injectCredentials(proxy, event.appId);
+      }
+    });
+    return unsubscribe;
+  // injectCredentials and applyZoom are stable useCallbacks; getWcvProxy too
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Bounds binding for the active WCV anchor div
+  // -------------------------------------------------------------------------
+
+  // Anchor ref for the currently active WCV app
+  const activeWcvAnchorRef = useRef(null);
+  const activeWcvId = activeWebView && WCV_APPS.has(activeWebView.id) ? activeWebView.id : null;
+
+  // Keep activeWcvAnchorRef in sync with the active WCV anchor div
+  useEffect(() => {
+    if (activeWcvId) {
+      activeWcvAnchorRef.current = wcvAnchorRefs.current[activeWcvId] || null;
+    } else {
+      activeWcvAnchorRef.current = null;
+    }
+  }, [activeWcvId]);
+
+  useViewBoundsBinding(activeWcvAnchorRef, activeWcvId);
+
+  // -------------------------------------------------------------------------
+
+  // Returns a proxy object for WCV apps so injectCredentials can work unmodified.
+  // executeJavaScript is routed through IPC; getURL reads the cached URL.
+  const getWcvProxy = useCallback((id) => ({
+    executeJavaScript: (code, userGesture) =>
+      window.electron.view.executeJavaScript(id, code, userGesture),
+    getURL: () => wcvUrlsRef.current[id] || '',
+    reload: () => window.electron.view.reload(id),
+  }), []);
 
   // Function to inject credentials based on webview ID
   const injectCredentials = useCallback(async (webview, id) => {
@@ -2639,10 +2744,43 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           />
         </Box>
       )}
-      {/* Preloaded Webviews for Navigation Apps */}
+      {/* Preloaded Views for Navigation Apps */}
       {Object.entries(standardApps).map(([id, config]) => {
         if (!config.visible) return null;
         const isActive = activeWebView?.id === id;
+
+        // WCV apps: render an anchor <div> whose bounds are reported to main
+        if (WCV_APPS.has(id)) {
+          return (
+            <Box
+              key={id}
+              ref={(el) => { wcvAnchorRefs.current[id] = el; }}
+              position="absolute"
+              top="0"
+              left="0"
+              right="0"
+              bottom="0"
+              // Keep in DOM so bounds are available, but pointer-events off when inactive
+              visibility={isActive ? 'visible' : 'hidden'}
+              pointerEvents={isActive ? 'none' : 'none'}
+              zIndex={isActive ? 1 : 0}
+            >
+              {isLoading[id] && (
+                <Progress
+                  size="xs"
+                  isIndeterminate
+                  position="absolute"
+                  top="0"
+                  left="0"
+                  right="0"
+                  zIndex="1"
+                />
+              )}
+            </Box>
+          );
+        }
+
+        // Regular webview apps (unchanged)
         const ref = webviewRefs.current[id] = webviewRefs.current[id] || React.createRef();
 
         return (

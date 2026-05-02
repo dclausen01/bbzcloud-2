@@ -316,7 +316,46 @@ contextBridge.exposeInMainWorld('electron', {
   },
 
   // Get webview preload script path
-  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path')
+  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path'),
+
+  // -------------------------------------------------------------------------
+  // WebContentsView API  (view:* channels)
+  // -------------------------------------------------------------------------
+  view: {
+    create: (opts) => ipcRenderer.invoke('view:create', opts),
+    show: (appId) => ipcRenderer.invoke('view:show', { appId }),
+    hide: (appId) => ipcRenderer.invoke('view:hide', { appId }),
+    destroy: (appId) => ipcRenderer.invoke('view:destroy', { appId }),
+    navigate: (appId, url) => ipcRenderer.invoke('view:navigate', { appId, url }),
+    reload: (appId, ignoreCache) => ipcRenderer.invoke('view:reload', { appId, ignoreCache }),
+    goBack: (appId) => ipcRenderer.invoke('view:goBack', { appId }),
+    goForward: (appId) => ipcRenderer.invoke('view:goForward', { appId }),
+    executeJavaScript: (appId, code, userGesture) =>
+      ipcRenderer.invoke('view:executeJavaScript', { appId, code, userGesture }),
+    print: (appId) => ipcRenderer.invoke('view:print', { appId }),
+    openDevTools: (appId) => ipcRenderer.invoke('view:openDevTools', { appId }),
+    setZoomFactor: (appId, factor) =>
+      ipcRenderer.invoke('view:setZoomFactor', { appId, factor }),
+    getState: (appId) => ipcRenderer.invoke('view:getState', { appId }),
+    clearHistory: (appId) => ipcRenderer.invoke('view:clearHistory', { appId }),
+    // Fire-and-forget — called on every animation frame during resize
+    setBounds: (rect) => ipcRenderer.send('view:setBounds', rect),
+
+    // Subscribe to per-view events forwarded from the main process.
+    // Returns a cleanup function.
+    onEvent: (callback) => {
+      const sub = (_e, payload) => callback(payload);
+      ipcRenderer.on('view:event', sub);
+      return () => ipcRenderer.removeListener('view:event', sub);
+    },
+
+    // Subscribe to badge updates from WCVs.
+    onBadgeUpdate: (callback) => {
+      const sub = (_e, payload) => callback(payload);
+      ipcRenderer.on('view:badge-update', sub);
+      return () => ipcRenderer.removeListener('view:badge-update', sub);
+    },
+  },
 });
 
 

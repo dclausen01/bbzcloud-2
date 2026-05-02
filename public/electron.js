@@ -15,6 +15,7 @@ const { Notification } = require('electron');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 const DatabaseService = require('./services/DatabaseService');
+const viewManager = require('./services/ViewManager');
 
 // Update check interval (15 minutes)
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
@@ -609,6 +610,13 @@ async function createWindow() {
   );
 
   mainWindow.setMenu(null);
+
+  // Initialise WebContentsView manager
+  viewManager.init(
+    mainWindow,
+    path.join(__dirname, 'webview-preload.js'),
+    createWebviewWindow
+  );
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -2230,6 +2238,71 @@ ipcMain.handle('set-zoom-factor', async (event, { webContentsId, zoomFactor }) =
     console.error('Error setting zoom factor:', error);
     return { success: false, error: error.message };
   }
+});
+
+// ============================================================================
+// WebContentsView IPC handlers (view:*)
+// ============================================================================
+
+ipcMain.handle('view:create', async (_e, { appId, url, userAgent, preloadOverride }) => {
+  await viewManager.create(appId, { url, userAgent, preloadOverride });
+});
+
+ipcMain.handle('view:show', (_e, { appId }) => {
+  viewManager.show(appId);
+});
+
+ipcMain.handle('view:hide', (_e, { appId }) => {
+  viewManager.hide(appId);
+});
+
+ipcMain.handle('view:destroy', (_e, { appId }) => {
+  viewManager.destroy(appId);
+});
+
+ipcMain.handle('view:navigate', (_e, { appId, url }) => {
+  viewManager.navigate(appId, url);
+});
+
+ipcMain.handle('view:reload', (_e, { appId, ignoreCache }) => {
+  viewManager.reload(appId, ignoreCache);
+});
+
+ipcMain.handle('view:goBack', (_e, { appId }) => {
+  viewManager.goBack(appId);
+});
+
+ipcMain.handle('view:goForward', (_e, { appId }) => {
+  viewManager.goForward(appId);
+});
+
+ipcMain.handle('view:executeJavaScript', async (_e, { appId, code, userGesture }) => {
+  return viewManager.executeJavaScript(appId, code, userGesture);
+});
+
+ipcMain.handle('view:print', (_e, { appId }) => {
+  viewManager.print(appId);
+});
+
+ipcMain.handle('view:openDevTools', (_e, { appId }) => {
+  viewManager.openDevTools(appId);
+});
+
+ipcMain.handle('view:setZoomFactor', (_e, { appId, factor }) => {
+  viewManager.setZoomFactor(appId, factor);
+});
+
+ipcMain.handle('view:getState', (_e, { appId }) => {
+  return viewManager.getState(appId);
+});
+
+ipcMain.handle('view:clearHistory', (_e, { appId }) => {
+  viewManager.clearHistory(appId);
+});
+
+// Fire-and-forget bounds update (called on every animation frame during resize)
+ipcMain.on('view:setBounds', (_e, rect) => {
+  viewManager.setBounds(rect);
 });
 
 app.on('activate', async () => {
