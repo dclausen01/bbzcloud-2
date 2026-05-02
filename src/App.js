@@ -26,7 +26,7 @@
  * @version 2.2.4
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { CloseIcon } from '@chakra-ui/icons';
 import {
   Box,
@@ -35,15 +35,8 @@ import {
   useColorMode,
   useColorModeValue,
   useDisclosure,
-  Drawer,
-  DrawerBody,
-  DrawerHeader,
-  DrawerOverlay,
-  DrawerContent,
-  DrawerCloseButton,
   ButtonGroup,
   Image,
-  Tooltip,
   useToast,
   Modal,
   ModalOverlay,
@@ -73,7 +66,6 @@ import CustomAppsMenu from './components/CustomAppsMenu';
 import TodoList from './components/TodoList';
 import DocumentsMenu from './components/DocumentsMenu';
 import SecureDocuments from './components/SecureDocuments';
-import CommandPalette from './components/CommandPalette';
 import DebugConsole from './components/DebugConsole';
 import ShortcutsModal from './components/ShortcutsModal';
 
@@ -170,26 +162,25 @@ function App() {
   // Refs for WebView management
   const webViewRef = useRef(null);
 
-  // Drawer/Modal state management using Chakra UI's useDisclosure
-  const { 
-    isOpen: isSettingsOpen, 
-    onOpen: onSettingsOpen, 
+  // Drawer/Modal state management using Chakra UI's useDisclosure.
+  // The default Chakra `onToggle` is bypassed in favour of the
+  // single-panel toggle wrappers defined below.
+  const {
+    isOpen: isSettingsOpen,
+    onOpen: onSettingsOpen,
     onClose: onSettingsClose,
-    onToggle: onSettingsToggle
   } = useDisclosure();
-  
+
   const {
     isOpen: isTodoOpen,
     onOpen: onTodoOpen,
     onClose: onTodoClose,
-    onToggle: onTodoToggle
   } = useDisclosure();
 
   const {
     isOpen: isSecureDocsOpen,
     onOpen: onSecureDocsOpen,
     onClose: onSecureDocsClose,
-    onToggle: onSecureDocsToggle
   } = useDisclosure();
 
   const {
@@ -205,6 +196,45 @@ function App() {
     onClose: onShortcutsClose,
     onToggle: onShortcutsToggle
   } = useDisclosure();
+
+  // ============================================================================
+  // SINGLE-PANEL ENFORCEMENT
+  // Reserved-gutter layout can only host one right-side panel at a time.
+  // These wrappers close the others before opening the requested one.
+  // ============================================================================
+
+  const openSettings = useCallback(() => {
+    onTodoClose();
+    onSecureDocsClose();
+    onSettingsOpen();
+  }, [onSettingsOpen, onTodoClose, onSecureDocsClose]);
+
+  const openTodo = useCallback(() => {
+    onSettingsClose();
+    onSecureDocsClose();
+    onTodoOpen();
+  }, [onTodoOpen, onSettingsClose, onSecureDocsClose]);
+
+  const openSecureDocs = useCallback(() => {
+    onSettingsClose();
+    onTodoClose();
+    onSecureDocsOpen();
+  }, [onSecureDocsOpen, onSettingsClose, onTodoClose]);
+
+  const toggleSettings = useCallback(() => {
+    if (isSettingsOpen) onSettingsClose();
+    else openSettings();
+  }, [isSettingsOpen, onSettingsClose, openSettings]);
+
+  const toggleTodo = useCallback(() => {
+    if (isTodoOpen) onTodoClose();
+    else openTodo();
+  }, [isTodoOpen, onTodoClose, openTodo]);
+
+  const toggleSecureDocs = useCallback(() => {
+    if (isSecureDocsOpen) onSecureDocsClose();
+    else openSecureDocs();
+  }, [isSecureDocsOpen, onSecureDocsClose, openSecureDocs]);
 
   // ============================================================================
   // THEME MANAGEMENT
@@ -625,9 +655,9 @@ function App() {
 
   // Application-level keyboard shortcuts
   useAppShortcuts({
-    onToggleTodo: onTodoToggle,
-    onToggleSecureDocs: onSecureDocsToggle,
-    onOpenSettings: onSettingsToggle,
+    onToggleTodo: toggleTodo,
+    onToggleSecureDocs: toggleSecureDocs,
+    onOpenSettings: toggleSettings,
     onOpenCommandPalette: onCommandPaletteToggle,
     onReloadCurrent: () => {
       if (webViewRef.current) {
@@ -819,13 +849,13 @@ function App() {
         onCommandPaletteToggle();
         break;
       case 'TOGGLE_TODO':
-        onTodoToggle();
+        toggleTodo();
         break;
       case 'TOGGLE_SECURE_DOCS':
-        onSecureDocsToggle();
+        toggleSecureDocs();
         break;
       case 'OPEN_SETTINGS':
-        onSettingsToggle();
+        toggleSettings();
         break;
       case 'RELOAD_CURRENT':
         if (webViewRef.current) {
@@ -856,7 +886,7 @@ function App() {
         }
         break;
     }
-  }, [onCommandPaletteToggle, onTodoToggle, onSecureDocsToggle, onSettingsToggle, webViewRef, filterNavigationButtons, handleNavigationClick]);
+  }, [onCommandPaletteToggle, toggleTodo, toggleSecureDocs, toggleSettings, webViewRef, filterNavigationButtons, handleNavigationClick]);
 
   // Make handleWebViewShortcut available globally for WebView scripts
   useEffect(() => {
@@ -889,13 +919,13 @@ function App() {
               onCommandPaletteToggle();
               break;
             case 'toggle-todo':
-              onTodoToggle();
+              toggleTodo();
               break;
             case 'toggle-secure-docs':
-              onSecureDocsToggle();
+              toggleSecureDocs();
               break;
             case 'open-settings':
-              onSettingsToggle();
+              toggleSettings();
               break;
             case 'reload-current':
               if (webViewRef.current) {
@@ -939,12 +969,203 @@ function App() {
     } catch (error) {
       console.warn('Error setting up webview shortcut listener:', error);
     }
-  }, [isSettingsOpen, onSettingsClose, isTodoOpen, onTodoClose, isSecureDocsOpen, onSecureDocsClose, isCommandPaletteOpen, onCommandPaletteClose, onCommandPaletteOpen]);
+  }, [isSettingsOpen, onSettingsClose, isTodoOpen, onTodoClose, isSecureDocsOpen, onSecureDocsClose, isCommandPaletteOpen, onCommandPaletteClose, onCommandPaletteOpen, toggleTodo, toggleSecureDocs, toggleSettings]);
+
+  // ============================================================================
+  // COMMAND PALETTE — OVERLAY WINDOW WIRING
+  // ============================================================================
+
+  // Build a serialisable list of commands (metadata only — actions stay in
+  // this process and are dispatched by id when the overlay sends back a
+  // `command` action).
+  const overlayCommands = useMemo(() => {
+    const list = [];
+
+    // Navigation commands (one per visible app)
+    Object.entries(filteredNavigationButtons).forEach(([id, config], index) => {
+      if (config.visible) {
+        list.push({
+          id: `nav-${id}`,
+          title: config.title,
+          description: `Zu ${config.title} navigieren`,
+          category: 'Navigation',
+          icon: '🔗',
+          shortcut: index < 9 ? `Strg+${index + 1}` : null,
+        });
+      }
+    });
+
+    // Application commands
+    list.push(
+      {
+        id: 'open-settings',
+        title: 'Einstellungen öffnen',
+        description: 'Das Einstellungsmenü öffnen',
+        category: 'Anwendung',
+        icon: '⚙️',
+        shortcut: 'Strg+,',
+      },
+      {
+        id: 'toggle-todo',
+        title: 'Todo-Liste umschalten',
+        description: 'Todo-Liste öffnen oder schließen',
+        category: 'Anwendung',
+        icon: '📝',
+        shortcut: 'Strg+Shift+T',
+      },
+      {
+        id: 'toggle-secure-docs',
+        title: 'Sichere Dokumente umschalten',
+        description: 'Sichere Dokumente öffnen oder schließen',
+        category: 'Anwendung',
+        icon: '🔒',
+        shortcut: 'Strg+D',
+      },
+      {
+        id: 'reload-current',
+        title: 'Aktuelle Seite neu laden',
+        description: 'Die aktuell aktive Webansicht neu laden',
+        category: 'WebView',
+        icon: '🔄',
+        shortcut: 'Strg+R',
+      },
+      {
+        id: 'reload-all',
+        title: 'Alle Seiten neu laden',
+        description: 'Alle Webansichten in der Anwendung neu laden',
+        category: 'WebView',
+        icon: '🔄',
+        shortcut: 'Strg+Shift+R',
+      },
+    );
+
+    // Custom apps
+    if (settings.customApps) {
+      settings.customApps.forEach((app) => {
+        list.push({
+          id: `custom-${app.id}`,
+          title: `${app.title} in neuem Fenster öffnen`,
+          description: `${app.title} in einem neuen Fenster öffnen`,
+          category: 'Benutzerdefinierte Apps',
+          icon: '🚀',
+          customAppUrl: app.url,
+          customAppTitle: app.title,
+        });
+      });
+    }
+
+    return list;
+  }, [filteredNavigationButtons, settings.customApps]);
+
+  // Dispatch a command by id. Called when the overlay sends back a selection.
+  const dispatchCommand = useCallback((commandId) => {
+    if (commandId.startsWith('nav-')) {
+      const navId = commandId.substring(4);
+      handleNavigationClick(navId, false);
+      return;
+    }
+    if (commandId.startsWith('custom-')) {
+      const customId = commandId.substring(7);
+      const app = settings.customApps?.find(a => a.id === customId);
+      if (app && window.electron?.openExternalWindow) {
+        window.electron.openExternalWindow({ url: app.url, title: app.title });
+      }
+      return;
+    }
+    switch (commandId) {
+      case 'open-settings':
+        openSettings();
+        break;
+      case 'toggle-todo':
+        openTodo();
+        break;
+      case 'toggle-secure-docs':
+        openSecureDocs();
+        break;
+      case 'reload-current':
+        if (webViewRef.current) webViewRef.current.reload();
+        break;
+      case 'reload-all': {
+        const webviews = document.querySelectorAll('webview');
+        webviews.forEach(webview => webview.reload());
+        announceToScreenReader('Alle Webviews werden neu geladen');
+        break;
+      }
+      default:
+        break;
+    }
+  }, [handleNavigationClick, openSettings, openTodo, openSecureDocs, settings.customApps]);
+
+  // Open/hide the overlay window in response to isCommandPaletteOpen state.
+  useEffect(() => {
+    if (!window.electron?.overlay) return;
+    if (isCommandPaletteOpen) {
+      window.electron.overlay.open({
+        surface: 'commandPalette',
+        commands: overlayCommands,
+      });
+    } else {
+      window.electron.overlay.hide();
+    }
+  }, [isCommandPaletteOpen, overlayCommands]);
+
+  // Listen for actions from the overlay (command selections, menu items, close requests).
+  useEffect(() => {
+    if (!window.electron?.overlay) return;
+    const unsub = window.electron.overlay.onAction((action) => {
+      if (!action) return;
+      if (action.type === 'command') {
+        dispatchCommand(action.id);
+        onCommandPaletteClose();
+      } else if (action.type === 'close') {
+        onCommandPaletteClose();
+      } else if (action.type === 'menu-navigate') {
+        if (action.id === 'todo') openTodo();
+        else if (action.id === 'secure-documents') openSecureDocs();
+      } else if (action.type === 'app-select') {
+        handleCustomAppClick(action.app);
+      } else if (action.type === 'app-new-window') {
+        handleOpenInNewWindow(action.url, action.title);
+      }
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatchCommand, onCommandPaletteClose, openTodo, openSecureDocs]);
+
+  // The overlay can also close itself (e.g. on blur). Sync our state when that
+  // happens so the next toggle reopens it correctly.
+  useEffect(() => {
+    if (!window.electron?.overlay) return;
+    const unsub = window.electron.overlay.onClosed(() => {
+      onCommandPaletteClose();
+    });
+    return unsub;
+  }, [onCommandPaletteClose]);
 
   // ============================================================================
   // RENDER
   // ============================================================================
-  
+
+  // Color values used in multiple places — computed once to satisfy hook rules.
+  const sidebarBg = useColorModeValue('white', 'gray.800');
+  const sidebarBorderColor = useColorModeValue('gray.200', 'gray.600');
+  const updateDotBorderColor = useColorModeValue('white', 'gray.800');
+
+  // Reserved-gutter layout: title for the active right-side panel.
+  const activePanelTitle = isSettingsOpen
+    ? 'Einstellungen'
+    : isTodoOpen
+      ? 'Todo-Liste'
+      : isSecureDocsOpen
+        ? 'Sichere Dokumente'
+        : '';
+  const isAnyPanelOpen = isSettingsOpen || isTodoOpen || isSecureDocsOpen;
+  const closeAllPanels = () => {
+    onSettingsClose();
+    onTodoClose();
+    onSecureDocsClose();
+  };
+
   return (
     <Box h="100vh" display="flex" flexDirection="column" overflow="hidden">
       {/* ========================================================================
@@ -990,85 +1211,62 @@ function App() {
             <CustomAppsMenu
               apps={settings.customApps}
               standardApps={settings.standardApps}
-              onAppClick={handleCustomAppClick}
-              onNewWindow={handleOpenInNewWindow}
             />
 
             {/* WebView navigation controls - only shown when a webview is active */}
             {activeWebView && (
               <Flex gap={1} flexShrink={1} minW={0}>
                 <ButtonGroup size="sm" isAttached variant="outline">
-                  <Tooltip label="Zurück" placement="top">
-                    <IconButton
-                      icon={<span>←</span>}
-                      onClick={() => handleWebViewNavigation('goBack')}
-                      aria-label="Zurück"
-                      height="28px"
-                    />
-                  </Tooltip>
-                  <Tooltip label="Vorwärts" placement="top">
-                    <IconButton
-                      icon={<span>→</span>}
-                      onClick={() => handleWebViewNavigation('goForward')}
-                      aria-label="Vorwärts"
-                      height="28px"
-                    />
-                  </Tooltip>
-                  <Tooltip label="Neu laden" placement="top">
-                    <IconButton
-                      icon={<span>↻</span>}
-                      onClick={() => handleWebViewNavigation('reload')}
-                      aria-label="Neu laden"
-                      height="28px"
-                    />
-                  </Tooltip>
+                  <IconButton
+                    icon={<span>←</span>}
+                    onClick={() => handleWebViewNavigation('goBack')}
+                    aria-label="Zurück"
+                    height="28px"
+                  />
+                  <IconButton
+                    icon={<span>→</span>}
+                    onClick={() => handleWebViewNavigation('goForward')}
+                    aria-label="Vorwärts"
+                    height="28px"
+                  />
+                  <IconButton
+                    icon={<span>↻</span>}
+                    onClick={() => handleWebViewNavigation('reload')}
+                    aria-label="Neu laden"
+                    height="28px"
+                  />
                 </ButtonGroup>
 
-                <Tooltip label="Link kopieren" placement="top">
-                  <IconButton
-                    icon={<span>📋</span>}
-                    onClick={handleCopyUrl}
-                    aria-label="Link kopieren"
-                    height="28px"
-                    variant="outline"
-                  />
-                </Tooltip>
+                <IconButton
+                  icon={<span>📋</span>}
+                  onClick={handleCopyUrl}
+                  aria-label="Link kopieren"
+                  height="28px"
+                  variant="outline"
+                />
 
-                <Tooltip label="Drucken" placement="top">
-                  <IconButton
-                    icon={<span>🖨️</span>}
-                    onClick={() => webViewRef.current?.print()}
-                    aria-label="Drucken"
-                    height="28px"
-                    variant="outline"
-                  />
-                </Tooltip>
+                <IconButton
+                  icon={<span>🖨️</span>}
+                  onClick={() => webViewRef.current?.print()}
+                  aria-label="Drucken"
+                  height="28px"
+                  variant="outline"
+                />
               </Flex>
             )}
 
             {/* Documents menu (Todo and Secure Documents) */}
-            <DocumentsMenu 
-              reminderCount={reminderCount}
-              onNavigate={(view) => {
-                if (view === 'todo') {
-                  onTodoOpen();
-                } else if (view === 'secure-documents') {
-                  onSecureDocsOpen();
-                }
-              }} 
-            />
+            <DocumentsMenu reminderCount={reminderCount} />
 
             {/* Settings button with update indicator */}
             <ButtonGroup size="sm" position="relative">
-              <Tooltip label="Einstellungen" placement="top">
-                <IconButton
-                  aria-label="Einstellungen öffnen"
-                  icon={<span>⚙️</span>}
-                  onClick={onSettingsOpen}
-                  variant="ghost"
-                  height="28px"
-                />
-              </Tooltip>
+              <IconButton
+                aria-label="Einstellungen öffnen"
+                icon={<span>⚙️</span>}
+                onClick={openSettings}
+                variant="ghost"
+                height="28px"
+              />
               {/* Update indicator dot */}
               <Box
                 position="absolute"
@@ -1079,7 +1277,7 @@ function App() {
                 borderRadius="full"
                 bg="red.500"
                 border="2px solid"
-                borderColor={useColorModeValue('white', 'gray.800')}
+                borderColor={updateDotBorderColor}
                 display={hasUpdate ? 'block' : 'none'}
               />
             </ButtonGroup>
@@ -1088,154 +1286,112 @@ function App() {
       </Flex>
 
       {/* ========================================================================
-          MAIN CONTENT AREA - WEBVIEW CONTAINER
+          MAIN CONTENT AREA — RESERVED-GUTTER LAYOUT
+          The WebViewContainer fills the remaining space; when a side panel
+          (Settings, Todo, SecureDocs) is open it appears as a flex sibling and
+          shrinks the WCV bounds instead of overlaying them. This prevents the
+          WebContentsView (which sits *above* the React DOM) from covering
+          drawer content.
           ======================================================================== */}
-      <Box flex="1" position="relative" overflow="hidden">
-        {!isLoadingEmail && !showWelcomeModal && !showPasswordModal && (
-          <WebViewContainer
-            ref={webViewRef}
-            activeWebView={activeWebView}
-            standardApps={filteredNavigationButtons}
-            onNavigate={(url) => {
-              setCurrentUrl(url);
-              if (activeWebView) {
-                setActiveWebView({
-                  ...activeWebView,
-                  url,
-                });
-              }
-            }}
-          />
-        )}
-        {showWelcomeModal && (
-          <Center h="100%" bg={getWelcomeBg(colorMode)}>
-            <VStack spacing={8}>
-              {appLogoPath ? (
-                <Image
-                  src={`file://${appLogoPath}`}
-                  alt="BBZ Cloud Logo"
-                  maxW="320px"
-                  maxH="120px"
-                  objectFit="contain"
-                  opacity={0.85}
+      <Flex flex="1" overflow="hidden" direction="row">
+        <Box flex="1" position="relative" overflow="hidden" minW={0}>
+          {!isLoadingEmail && !showWelcomeModal && !showPasswordModal && (
+            <WebViewContainer
+              ref={webViewRef}
+              activeWebView={activeWebView}
+              standardApps={filteredNavigationButtons}
+              onNavigate={(url) => {
+                setCurrentUrl(url);
+                if (activeWebView) {
+                  setActiveWebView({
+                    ...activeWebView,
+                    url,
+                  });
+                }
+              }}
+            />
+          )}
+          {showWelcomeModal && (
+            <Center h="100%" bg={getWelcomeBg(colorMode)}>
+              <VStack spacing={8}>
+                {appLogoPath ? (
+                  <Image
+                    src={`file://${appLogoPath}`}
+                    alt="BBZ Cloud Logo"
+                    maxW="320px"
+                    maxH="120px"
+                    objectFit="contain"
+                    opacity={0.85}
+                  />
+                ) : (
+                  <Text fontSize="2xl" fontWeight="bold" color={getWelcomeTextColor(colorMode)}>
+                    BBZ Cloud
+                  </Text>
+                )}
+                <Spinner
+                  thickness="3px"
+                  speed="0.8s"
+                  emptyColor={getWelcomeSpinnerEmpty(colorMode)}
+                  color="blue.500"
+                  size="lg"
                 />
-              ) : (
-                <Text fontSize="2xl" fontWeight="bold" color={getWelcomeTextColor(colorMode)}>
-                  BBZ Cloud
-                </Text>
-              )}
-              <Spinner
-                thickness="3px"
-                speed="0.8s"
-                emptyColor={getWelcomeSpinnerEmpty(colorMode)}
-                color="blue.500"
-                size="lg"
+              </VStack>
+            </Center>
+          )}
+        </Box>
+
+        {/* Side panel — only one open at a time */}
+        {isAnyPanelOpen && (
+          <Box
+            w="450px"
+            h="100%"
+            flexShrink={0}
+            bg={sidebarBg}
+            borderLeft="1px"
+            borderColor={sidebarBorderColor}
+            display="flex"
+            flexDirection="column"
+          >
+            <Flex
+              justify="space-between"
+              align="center"
+              p={2}
+              pl={4}
+              borderBottom="1px"
+              borderColor={sidebarBorderColor}
+              flexShrink={0}
+            >
+              <Text fontWeight="semibold">{activePanelTitle}</Text>
+              <IconButton
+                icon={<CloseIcon />}
+                size="sm"
+                variant="ghost"
+                onClick={closeAllPanels}
+                aria-label={`${activePanelTitle} schließen`}
               />
-            </VStack>
-          </Center>
+            </Flex>
+            <Box flex="1" overflowY="auto" p={4} minH={0}>
+              {isSettingsOpen && (
+                <SettingsPanel onClose={onSettingsClose} onOpenShortcuts={onShortcutsOpen} />
+              )}
+              {isTodoOpen && (
+                <TodoList isVisible={isTodoOpen} onReminderCountChange={setReminderCount} />
+              )}
+              {isSecureDocsOpen && (
+                <SecureDocuments isVisible={isSecureDocsOpen} />
+              )}
+            </Box>
+          </Box>
         )}
-
-      </Box>
-
-      {/* ========================================================================
-          SETTINGS DRAWER
-          ======================================================================== */}
-      <Drawer isOpen={isSettingsOpen} placement="right" onClose={onSettingsClose} size="md">
-        <DrawerOverlay />
-        <DrawerContent>
-          <DrawerCloseButton aria-label="Einstellungen schließen" />
-          <DrawerHeader>Einstellungen</DrawerHeader>
-          <DrawerBody>
-            <SettingsPanel onClose={onSettingsClose} onOpenShortcuts={onShortcutsOpen} />
-          </DrawerBody>
-        </DrawerContent>
-      </Drawer>
-
-      {/* ========================================================================
-          TODO DRAWER
-          ======================================================================== */}
-      <Box 
-        position="fixed" 
-        right={0} 
-        top="48px" 
-        bottom={0} 
-        width="450px" 
-        bg={useColorModeValue('white', 'gray.800')}
-        borderLeft="1px"
-        borderColor={useColorModeValue('gray.200', 'gray.600')}
-        display={isTodoOpen ? 'block' : 'none'}
-        zIndex={1000}
-      >
-        <Flex direction="column" height="100%">
-          <Flex justify="flex-end" p={2} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.600')}>
-            <IconButton
-              icon={<CloseIcon />}
-              size="sm"
-              onClick={onTodoClose}
-              aria-label="Todo Liste schließen"
-            />
-          </Flex>
-          <Box p={4} overflowY="auto" flex="1">
-            <TodoList
-              isVisible={isTodoOpen}
-              onReminderCountChange={setReminderCount}
-            />
-          </Box>
-        </Flex>
-      </Box>
-
-      {/* ========================================================================
-          SECURE DOCUMENTS DRAWER
-          ======================================================================== */}
-      <Box 
-        position="fixed" 
-        right={0} 
-        top="48px" 
-        bottom={0} 
-        width="450px" 
-        bg={useColorModeValue('white', 'gray.800')}
-        borderLeft="1px"
-        borderColor={useColorModeValue('gray.200', 'gray.600')}
-        display={isSecureDocsOpen ? 'block' : 'none'}
-        zIndex={1000}
-      >
-        <Flex direction="column" height="100%">
-          <Flex justify="flex-end" p={2} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.600')}>
-            <IconButton
-              icon={<CloseIcon />}
-              size="sm"
-              onClick={onSecureDocsClose}
-              aria-label="Sichere Dokumente schließen"
-            />
-          </Flex>
-          <Box p={4} overflowY="auto" flex="1">
-            <SecureDocuments isVisible={isSecureDocsOpen} />
-          </Box>
-        </Flex>
-      </Box>
+      </Flex>
 
       {/* ========================================================================
           COMMAND PALETTE
+          The command palette lives in a dedicated frameless overlay
+          BrowserWindow (see public/services/OverlayWindow.js) so it can render
+          *above* WebContentsView instances. Its lifecycle is driven by
+          `isCommandPaletteOpen` state via the useEffects above.
           ======================================================================== */}
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={onCommandPaletteClose}
-        navigationButtons={filteredNavigationButtons}
-        onNavigate={handleNavigationClick}
-        onOpenSettings={onSettingsOpen}
-        onToggleTodo={onTodoOpen}
-        onToggleSecureDocs={onSecureDocsOpen}
-        onReloadCurrent={() => {
-          if (webViewRef.current) {
-            webViewRef.current.reload();
-          }
-        }}
-        onReloadAll={() => {
-          const webviews = document.querySelectorAll('webview');
-          webviews.forEach(webview => webview.reload());
-          announceToScreenReader('Alle Webviews werden neu geladen');
-        }}
-      />
 
       {/* ========================================================================
           DEBUG CONSOLE

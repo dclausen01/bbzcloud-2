@@ -4,7 +4,6 @@ import {
   Flex,
   Button,
   IconButton,
-  Tooltip,
   ButtonGroup,
   useColorMode,
 } from '@chakra-ui/react';
@@ -68,46 +67,43 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
         .filter(([_, config]) => config.visible)
         .map(([id, config]) => (
           <ButtonGroup key={id} size="sm" isAttached variant="outline" spacing={0}>
-            <Tooltip label={!showText ? config.title : undefined} placement="top">
-                <Button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onButtonClick(id, e.ctrlKey);
-                  }}
-                  variant={config.buttonVariant || 'solid'}
-                _hover={{
-                  opacity: 0.8,
-                }}
-                height="24px"
-                minW={showText ? "auto" : "24px"}
-                px={showText ? 2 : 1}
-                fontSize="xs"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                gap={2}
-              >
-                {!showText && <AppIcon id={id} size="16px" />}
-                {showText && config.title}
-              </Button>
-            </Tooltip>
-            <Tooltip label="In neuem Fenster öffnen" placement="top">
-              <IconButton
-                aria-label={`${config.title} in neuem Fenster öffnen`}
-                icon={<span>↗️</span>}
-                onClick={() => onNewWindow(config.url, config.title)}
-                borderLeft="1px"
-                borderColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
-                variant={config.buttonVariant || 'solid'}
-                _hover={{
-                  opacity: 0.8,
-                }}
-                height="24px"
-                minW="24px"
-                px={0}
-                fontSize="xs"
-              />
-            </Tooltip>
+            <Button
+              onClick={(e) => {
+                e.preventDefault();
+                onButtonClick(id, e.ctrlKey);
+              }}
+              variant={config.buttonVariant || 'solid'}
+              _hover={{
+                opacity: 0.8,
+              }}
+              height="24px"
+              minW={showText ? "auto" : "24px"}
+              px={showText ? 2 : 1}
+              fontSize="xs"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              gap={2}
+              aria-label={config.title}
+            >
+              {!showText && <AppIcon id={id} size="16px" />}
+              {showText && config.title}
+            </Button>
+            <IconButton
+              aria-label={`${config.title} in neuem Fenster öffnen`}
+              icon={<span>↗️</span>}
+              onClick={() => onNewWindow(config.url, config.title)}
+              borderLeft="1px"
+              borderColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
+              variant={config.buttonVariant || 'solid'}
+              _hover={{
+                opacity: 0.8,
+              }}
+              height="24px"
+              minW="24px"
+              px={0}
+              fontSize="xs"
+            />
           </ButtonGroup>
         ))}
     </Flex>
