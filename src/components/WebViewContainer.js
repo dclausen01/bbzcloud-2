@@ -309,6 +309,18 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     };
   }, [activeWebView, applyZoom]);
 
+  // Hide the schulcloud WCV while the BBZ Chat spinner is shown so the React
+  // overlay is visible (WCV is a native layer composited above the renderer).
+  useEffect(() => {
+    if (!hasBbzChatCredentials) return;
+    if (activeWebView?.id !== 'schulcloud') return;
+    if (bbzChatLoginActive) {
+      window.electron.view.hide('schulcloud');
+    } else {
+      window.electron.view.show('schulcloud');
+    }
+  }, [bbzChatLoginActive, hasBbzChatCredentials, activeWebView]);
+
   // Track navigation URL for WCV apps (used by getWcvProxy); also drive the
   // BBZ Chat loading overlay state when the schulcloud WCV navigates.
   useEffect(() => {
@@ -322,6 +334,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           } else if (event.url) {
             setBbzChatLoginActive(false);
           }
+        }
+      } else if (event.type === 'dom-ready' && event.appId === 'schulcloud') {
+        // Also catch initial load / reload where did-navigate fires before dom-ready
+        const url = wcvUrlsRef.current['schulcloud'] || '';
+        if (url.includes('chat.bbz-rd-eck.com')) {
+          setBbzChatLoginActive(true);
         }
       }
     });
@@ -995,6 +1013,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
               if (loginResult === 'ALREADY_LOGGED_IN') {
                 credsAreSet.current[id] = true;
+                setBbzChatLoginActive(false);
                 break;
               }
 
@@ -2324,6 +2343,33 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   right="0"
                   zIndex="1"
                 />
+              )}
+              {id === 'schulcloud' && bbzChatLoginActive && hasBbzChatCredentials && (
+                <Flex
+                  position="absolute"
+                  top="0"
+                  left="0"
+                  right="0"
+                  bottom="0"
+                  bg={colorMode === 'light' ? 'white' : 'gray.800'}
+                  zIndex="2"
+                  align="center"
+                  justify="center"
+                  pointerEvents="none"
+                >
+                  <VStack spacing="6">
+                    <Spinner
+                      size="xl"
+                      thickness="4px"
+                      speed="0.8s"
+                      color="blue.500"
+                      emptyColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
+                    />
+                    <Text fontSize="lg" color={colorMode === 'light' ? 'gray.700' : 'gray.200'}>
+                      BBZ Chat wird geladen...
+                    </Text>
+                  </VStack>
+                </Flex>
               )}
             </Box>
           );
