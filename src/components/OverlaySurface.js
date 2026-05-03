@@ -51,7 +51,7 @@ function DropdownWrapper({ triggerRect, onClose, colorMode, children }) {
     <Box position="absolute" inset={0} onClick={onClose}>
       <Box
         position="absolute"
-        left={`${triggerRect.x}px`}
+        right={`${window.innerWidth - (triggerRect.x + triggerRect.width)}px`}
         top={`${triggerRect.y + triggerRect.height + 4}px`}
         bg={colorMode === 'light' ? 'white' : 'gray.800'}
         borderColor={colorMode === 'light' ? 'gray.200' : 'gray.600'}
