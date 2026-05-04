@@ -69,6 +69,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     reload: () => {
       if (!activeWebView) return;
       const id = activeWebView.id;
+      // Reset login state so a fresh credential-injection cycle can run
+      // (multi-step ADFS chains otherwise hit MAX_LOGIN_ATTEMPTS quickly).
+      loginAttempts.current[id] = 0;
+      failedLogins.current[id] = false;
+      credsAreSet.current[id] = false;
       if (WCV_APPS.has(id)) {
         window.electron.view.reload(id);
         return;
@@ -82,6 +87,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           console.warn('Error reloading webview:', error);
         }
       }
+    },
+    reloadAll: () => {
+      // Reset login state for every app so re-login can happen after the reload.
+      loginAttempts.current = {};
+      failedLogins.current = {};
+      credsAreSet.current = {};
+      if (window.electron?.view?.reloadAll) {
+        window.electron.view.reloadAll();
+      }
+      // Also reload any legacy <webview> elements (dropdown apps)
+      const webviews = document.querySelectorAll('webview');
+      webviews.forEach((wv) => {
+        try { wv.reload(); } catch (_) {}
+      });
     },
     print: () => {
       if (!activeWebView) return;

@@ -666,8 +666,11 @@ function App() {
     },
     onReloadAll: () => {
       // Reload all webviews in the application
-      const webviews = document.querySelectorAll('webview');
-      webviews.forEach(webview => webview.reload());
+      if (webViewRef.current?.reloadAll) {
+        webViewRef.current.reloadAll();
+      } else if (window.electron?.view?.reloadAll) {
+        window.electron.view.reloadAll();
+      }
       announceToScreenReader('Alle Webviews werden neu geladen');
     },
   });
@@ -863,8 +866,11 @@ function App() {
         }
         break;
       case 'RELOAD_ALL':
-        const webviews = document.querySelectorAll('webview');
-        webviews.forEach(webview => webview.reload());
+        if (webViewRef.current?.reloadAll) {
+          webViewRef.current.reloadAll();
+        } else if (window.electron?.view?.reloadAll) {
+          window.electron.view.reloadAll();
+        }
         announceToScreenReader('Alle Webviews werden neu geladen');
         break;
       case 'TOGGLE_FULLSCREEN':
@@ -933,9 +939,11 @@ function App() {
               }
               break;
             case 'reload-all': {
-              if (window.electron?.view?.reloadAll) window.electron.view.reloadAll();
-              const webviews = document.querySelectorAll('webview');
-              webviews.forEach(webview => webview.reload());
+              if (webViewRef.current?.reloadAll) {
+                webViewRef.current.reloadAll();
+              } else if (window.electron?.view?.reloadAll) {
+                window.electron.view.reloadAll();
+              }
               announceToScreenReader('Alle Webviews werden neu geladen');
               break;
             }
