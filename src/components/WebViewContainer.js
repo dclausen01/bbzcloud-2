@@ -613,7 +613,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Check login attempt limit (except for Outlook, WebUntis, and schulcloud)
       // schulcloud has a multi-step login process (email -> password -> encryption)
       // and the periodic check may trigger multiple times during this process
-      if (id !== 'outlook' && id !== 'webuntis' && id !== 'schulcloud') {
+      if (id !== 'outlook' && id !== 'webuntis' && id !== 'schulcloud' && id !== 'nextcloud') {
         if (!loginAttempts.current[id]) {
           loginAttempts.current[id] = 0;
         }
@@ -1785,38 +1785,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                                        Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
                     
                     if (adfsButton) {
-                      console.log('[Nextcloud] Found ADFS button');
-                      console.log('[Nextcloud] Button href (raw):', adfsButton.getAttribute('href'));
-                      console.log('[Nextcloud] Button href (resolved):', adfsButton.href);
-                      
-                      // Method 1: Try creating a proper URL with decoded entities
-                      let targetUrl = adfsButton.href;
-                      
-                      // Decode HTML entities in URL
-                      if (targetUrl) {
-                        const textarea = document.createElement('textarea');
-                        textarea.innerHTML = targetUrl;
-                        targetUrl = textarea.value;
-                        console.log('[Nextcloud] Decoded URL:', targetUrl);
-                      }
-                      
-                      if (targetUrl) {
-                        console.log('[Nextcloud] Navigating to decoded URL');
-                        window.location.href = targetUrl;
-                        return 'NAVIGATED';
-                      }
-                      
-                      // Method 2: Fallback - dispatch proper mouse events
-                      console.log('[Nextcloud] Fallback: dispatching mouse events');
-                      const clickEvent = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window,
-                        detail: 1,
-                        button: 0
-                      });
-                      adfsButton.dispatchEvent(clickEvent);
-                      return 'CLICK_DISPATCHED';
+                      console.log('[Nextcloud] Found ADFS button, clicking');
+                      adfsButton.click();
+                      return 'CLICKED';
                     }
                     
                     console.log('[Nextcloud] ADFS button not found!');
