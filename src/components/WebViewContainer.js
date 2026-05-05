@@ -142,6 +142,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const wcvAnchorRefs = useRef({});
   // last known URL per WCV app (updated via view:event)
   const wcvUrlsRef = useRef({});
+  // Tracks the last *configured* URL per WCV app to detect setting changes
+  // (e.g. useBbzChat toggle) and navigate the view to the new URL.
+  const wcvConfigUrlsRef = useRef({});
   // periodic login-check intervals for WCV apps that need them
   const wcvIntervalsRef = useRef({});
   const [isLoading, setIsLoading] = useState({});
@@ -331,6 +334,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Navigate a WCV to its new configured URL when the setting changes at runtime
+  // (e.g. the useBbzChat toggle switching schulcloud ↔ BBZ Chat).
+  useEffect(() => {
+    if (!standardApps) return;
+    for (const [id, config] of Object.entries(standardApps)) {
+      if (!WCV_APPS.has(id) || !config.visible) continue;
+      const prev = wcvConfigUrlsRef.current[id];
+      if (prev && prev !== config.url) {
+        // Reset login state so credential injection runs fresh on the new URL.
+        credsAreSet.current[id] = false;
+        loginAttempts.current[id] = 0;
+        failedLogins.current[id] = false;
+        window.electron.view.navigate(id, config.url);
+      }
+      wcvConfigUrlsRef.current[id] = config.url;
+    }
+  }, [standardApps]);
 
   // Show/hide WCV views when the active app changes; apply zoom on show.
   useEffect(() => {
