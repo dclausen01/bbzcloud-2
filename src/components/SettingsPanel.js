@@ -34,6 +34,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
   const [showWebuntisPassword, setShowWebuntisPassword] = useState(false);
   const [showSchulportalPassword, setShowSchulportalPassword] = useState(false);
   const [showEncryptionPassword, setShowEncryptionPassword] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dbPath, setDbPath] = useState('');
@@ -105,7 +106,6 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'schulcloudEncryptionPassword'
         });
-        
         setCredentials({
           email: emailResult.success ? emailResult.password : '',
           password: passwordResult.success ? passwordResult.password : '',
@@ -218,7 +218,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'schulcloudEncryptionPassword',
           password: credentials.schulcloudEncryptionPassword
-        }) : Promise.resolve({ success: true })
+        }) : Promise.resolve({ success: true }),
       ]);
 
       const allSuccessful = results.every(result => result.success);
