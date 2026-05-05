@@ -29,6 +29,21 @@ const WCV_APPS = new Set([
   'outlook', 'schulcloud', 'webuntis',
 ]);
 
+// Force a fresh navigation for a WCV — needed for apps where
+// webContents.reload() is unreliable (e.g. Outlook/OWA, which can stay on
+// its offline overlay even after a reload). Uses the configured URL so
+// SPA deep-links don't get stuck on error pages.
+function forceReloadWcv(id, standardApps) {
+  const url = standardApps?.[id]?.url;
+  if (id === 'outlook' && url) {
+    window.electron.view.clearHistory(id)
+      .then(() => window.electron.view.navigate(id, url))
+      .catch(() => window.electron.view.navigate(id, url));
+    return;
+  }
+  window.electron.view.reload(id);
+}
+
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   // Expose navigation methods through ref
   React.useImperativeHandle(ref, () => ({
@@ -75,7 +90,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       failedLogins.current[id] = false;
       credsAreSet.current[id] = false;
       if (WCV_APPS.has(id)) {
-        window.electron.view.reload(id);
+        forceReloadWcv(id, standardApps);
         return;
       }
       const webview = webviewRefs.current[id]?.current ||
@@ -93,8 +108,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       loginAttempts.current = {};
       failedLogins.current = {};
       credsAreSet.current = {};
-      if (window.electron?.view?.reloadAll) {
-        window.electron.view.reloadAll();
+      // Reload each WCV individually so per-app reload quirks (e.g. Outlook
+      // needing a full clearHistory+navigate) are honored.
+      for (const id of WCV_APPS) {
+        try { forceReloadWcv(id, standardApps); } catch (_) {}
       }
       // Also reload any legacy <webview> elements (dropdown apps)
       const webviews = document.querySelectorAll('webview');
@@ -1969,9 +1986,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         try {
           if (id === 'outlook') {
             console.log('[System Resume] WCV outlook: forcing complete reload');
-            window.electron.view.clearHistory(id)
-              .then(() => window.electron.view.navigate(id, 'https://exchange.bbz-rd-eck.de/owa/'))
-              .catch(() => window.electron.view.navigate(id, 'https://exchange.bbz-rd-eck.de/owa/'));
+            forceReloadWcv(id, standardApps);
           } else if (id === 'webuntis') {
             window.electron.view.executeJavaScript(id, `(function() {
               const authLabel = document.querySelector('.un-input-group__label');
