@@ -985,27 +985,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           break;
 
         case 'wiki': {
-          const wikiUsernameResult = await window.electron.getCredentials({
-            service: 'bbzcloud',
-            account: 'wikiUsername'
-          });
-          const wikiPasswordResult = await window.electron.getCredentials({
-            service: 'bbzcloud',
-            account: 'wikiPassword'
-          });
-
-          if (!wikiUsernameResult.success || !wikiPasswordResult.success) {
-            break;
-          }
-
-          const wikiUsername = wikiUsernameResult.password;
-          const wikiPassword = wikiPasswordResult.password;
-
-          if (!wikiUsername?.trim() || !wikiPassword?.trim()) {
-            console.log('[wiki] Skipping credential injection - empty wiki credentials');
-            break;
-          }
-
           const wikiState = await webview.executeJavaScript(`
             (function() {
               const userInput = document.querySelector('input[name="u"]');
@@ -1032,10 +1011,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           if (wikiState === 'form') {
             await webview.executeJavaScript(
-              `document.querySelector('input[name="u"]').value = ${JSON.stringify(wikiUsername)}; void(0);`
+              `document.querySelector('input[name="u"]').value = ${JSON.stringify(emailAddress)}; void(0);`
             );
             await webview.executeJavaScript(
-              `document.querySelector('input[name="p"]').value = ${JSON.stringify(wikiPassword)}; void(0);`
+              `document.querySelector('input[name="p"]').value = ${JSON.stringify(password)}; void(0);`
             );
             await webview.executeJavaScript(
               `(function() { const cb = document.querySelector('input[name="r"]'); if (cb) cb.checked = true; })(); void(0);`

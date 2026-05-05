@@ -34,7 +34,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
   const [showWebuntisPassword, setShowWebuntisPassword] = useState(false);
   const [showSchulportalPassword, setShowSchulportalPassword] = useState(false);
   const [showEncryptionPassword, setShowEncryptionPassword] = useState(false);
-  const [showWikiPassword, setShowWikiPassword] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [dbPath, setDbPath] = useState('');
@@ -46,9 +46,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
     webuntisPassword: '',
     schulportalEmail: '',
     schulportalPassword: '',
-    schulcloudEncryptionPassword: '',
-    wikiUsername: '',
-    wikiPassword: ''
+    schulcloudEncryptionPassword: ''
   });
   const [version, setVersion] = useState('');
   const toast = useToast();
@@ -108,15 +106,6 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'schulcloudEncryptionPassword'
         });
-        const wikiUsernameResult = await window.electron.getCredentials({
-          service: 'bbzcloud',
-          account: 'wikiUsername'
-        });
-        const wikiPasswordResult = await window.electron.getCredentials({
-          service: 'bbzcloud',
-          account: 'wikiPassword'
-        });
-
         setCredentials({
           email: emailResult.success ? emailResult.password : '',
           password: passwordResult.success ? passwordResult.password : '',
@@ -125,9 +114,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : '',
           schulportalEmail: schulportalEmailResult.success ? schulportalEmailResult.password : '',
           schulportalPassword: schulportalPasswordResult.success ? schulportalPasswordResult.password : '',
-          schulcloudEncryptionPassword: schulcloudEncryptionPasswordResult.success ? schulcloudEncryptionPasswordResult.password : '',
-          wikiUsername: wikiUsernameResult.success ? wikiUsernameResult.password : '',
-          wikiPassword: wikiPasswordResult.success ? wikiPasswordResult.password : ''
+          schulcloudEncryptionPassword: schulcloudEncryptionPasswordResult.success ? schulcloudEncryptionPasswordResult.password : ''
         });
       } catch (error) {
         console.error('Error loading credentials:', error);
@@ -232,16 +219,6 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           account: 'schulcloudEncryptionPassword',
           password: credentials.schulcloudEncryptionPassword
         }) : Promise.resolve({ success: true }),
-        credentials.wikiUsername ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'wikiUsername',
-          password: credentials.wikiUsername
-        }) : Promise.resolve({ success: true }),
-        credentials.wikiPassword ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'wikiPassword',
-          password: credentials.wikiPassword
-        }) : Promise.resolve({ success: true })
       ]);
 
       const allSuccessful = results.every(result => result.success);
@@ -693,34 +670,6 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
               </FormControl>
             </>
           )}
-
-          {/* Intranet / BBZ Wiki */}
-          <FormControl>
-            <FormLabel>Intranet / BBZ Wiki Benutzername</FormLabel>
-            <Input
-              type="text"
-              value={credentials.wikiUsername}
-              onChange={(e) => setCredentials(prev => ({ ...prev, wikiUsername: e.target.value }))}
-              placeholder="Wiki Benutzername"
-            />
-          </FormControl>
-
-          <FormControl>
-            <FormLabel>Intranet / BBZ Wiki Passwort</FormLabel>
-            <InputGroup>
-              <Input
-                type={showWikiPassword ? 'text' : 'password'}
-                value={credentials.wikiPassword}
-                onChange={(e) => setCredentials(prev => ({ ...prev, wikiPassword: e.target.value }))}
-                placeholder="Wiki Passwort"
-              />
-              <InputRightElement width="4.5rem">
-                <Button h="1.75rem" size="sm" onClick={() => setShowWikiPassword(!showWikiPassword)}>
-                  {showWikiPassword ? 'Verbergen' : 'Zeigen'}
-                </Button>
-              </InputRightElement>
-            </InputGroup>
-          </FormControl>
 
           {/* schul.cloud / BBZ Chat Verschlüsselungskennwort */}
           <FormControl>

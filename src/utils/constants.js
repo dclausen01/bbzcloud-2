@@ -227,8 +227,6 @@ export const DATABASE_CONFIG = {
     SCHULPORTAL_EMAIL: 'schulportalEmail',    // Schulportal username
     SCHULPORTAL_PASSWORD: 'schulportalPassword', // Schulportal password
     SCHULCLOUD_ENCRYPTION_PASSWORD: 'schulcloudEncryptionPassword', // BBZ Chat encryption password
-    WIKI_USERNAME: 'wikiUsername',            // Intranet / BBZ Wiki username
-    WIKI_PASSWORD: 'wikiPassword',            // Intranet / BBZ Wiki password
   },
 };
 
