@@ -5,10 +5,10 @@
 **BBZ Cloud** ist eine Electron-basierte Desktop-Anwendung, die als Unified Interface für verschiedene Bildungswebanwendungen (Moodle, Schul.cloud, Nextcloud, Office 365, etc.) dient. Sie bietet eine zentrale Navigation, integriertes Fenstermanagement und zusätzliche Produktivitäts-Tools für Lehrer und Schüler des BBZ Rendsburg-Eckernförde.
 
 ### Tech Stack
-- **Framework**: Electron (v33.2.0)
+- **Framework**: Electron (v42)
 - **Frontend**: React (v18.3.1)
-- **UI Library**: Chakra UI
-- **Build Tool**: Electron Builder
+- **UI Library**: Chakra UI (v2)
+- **Build Tool**: Vite (Renderer-Bundling) + Electron Builder (Packaging)
 - **State/Storage**:
   - `electron-store`: Fenstereinstellungen, Basiskonfiguration
   - `sqlite3`: Komplexe Daten (Todos, Custom Apps, Dokumenten-Metadaten)
