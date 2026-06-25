@@ -68,7 +68,8 @@ jobs:
 
       - name: Set 7zip permissions
         run: |
-          sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/7zip-bin/linux/x64/7za
+          # Locate the bundled 7za binary regardless of npm hoisting / package layout
+          find /usr/local/lib/node_modules -type f -name '7za' -exec sudo chmod +x {} + 2>/dev/null || true
 
       - name: Get version
         id: get_version
@@ -138,7 +139,8 @@ jobs:
 
       - name: Set 7zip permissions
         run: |
-          sudo chmod +x /usr/local/lib/node_modules/electron-builder/node_modules/7zip-bin/linux/arm64/7za
+          # Locate the bundled 7za binary regardless of npm hoisting / package layout
+          find /usr/local/lib/node_modules -type f -name '7za' -exec sudo chmod +x {} + 2>/dev/null || true
 
       - name: Get version
         id: get_version
