@@ -6,9 +6,9 @@
 
 **A unified desktop application for educational web services and collaboration tools**
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/dclausen01/bbzcloud-2)
+[![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)](https://github.com/dclausen01/bbzcloud-2)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Electron](https://img.shields.io/badge/Electron-33.2.0-47848F.svg)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-42-47848F.svg)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-61DAFB.svg)](https://reactjs.org/)
 
 </div>
@@ -269,8 +269,8 @@ npm run electron-dev
 
 | Script                 | Description                         |
 | ---------------------- | ----------------------------------- |
-| `npm start`            | Start React development server only |
-| `npm run build`        | Build React app for production      |
+| `npm start`            | Start Vite development server only  |
+| `npm run build`        | Build renderer for production (Vite)|
 | `npm run electron-dev` | Start Electron in development mode  |
 | `npm run dist`         | Build for all platforms             |
 | `npm run dist:win`     | Build for Windows                   |
@@ -278,7 +278,7 @@ npm run electron-dev
 | `npm run dist:linux`   | Build for Linux                     |
 | `npm run pack`         | Package without creating installer  |
 | `npm run release`      | Build and publish to GitHub         |
-| `npm test`             | Run tests                           |
+| `npm run preview`      | Preview the production renderer build |
 
 ### Debugging
 
