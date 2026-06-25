@@ -572,6 +572,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             } catch (_) {}
           }, 2000);
 
+        } else if (appId === 'wiki') {
+          // Reset on each dom-ready so session-expiry/logout triggers re-injection
+          credsAreSet.current[appId] = false;
+          injectCredentials(proxy, appId);
+
         } else {
           injectCredentials(proxy, appId);
         }
@@ -978,6 +983,49 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             webview.reload();
           }
           break;
+
+        case 'wiki': {
+          const wikiState = await webview.executeJavaScript(`
+            (function() {
+              const userInput = document.querySelector('input[name="u"]');
+              const passInput = document.querySelector('input[name="p"]');
+              if (userInput && passInput) return 'form';
+              const loginBtn = document.querySelector('a.login.btn');
+              if (loginBtn) return 'login-btn';
+              return 'logged-in';
+            })()
+          `);
+
+          if (wikiState === 'logged-in') {
+            credsAreSet.current[id] = true;
+            break;
+          }
+
+          if (wikiState === 'login-btn') {
+            // Navigate to the login page; next dom-ready will fill the form
+            await webview.executeJavaScript(
+              `document.querySelector('a.login.btn').click();`
+            );
+            break;
+          }
+
+          if (wikiState === 'form') {
+            await webview.executeJavaScript(
+              `document.querySelector('input[name="u"]').value = ${JSON.stringify(emailAddress)}; void(0);`
+            );
+            await webview.executeJavaScript(
+              `document.querySelector('input[name="p"]').value = ${JSON.stringify(password)}; void(0);`
+            );
+            await webview.executeJavaScript(
+              `(function() { const cb = document.querySelector('input[name="r"]'); if (cb) cb.checked = true; })(); void(0);`
+            );
+            await webview.executeJavaScript(
+              `document.querySelector('button[type="submit"][data-dw-icon="mdi:lock"]').click();`
+            );
+            credsAreSet.current[id] = true;
+          }
+          break;
+        }
 
         case 'schulcloud':
           try {
