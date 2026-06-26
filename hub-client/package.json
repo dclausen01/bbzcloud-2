@@ -1,0 +1,78 @@
+{
+  "name": "bbzcloud-hub",
+  "version": "1.0.0",
+  "description": "Schlanker Nextcloud-Hub-Desktop-Client für die BBZ Cloud",
+  "main": "main.js",
+  "author": {
+    "name": "Dennis Clausen",
+    "email": "dennis.clausen@bbz-rd-eck.de",
+    "url": "https://github.com/dclausen01"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps",
+    "pack": "electron-builder --dir",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "release": "electron-builder --linux --win --publish=always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "keytar": "^7.9.0"
+  },
+  "devDependencies": {
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.bbzcloud.hub",
+    "productName": "BBZ Cloud Hub",
+    "artifactName": "BBZ-Cloud-Hub-${version}-${arch}.${ext}",
+    "files": [
+      "main.js",
+      "preload-settings.js",
+      "settings-renderer.js",
+      "splash.html",
+      "settings.html"
+    ],
+    "extraResources": [
+      { "from": "assets", "to": "assets", "filter": ["**/*"] }
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.education",
+      "darkModeSupport": true
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "assets/icon.png",
+      "category": "Education",
+      "desktop": {
+        "entry": {
+          "Name": "BBZ Cloud Hub",
+          "Comment": "Nextcloud-Hub-Client der BBZ Cloud",
+          "Categories": "Education;Network;",
+          "StartupWMClass": "BBZ Cloud Hub"
+        }
+      }
+    },
+    "nsis": {
+      "differentialPackage": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "dclausen01",
+      "repo": "bbzcloud-2"
+    }
+  }
+}
