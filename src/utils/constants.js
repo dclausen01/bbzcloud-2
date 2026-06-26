@@ -50,7 +50,7 @@ export const URLS = {
   // Educational platforms
   SCHULCLOUD: 'https://app.schul.cloud',                                    // Cloud-based learning platform
   BBZ_CHAT: 'https://chat.bbz-rd-eck.com',                                  // BBZ Chat alternative
-  MOODLE: 'https://portal.bbz-rd-eck.com',                                 // Learning management system
+  MOODLE: 'https://moodle.bbz-rd-eck.de',                                  // Learning management system
   
   // Communication tools
   BBB_SIGNIN: 'https://bbb.bbz-rd-eck.de/b/signin',                       // BigBlueButton video conferencing

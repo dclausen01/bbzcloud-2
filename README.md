@@ -130,18 +130,28 @@ The application acts as a sophisticated web container with enhanced features inc
 3. Follow the setup wizard
 4. Launch BBZCloud from the Start Menu or Desktop shortcut
 
-### macOS
+### macOS (Apple Silicon)
 
-1. Download the latest `BBZ-Cloud-{version}.dmg` from [Releases](https://github.com/dclausen01/bbzcloud-2/releases)
+> **Note:** macOS builds are Apple Silicon (arm64) only. Intel Macs are no longer supported.
+
+1. Download the latest `BBZ-Cloud-{version}-arm64.dmg` from [Releases](https://github.com/dclausen01/bbzcloud-2/releases)
 2. Open the DMG file
-3. Drag BBZCloud to your Applications folder
+3. Drag **BBZ Cloud** to your Applications folder
 4. Launch from Applications
-5. If on a Apple Silicon Mac, right-click and select "Open" to bypass Gatekeeper on first run
-6. If that doesn't work, you may need to allow the app in System Preferences > Security & Privacy > General or run:
-   ```bash
-   xattr -d com.apple.quarantine /Applications/BBZ-Cloud.app
-   ```
-   in Terminal.
+
+#### "BBZ Cloud" is damaged and can't be opened
+
+The app is not (yet) notarized with an Apple Developer ID. macOS sets a
+quarantine flag on every downloaded app and then shows the misleading message
+*"BBZ Cloud is damaged and can't be opened"*. The app is **not** actually
+damaged — the right-click → "Open" trick does **not** help here. Remove the
+quarantine flag once, in Terminal:
+
+```bash
+xattr -cr "/Applications/BBZ Cloud.app"
+```
+
+Afterwards the app launches normally with a double-click.
 
 ### Linux
 
