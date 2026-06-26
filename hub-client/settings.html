@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self';" />
+  <title>Anmeldedaten</title>
+  <style>
+    html, body {
+      margin: 0; height: 100%;
+      background: #1a202c; color: #e2e8f0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .wrap { padding: 28px 32px; box-sizing: border-box; }
+    h1 { font-size: 17px; margin: 0 0 6px; }
+    p.hint { font-size: 12px; color: #a0aec0; margin: 0 0 22px; line-height: 1.5; }
+    label { display: block; font-size: 13px; margin: 14px 0 6px; color: #cbd5e0; }
+    input {
+      width: 100%; box-sizing: border-box; padding: 10px 12px;
+      border: 1px solid #2d3748; border-radius: 8px;
+      background: #2d3748; color: #fff; font-size: 14px;
+    }
+    input:focus { outline: none; border-color: #4299e1; }
+    .row { display: flex; gap: 10px; margin-top: 26px; }
+    button {
+      flex: 1; padding: 11px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .save { background: #4299e1; color: #fff; }
+    .save:hover { background: #3182ce; }
+    .cancel { background: #2d3748; color: #e2e8f0; }
+    .cancel:hover { background: #4a5568; }
+    .status { font-size: 12px; margin-top: 14px; min-height: 16px; color: #68d391; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Anmeldedaten für den Hub</h1>
+    <p class="hint">
+      Diese Daten werden sicher im System-Schlüsselbund gespeichert und für den
+      automatischen ADFS-Login an Nextcloud verwendet.
+    </p>
+
+    <label for="email">E-Mail-Adresse</label>
+    <input id="email" type="email" autocomplete="username" placeholder="vorname.nachname@bbz-rd-eck.de" />
+
+    <label for="password">Passwort</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+
+    <div class="row">
+      <button class="cancel" id="cancel">Abbrechen</button>
+      <button class="save" id="save">Speichern</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <script src="settings-renderer.js"></script>
+</body>
+</html>
