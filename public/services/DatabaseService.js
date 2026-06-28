@@ -8,6 +8,7 @@ const Store = require('electron-store');
 class DatabaseService {
     constructor() {
         this.isConnected = false;
+        this.tablesReady = false; // Set once createTables() has completed successfully
         this.activeWatchers = new Map(); // Track file watchers for cleanup
         this.tempFiles = new Set(); // Track temporary files for cleanup
         this.lastMemoryCheck = Date.now();
@@ -70,26 +71,30 @@ class DatabaseService {
                 });
             });
 
-            // Enable foreign keys and verify database
-            await new Promise((resolve, reject) => {
+            // Enable foreign keys and verify database integrity.
+            // The integrity check is intentionally non-fatal: a failure here must
+            // NOT skip createTables(), otherwise newer tables (e.g. custom_apps)
+            // would never be created and every operation on them would fail with
+            // "no such table". We log a warning and continue.
+            await new Promise((resolve) => {
                 this.db.serialize(() => {
                     // Enable foreign keys
                     this.db.run('PRAGMA foreign_keys = ON');
-                    
+
                     // Check database integrity
                     this.db.get('PRAGMA integrity_check', [], (err, result) => {
-                        if (err || result.integrity_check !== 'ok') {
-                            reject(err || new Error('Database integrity check failed'));
-                        } else {
-                            resolve();
+                        if (err || (result && result.integrity_check !== 'ok')) {
+                            console.warn('Database integrity check warning:', err || result);
                         }
+                        resolve();
                     });
                 });
             });
 
-            // Create tables
+            // Create tables (idempotent via CREATE TABLE IF NOT EXISTS)
             await this.createTables();
-            
+            this.tablesReady = true;
+
         } catch (error) {
             console.error('Database initialization error:', error);
             throw error;
@@ -338,6 +343,14 @@ class DatabaseService {
                 resolve();
             });
         });
+
+        // Self-heal: if the initial createTables() was skipped or failed during
+        // startup (its error is swallowed by initPromise.catch), the schema may be
+        // incomplete. Re-create any missing tables before running operations.
+        if (!this.tablesReady) {
+            await this.createTables();
+            this.tablesReady = true;
+        }
     }
 
     // Helper to wrap database operations with proper connection handling
