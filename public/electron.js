@@ -1729,7 +1729,8 @@ app.on('web-contents-created', (event, contents) => {
   contents.on('will-redirect', (e, url) => {
     if (
       url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
-      url.includes('meet.stashcat.com')
+      url.includes('meet.stashcat.com') ||
+      url.includes('stash.cat/l/')
     ) {
       e.preventDefault();
       BrowserWindow.getAllWindows().forEach((w) => {
@@ -1783,7 +1784,12 @@ app.on('web-contents-created', (event, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
     if (
       url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
-      url.includes('meet.stashcat.com')
+      url.includes('meet.stashcat.com') ||
+      // Stashcat-Videokonferenz-Kurzlinks (Moderatoren-/Einladungslink) leiten
+      // auf meet.stashcat.com weiter. Direkt extern oeffnen, damit kein leeres
+      // Wrapper-/Warte-Fenster zurueckbleibt (Warteanimation laeuft jetzt als
+      // In-App-Overlay im stashcat-chat-Hauptfenster).
+      url.includes('stash.cat/l/')
     ) {
       shell.openExternal(url);
       return { action: 'deny' };
