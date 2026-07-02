@@ -193,7 +193,8 @@ class ViewManager {
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (
         url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
-        url.includes('meet.stashcat.com')
+        url.includes('meet.stashcat.com') ||
+        url.includes('stash.cat/l/')
       ) {
         shell.openExternal(url);
         return { action: 'deny' };
