@@ -44,6 +44,43 @@ Die Benutzeroberfläche basiert auf React und ist modular aufgebaut:
 - **Injection**: Injeziert `webview-preload.js` um Webseiten-Shortcuts abzufangen und an den Main Process zu senden.
 - **Zoom-Steuerung**: Individueller Zoom pro WebView, globaler Zoom und Navbar-Zoom.
 
+### BigBlueButton / Greenlight 3
+Der BBB-Server läuft auf Greenlight 3 (React-SPA) statt Greenlight 2 (Rails):
+- Loginseite: `https://bbb.bbz-rd-eck.de/signin` (vorher `/b/signin`) — `URLS.BBB_SIGNIN`.
+- Räume: `https://bbb.bbz-rd-eck.de/rooms/<friendly-id>` bzw. `/rooms/<friendly-id>/join` (vorher `/b/<friendly-id>`).
+- **Greenlight bleibt in der App**, nur die Übergabe an die eigentliche Konferenz
+  (`/bigbluebutton/api/join?…`, `/html5client/…`) wird im System-Browser geöffnet,
+  damit Kamera/Mikrofon/Bildschirmfreigabe funktionieren. Regeln zentral in
+  `public/services/externalLinks.js` (`shouldOpenExternally`), genutzt von
+  `electron.js` und `ViewManager.js`.
+- **Wichtig:** Greenlight 2 hat per Server-Redirect übergeben (`will-redirect`),
+  Greenlight 3 macht das im Client per `window.location.replace(joinUrl)` —
+  das feuert `will-navigate`. Beide Events werden in `electron.js` behandelt.
+- Weil Greenlight 3 eine SPA ist, feuert beim Ab-/Anmelden kein `dom-ready`.
+  Der Auto-Login wird deshalb zusätzlich bei `did-navigate`/`did-navigate-in-page`
+  auf die `/signin`-Route ausgelöst (`WebViewContainer.js`).
+
+### Fokus-Schutz bei der Credential-Injection
+Symptom, wenn das fehlt: Der Cursor springt in WebViews immer wieder aus
+Textfeldern heraus, Eingaben sind praktisch unmöglich. Ursache sind die
+periodischen Login-Checks (alle 2–5 s), die bei fehlerhafter „eingeloggt?"-
+Erkennung dauerhaft weiterlaufen und dabei Felder befüllen und `focus()` rufen.
+Schutzmechanismen:
+1. `injectCredentials` bricht ab, wenn der Nutzer gerade tippt (`USER_IS_TYPING_JS`:
+   fokussiertes editierbares Element **mit** Inhalt; ein leeres autofokussiertes
+   Loginfeld zählt nicht, sonst blockiert es den Auto-Login).
+2. `__bbzSafeFocus` (`SAFE_FOCUS_HELPER_JS`) fokussiert ein Feld nur, wenn nicht
+   gerade woanders geschrieben wird.
+3. Pro App läuft immer nur **eine** Injection gleichzeitig (`injectionInFlight`).
+4. Login-Erkennung prüft **sichtbare** Elemente statt Seitentext. Konkret ersetzt:
+   `document.body.textContent.includes('Verschlüsselungskennwort')` (schul.cloud)
+   und `document.querySelector('form')` (WebUntis) — beide treffen auch die
+   eingeloggte Oberfläche.
+5. `ViewManager.show()` fokussiert die View nicht erneut, wenn sie bereits aktiv
+   und sichtbar ist; `_applyBounds()` überspringt unveränderte Bounds. Der
+   Renderer hängt den show/hide-Effekt nur an der App-ID, nicht am
+   `activeWebView`-Objekt (das bei jeder Navigation neu erzeugt wird).
+
 ### Besondere "Quirks" & Workarounds
 - **Session-Reloads**: Webseiten wie **Outlook (OWA)** und **WebUntis** benötigen einen expliziten Reload nach System-Resume (Sleep/Wake), da ihre Sessions sonst ablaufen oder einfrieren. Dies wird im Main Process (`powerMonitor`) behandelt.
 - **Benutzer-Filterung**: In `App.js` (`filterNavigationButtons`) wird anhand der E-Mail-Domain (`@bbz-rd-eck.de`) unterschieden, ob der Nutzer Lehrer (alle Apps) oder Schüler (eingeschränkte Apps) ist. Schüler erhalten Zugriff auf: `schulcloud`, `moodle`, `nextcloud`, `cryptpad`, `webuntis`, `wiki`.
@@ -96,6 +133,7 @@ Die automatische Anmeldung ist in `WebViewContainer.js` implementiert und wird a
 
 | Dienst | Ablauf |
 |--------|--------|
+| **BigBlueButton** | Greenlight 3: `#signInFormEmail` + `#signInFormPwd` → `button[type="submit"]` im Formular. Werte über den nativen `value`-Setter + gebubbletes `input`-Event (react-hook-form ignoriert direkt gesetzte `.value`). Alte Greenlight-2-Selektoren (`#session_email`/`#session_password`/`.signin-button`) bleiben als Fallback. |
 | **Outlook** | `#userNameInput` + `#passwordInput` → `#submitButton` (ADFS) |
 | **Nextcloud** | Klick auf `a[href*="user_saml/saml/login"]` ("BBZ ADFS") → dann wie Outlook (ADFS) |
 | **Moodle** | `input#username` + `input#password` → `button#loginbtn` |
