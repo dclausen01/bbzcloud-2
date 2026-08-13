@@ -60,6 +60,36 @@ Der BBB-Server läuft auf Greenlight 3 (React-SPA) statt Greenlight 2 (Rails):
   Der Auto-Login wird deshalb zusätzlich bei `did-navigate`/`did-navigate-in-page`
   auf die `/signin`-Route ausgelöst (`WebViewContainer.js`).
 
+### Zugangsdaten im Schlüsselbund (`CredentialStore.js`)
+Alle Felder eines Service liegen in **einem** Keychain-Eintrag als JSON
+(Account `credentials`), nicht mehr in acht Einzel-Einträgen. Grund: macOS
+fragt die Freigabe pro Eintrag ab — vorher also bis zu acht Dialoge, die sich
+durch parallele `Promise.all`-Ladevorgänge auch noch gleichzeitig stapelten.
+
+- `public/services/CredentialStore.js` ist der **einzige** Ort, der `keytar`
+  direkt benutzt. Alles andere (electron.js, DatabaseService) geht darüber.
+- Die IPC-Schnittstelle (`{service, account}`) bleibt unverändert — im
+  Renderer musste nichts angepasst werden.
+- **Migration**: Fehlt das Bündel, werden die Alt-Einträge einmalig
+  sequenziell gelesen und zusammengefasst. Sie werden bewusst *nicht*
+  gelöscht (Sicherheitsnetz); nur `remove()` räumt den jeweiligen Alt-Eintrag
+  mit weg, damit gelöschte Zugangsdaten nicht wieder auftauchen.
+- **Zwei Fallstricke**, die beim Ändern leicht wieder reinrutschen:
+  1. Lesen–Ändern–Cache-Schreiben muss **ohne `await` dazwischen** ablaufen.
+     Bei parallelen `set()`-Aufrufen bekommen sonst alle denselben Ausgangs-
+     stand und überschreiben sich gegenseitig — am Ende überlebt nur das
+     zuletzt gespeicherte Feld.
+  2. Schreibvorgänge sind pro Service **verkettet** (`writeQueue`) und
+     schreiben den Cache-Stand zum Ausführungszeitpunkt, nicht einen
+     Schnappschuss. Sonst kann ein langsamer älterer Write einen neueren
+     überholen.
+- **Nicht gelöst**: Dass die Abfrage überhaupt erscheint, liegt an der
+  fehlenden Code-Signatur des macOS-Builds (`build.mac` hat keine `identity`,
+  kein `hardenedRuntime`, keine Notarisierung, keine `CSC_*`-Secrets in
+  `release.yml`). Ohne stabile Developer-ID sieht macOS nach jedem Update
+  eine andere App, die Keychain-ACL greift nicht mehr und selbst „Immer
+  erlauben" hält nicht. Behebbar nur per Signierung + Notarisierung.
+
 ### Fokus-Schutz bei der Credential-Injection
 Symptom, wenn das fehlt: Der Cursor springt in WebViews immer wieder aus
 Textfeldern heraus, Eingaben sind praktisch unmöglich. Ursache sind die

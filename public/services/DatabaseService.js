@@ -103,10 +103,12 @@ class DatabaseService {
 
     async setupEncryption() {
         try {
-            // Get encryption key from keytar
-            const keytar = require('keytar');
-            const password = await keytar.getPassword('bbzcloud', 'password');
-            
+            // Get encryption key from keytar — über den CredentialStore, damit
+            // der Start nicht eine eigene Schlüsselbund-Abfrage zusätzlich zu
+            // denen des Renderers auslöst (gemeinsamer Cache, ein Eintrag).
+            const credentialStore = require('./CredentialStore');
+            const password = await credentialStore.get('bbzcloud', 'password');
+
             // Store password if exists, otherwise encryption features will be disabled
             this.encryptionKey = password || null;
         } catch (error) {

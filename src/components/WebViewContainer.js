@@ -33,7 +33,7 @@ const WCV_APPS = new Set([
 // webContents.reload() is unreliable (e.g. Outlook/OWA, which can stay on
 // its offline overlay even after a reload). Uses the configured URL so
 // SPA deep-links don't get stuck on error pages.
-function forceReloadWcv(id, standardApps) {
+function forceReloadWcv(id, standardApps, currentUrl) {
   const url = standardApps?.[id]?.url;
   if (id === 'outlook' && url) {
     window.electron.view.clearHistory(id)
@@ -41,6 +41,21 @@ function forceReloadWcv(id, standardApps) {
       .catch(() => window.electron.view.navigate(id, url));
     return;
   }
+
+  // Steht die View auf einem anderen Dienst als konfiguriert (BBZ Chat vs.
+  // schul.cloud), muss neu navigiert werden — ein reload() laedt sonst nur
+  // die aktuelle, also die falsche URL erneut. Nur fuer schulcloud, weil dort
+  // die konfigurierte URL zur Laufzeit wechselt; bei Apps mit externem Login
+  // (Nextcloud/Outlook) waere so ein Abgleich gefaehrlich.
+  if (id === 'schulcloud' && url && currentUrl) {
+    try {
+      if (new URL(url).origin !== new URL(currentUrl).origin) {
+        window.electron.view.navigate(id, url);
+        return;
+      }
+    } catch (_) { /* ungueltige URL -> normaler reload */ }
+  }
+
   window.electron.view.reload(id);
 }
 
@@ -139,7 +154,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       failedLogins.current[id] = false;
       credsAreSet.current[id] = false;
       if (WCV_APPS.has(id)) {
-        forceReloadWcv(id, standardApps);
+        forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]);
         return;
       }
       const webview = webviewRefs.current[id]?.current ||
@@ -160,7 +175,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Reload each WCV individually so per-app reload quirks (e.g. Outlook
       // needing a full clearHistory+navigate) are honored.
       for (const id of WCV_APPS) {
-        try { forceReloadWcv(id, standardApps); } catch (_) {}
+        try { forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]); } catch (_) {}
       }
       // Also reload any legacy <webview> elements (dropdown apps)
       const webviews = document.querySelectorAll('webview');
@@ -194,6 +209,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Tracks the last *configured* URL per WCV app to detect setting changes
   // (e.g. useBbzChat toggle) and navigate the view to the new URL.
   const wcvConfigUrlsRef = useRef({});
+  // Ziel einer laufenden Umschaltung — verhindert, dass der Selbstheilungs-
+  // Abgleich dieselbe Navigation bei jedem Render erneut anstösst, solange
+  // die Seite noch lädt.
+  const wcvNavigationTargetRef = useRef({});
   // periodic login-check intervals for WCV apps that need them
   const wcvIntervalsRef = useRef({});
   // ID der aktuell sichtbaren WebContentsView-App (null bei Dropdown-Apps).
@@ -397,17 +416,57 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // (e.g. the useBbzChat toggle switching schulcloud ↔ BBZ Chat).
   useEffect(() => {
     if (!standardApps) return;
+
+    const originOf = (url) => {
+      try {
+        return new URL(url).origin;
+      } catch (_) {
+        return null;
+      }
+    };
+
+    const startNavigation = (id, url) => {
+      // Reset login state so credential injection runs fresh on the new URL.
+      credsAreSet.current[id] = false;
+      loginAttempts.current[id] = 0;
+      failedLogins.current[id] = false;
+      wcvNavigationTargetRef.current[id] = url;
+      window.electron.view.navigate(id, url);
+    };
+
     for (const [id, config] of Object.entries(standardApps)) {
       if (!WCV_APPS.has(id) || !config.visible) continue;
       const prev = wcvConfigUrlsRef.current[id];
       if (prev && prev !== config.url) {
-        // Reset login state so credential injection runs fresh on the new URL.
-        credsAreSet.current[id] = false;
-        loginAttempts.current[id] = 0;
-        failedLogins.current[id] = false;
-        window.electron.view.navigate(id, config.url);
+        startNavigation(id, config.url);
       }
       wcvConfigUrlsRef.current[id] = config.url;
+
+      // Selbstheilung für den BBZ-Chat-Schalter.
+      //
+      // Der Vergleich oben stützt sich auf mitgeführte Buchführung. Läuft die
+      // aus dem Tritt, bleibt der Webview auf dem alten Dienst stehen und
+      // liess sich nur per Neustart korrigieren. Deshalb zusätzlich der
+      // Abgleich mit dem, was die View tatsächlich anzeigt.
+      //
+      // Bewusst NUR für schulcloud: dort wechselt die URL zur Laufzeit, und
+      // beide Dienste bleiben auf ihrem eigenen Origin. Bei Nextcloud/Outlook
+      // würde so eine Prüfung den ADFS-Login abwürgen, weil der Login
+      // zwischendurch auf einem fremden Origin läuft.
+      if (id !== 'schulcloud') continue;
+
+      const wantOrigin = originOf(config.url);
+      const haveOrigin = originOf(wcvUrlsRef.current[id]);
+      if (!wantOrigin || !haveOrigin) continue;
+
+      if (wantOrigin === haveOrigin) {
+        // Ziel erreicht — Sperre lösen, damit ein späterer Wechsel wieder greift
+        wcvNavigationTargetRef.current[id] = null;
+      } else if (wcvNavigationTargetRef.current[id] !== config.url) {
+        // Falscher Dienst und noch keine Navigation dorthin unterwegs
+        console.log(`[${id}] Zeigt ${haveOrigin}, konfiguriert ist ${wantOrigin} — navigiere neu`);
+        startNavigation(id, config.url);
+      }
     }
   }, [standardApps]);
 
@@ -619,20 +678,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     return false; // network error — assume valid
                   }
                 }
-                // Nur sichtbare Login-Elemente zählen. Die frühere Erkennung
-                // hat u. a. document.body.textContent auf 'Verschlüsselungskennwort'
-                // geprüft — dieser Text steht in der eingeloggten App aber auch
-                // in Einstellungen/Hinweisen. Dadurch lief die Injection alle 5 s
-                // dauerhaft weiter und riss den Cursor aus dem Eingabefeld.
-                // getClientRects() statt offsetParent: offsetParent ist auch bei
-                // sichtbaren Elementen null, wenn ein Vorfahre position:fixed hat.
-                const isVisible = (el) => !!(el && typeof el.getClientRects === 'function' && el.getClientRects().length > 0);
+                // Die Verschlüsselungsseite wird an konkreten Elementen erkannt,
+                // nicht mehr an document.body.textContent auf 'Verschlüsselungskennwort'
+                // — dieser Text steht in der eingeloggten App auch in Einstellungen
+                // und Chatnachrichten. Dadurch lief die Injection alle 5 s dauerhaft
+                // weiter und riss den Cursor aus dem Eingabefeld.
+                //
+                // Bewusst ohne Sichtbarkeitsprüfung: ein zu enger Test kann das
+                // Zeitfenster verpassen, in dem der Login noch möglich wäre.
                 const emailInput = document.querySelector('input#username[type="text"]');
-                const visiblePasswordInputs = Array.from(document.querySelectorAll('input[type="password"]')).filter(isVisible);
+                const passwordInputs = document.querySelectorAll('input[type="password"]');
                 const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => btn.textContent.includes('Durch dein Verschlüsselungskennwort'));
                 const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
                 if (loggedIn) return false;
-                return isVisible(emailInput) || visiblePasswordInputs.length > 0 || isVisible(encryptionButton);
+                return !!emailInput || passwordInputs.length > 0 || !!encryptionButton;
               })()`);
               if (isBbzChatPage && needsLogin) {
                 setBbzChatLoginActive(true);
@@ -654,13 +713,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           wcvIntervalsRef.current[appId] = setInterval(async () => {
             try {
               const isLoginPage = await window.electron.view.executeJavaScript(appId, `(function() {
-                // Ein sichtbares Passwortfeld verlangen. Vorher genügte ein
-                // beliebiges <form> auf der Seite — das trifft auch die
-                // eingeloggte WebUntis-Oberfläche und liess die Injection alle
-                // 2 s weiterlaufen.
-                const isVisible = (el) => !!(el && typeof el.getClientRects === 'function' && el.getClientRects().length > 0);
-                const passInput = Array.from(document.querySelectorAll('input[type="password"]')).find(isVisible);
-                if (!passInput) return false;
+                // Passwortfeld ODER die WebUntis-Loginmaske verlangen. Vorher
+                // genügte ein beliebiges <form> — das trifft auch die eingeloggte
+                // Oberfläche und liess die Injection alle 2 s weiterlaufen.
+                //
+                // Bewusst OHNE Sichtbarkeitsprüfung: die Maske wird asynchron
+                // eingeblendet, und ein zu enger Test verpasst genau das Zeitfenster,
+                // in dem der Login noch möglich wäre.
+                const passInput = document.querySelector('input[type="password"]');
+                const loginForm = document.querySelector('.un2-login-form');
+                if (!passInput && !loginForm) return false;
                 const authLabel = document.querySelector('.un-input-group__label');
                 return !authLabel || authLabel.textContent !== 'Bestätigungscode';
               })()`);
@@ -854,28 +916,30 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             const loginAttemptResult = await webview.executeJavaScript(`
               (async () => {
                 try {
-                  // Wait for form to be ready
-                  await new Promise((resolve) => {
-                    const checkForm = () => {
-                      const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-                      const passwordInput = document.querySelector('input[type="password"]');
-                      if (form || passwordInput) {
-                        resolve();
-                      } else {
-                        setTimeout(checkForm, 100);
-                      }
-                    };
-                    checkForm();
+                  // Auf die tatsächlich benötigten Felder warten, nicht auf ein
+                  // beliebiges <form>. WebUntis rendert die Loginmaske asynchron;
+                  // die SPA-Hülle enthält oft schon vorher ein <form>. Wer darauf
+                  // wartet, läuft sofort weiter, findet die Felder nicht und bricht
+                  // ab — der Login blieb dann liegen.
+                  const findFields = () => ({
+                    form: document.querySelector('.un2-login-form form') || document.querySelector('form'),
+                    usernameField: document.querySelector('input[type="text"].un-input-group__input') || document.querySelector('input[type="text"]'),
+                    passwordField: document.querySelector('input[type="password"].un-input-group__input') || document.querySelector('input[type="password"]'),
+                    submitButton: document.querySelector('button[type="submit"]'),
                   });
 
-                  // Get form elements - try specific selectors first, then fall back to generic ones
-                  const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-                  const usernameField = document.querySelector('input[type="text"].un-input-group__input') || document.querySelector('input[type="text"]');
-                  const passwordField = document.querySelector('input[type="password"].un-input-group__input') || document.querySelector('input[type="password"]');
-                  const submitButton = document.querySelector('button[type="submit"]');
+                  let fields = findFields();
+                  for (let i = 0; i < 100 && !(fields.usernameField && fields.passwordField && fields.submitButton); i++) {
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    fields = findFields();
+                  }
+
+                  const { form, usernameField, passwordField, submitButton } = fields;
 
                   if (!usernameField || !passwordField || !submitButton) {
-                    return false;
+                    // Loginmaske nach 10 s nicht da -> als "nicht erledigt" melden,
+                    // damit der periodische Check es erneut versuchen darf.
+                    return 'NO_FORM';
                   }
 
                   // Function to find React fiber node
@@ -983,6 +1047,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 }
               })();
             `);
+
+            if (loginAttemptResult === 'NO_FORM' || loginAttemptResult === false) {
+              // Nichts ausgefüllt -> nicht als erledigt markieren, sonst blockiert
+              // credsAreSet jeden weiteren Versuch.
+              console.log('[webuntis] Loginmaske nicht gefunden - Versuch wird wiederholt');
+              return;
+            }
 
             if (loginAttemptResult === 'INVALID_CREDENTIALS') {
               failedLogins.current['webuntis'] = true;
@@ -2273,7 +2344,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         try {
           if (id === 'outlook') {
             console.log('[System Resume] WCV outlook: forcing complete reload');
-            forceReloadWcv(id, standardApps);
+            forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]);
           } else if (id === 'webuntis') {
             window.electron.view.executeJavaScript(id, `(function() {
               const authLabel = document.querySelector('.un-input-group__label');
