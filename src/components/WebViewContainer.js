@@ -33,7 +33,7 @@ const WCV_APPS = new Set([
 // webContents.reload() is unreliable (e.g. Outlook/OWA, which can stay on
 // its offline overlay even after a reload). Uses the configured URL so
 // SPA deep-links don't get stuck on error pages.
-function forceReloadWcv(id, standardApps) {
+function forceReloadWcv(id, standardApps, currentUrl) {
   const url = standardApps?.[id]?.url;
   if (id === 'outlook' && url) {
     window.electron.view.clearHistory(id)
@@ -41,6 +41,21 @@ function forceReloadWcv(id, standardApps) {
       .catch(() => window.electron.view.navigate(id, url));
     return;
   }
+
+  // Steht die View auf einem anderen Dienst als konfiguriert (BBZ Chat vs.
+  // schul.cloud), muss neu navigiert werden — ein reload() laedt sonst nur
+  // die aktuelle, also die falsche URL erneut. Nur fuer schulcloud, weil dort
+  // die konfigurierte URL zur Laufzeit wechselt; bei Apps mit externem Login
+  // (Nextcloud/Outlook) waere so ein Abgleich gefaehrlich.
+  if (id === 'schulcloud' && url && currentUrl) {
+    try {
+      if (new URL(url).origin !== new URL(currentUrl).origin) {
+        window.electron.view.navigate(id, url);
+        return;
+      }
+    } catch (_) { /* ungueltige URL -> normaler reload */ }
+  }
+
   window.electron.view.reload(id);
 }
 
@@ -139,7 +154,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       failedLogins.current[id] = false;
       credsAreSet.current[id] = false;
       if (WCV_APPS.has(id)) {
-        forceReloadWcv(id, standardApps);
+        forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]);
         return;
       }
       const webview = webviewRefs.current[id]?.current ||
@@ -160,7 +175,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Reload each WCV individually so per-app reload quirks (e.g. Outlook
       // needing a full clearHistory+navigate) are honored.
       for (const id of WCV_APPS) {
-        try { forceReloadWcv(id, standardApps); } catch (_) {}
+        try { forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]); } catch (_) {}
       }
       // Also reload any legacy <webview> elements (dropdown apps)
       const webviews = document.querySelectorAll('webview');
@@ -194,6 +209,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Tracks the last *configured* URL per WCV app to detect setting changes
   // (e.g. useBbzChat toggle) and navigate the view to the new URL.
   const wcvConfigUrlsRef = useRef({});
+  // Ziel einer laufenden Umschaltung — verhindert, dass der Selbstheilungs-
+  // Abgleich dieselbe Navigation bei jedem Render erneut anstösst, solange
+  // die Seite noch lädt.
+  const wcvNavigationTargetRef = useRef({});
   // periodic login-check intervals for WCV apps that need them
   const wcvIntervalsRef = useRef({});
   // ID der aktuell sichtbaren WebContentsView-App (null bei Dropdown-Apps).
@@ -397,17 +416,57 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // (e.g. the useBbzChat toggle switching schulcloud ↔ BBZ Chat).
   useEffect(() => {
     if (!standardApps) return;
+
+    const originOf = (url) => {
+      try {
+        return new URL(url).origin;
+      } catch (_) {
+        return null;
+      }
+    };
+
+    const startNavigation = (id, url) => {
+      // Reset login state so credential injection runs fresh on the new URL.
+      credsAreSet.current[id] = false;
+      loginAttempts.current[id] = 0;
+      failedLogins.current[id] = false;
+      wcvNavigationTargetRef.current[id] = url;
+      window.electron.view.navigate(id, url);
+    };
+
     for (const [id, config] of Object.entries(standardApps)) {
       if (!WCV_APPS.has(id) || !config.visible) continue;
       const prev = wcvConfigUrlsRef.current[id];
       if (prev && prev !== config.url) {
-        // Reset login state so credential injection runs fresh on the new URL.
-        credsAreSet.current[id] = false;
-        loginAttempts.current[id] = 0;
-        failedLogins.current[id] = false;
-        window.electron.view.navigate(id, config.url);
+        startNavigation(id, config.url);
       }
       wcvConfigUrlsRef.current[id] = config.url;
+
+      // Selbstheilung für den BBZ-Chat-Schalter.
+      //
+      // Der Vergleich oben stützt sich auf mitgeführte Buchführung. Läuft die
+      // aus dem Tritt, bleibt der Webview auf dem alten Dienst stehen und
+      // liess sich nur per Neustart korrigieren. Deshalb zusätzlich der
+      // Abgleich mit dem, was die View tatsächlich anzeigt.
+      //
+      // Bewusst NUR für schulcloud: dort wechselt die URL zur Laufzeit, und
+      // beide Dienste bleiben auf ihrem eigenen Origin. Bei Nextcloud/Outlook
+      // würde so eine Prüfung den ADFS-Login abwürgen, weil der Login
+      // zwischendurch auf einem fremden Origin läuft.
+      if (id !== 'schulcloud') continue;
+
+      const wantOrigin = originOf(config.url);
+      const haveOrigin = originOf(wcvUrlsRef.current[id]);
+      if (!wantOrigin || !haveOrigin) continue;
+
+      if (wantOrigin === haveOrigin) {
+        // Ziel erreicht — Sperre lösen, damit ein späterer Wechsel wieder greift
+        wcvNavigationTargetRef.current[id] = null;
+      } else if (wcvNavigationTargetRef.current[id] !== config.url) {
+        // Falscher Dienst und noch keine Navigation dorthin unterwegs
+        console.log(`[${id}] Zeigt ${haveOrigin}, konfiguriert ist ${wantOrigin} — navigiere neu`);
+        startNavigation(id, config.url);
+      }
     }
   }, [standardApps]);
 
@@ -2285,7 +2344,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         try {
           if (id === 'outlook') {
             console.log('[System Resume] WCV outlook: forcing complete reload');
-            forceReloadWcv(id, standardApps);
+            forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]);
           } else if (id === 'webuntis') {
             window.electron.view.executeJavaScript(id, `(function() {
               const authLabel = document.querySelector('.un-input-group__label');
