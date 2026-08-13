@@ -33,4 +33,8 @@ yarn-error.log*
 
 # Electron-builder output
 /dist_electron
-.claude/worktrees/magical-neumann
+
+# Claude-Code-Worktrees (lokale Arbeitskopien, gehoeren nicht ins Repo).
+# Ganzes Verzeichnis ignorieren, nicht nur einzelne Worktree-Namen — sonst
+# landet der naechste Worktree wieder versehentlich im Commit.
+.claude/worktrees/
