@@ -619,20 +619,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     return false; // network error — assume valid
                   }
                 }
-                // Nur sichtbare Login-Elemente zählen. Die frühere Erkennung
-                // hat u. a. document.body.textContent auf 'Verschlüsselungskennwort'
-                // geprüft — dieser Text steht in der eingeloggten App aber auch
-                // in Einstellungen/Hinweisen. Dadurch lief die Injection alle 5 s
-                // dauerhaft weiter und riss den Cursor aus dem Eingabefeld.
-                // getClientRects() statt offsetParent: offsetParent ist auch bei
-                // sichtbaren Elementen null, wenn ein Vorfahre position:fixed hat.
-                const isVisible = (el) => !!(el && typeof el.getClientRects === 'function' && el.getClientRects().length > 0);
+                // Die Verschlüsselungsseite wird an konkreten Elementen erkannt,
+                // nicht mehr an document.body.textContent auf 'Verschlüsselungskennwort'
+                // — dieser Text steht in der eingeloggten App auch in Einstellungen
+                // und Chatnachrichten. Dadurch lief die Injection alle 5 s dauerhaft
+                // weiter und riss den Cursor aus dem Eingabefeld.
+                //
+                // Bewusst ohne Sichtbarkeitsprüfung: ein zu enger Test kann das
+                // Zeitfenster verpassen, in dem der Login noch möglich wäre.
                 const emailInput = document.querySelector('input#username[type="text"]');
-                const visiblePasswordInputs = Array.from(document.querySelectorAll('input[type="password"]')).filter(isVisible);
+                const passwordInputs = document.querySelectorAll('input[type="password"]');
                 const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => btn.textContent.includes('Durch dein Verschlüsselungskennwort'));
                 const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
                 if (loggedIn) return false;
-                return isVisible(emailInput) || visiblePasswordInputs.length > 0 || isVisible(encryptionButton);
+                return !!emailInput || passwordInputs.length > 0 || !!encryptionButton;
               })()`);
               if (isBbzChatPage && needsLogin) {
                 setBbzChatLoginActive(true);
@@ -654,13 +654,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           wcvIntervalsRef.current[appId] = setInterval(async () => {
             try {
               const isLoginPage = await window.electron.view.executeJavaScript(appId, `(function() {
-                // Ein sichtbares Passwortfeld verlangen. Vorher genügte ein
-                // beliebiges <form> auf der Seite — das trifft auch die
-                // eingeloggte WebUntis-Oberfläche und liess die Injection alle
-                // 2 s weiterlaufen.
-                const isVisible = (el) => !!(el && typeof el.getClientRects === 'function' && el.getClientRects().length > 0);
-                const passInput = Array.from(document.querySelectorAll('input[type="password"]')).find(isVisible);
-                if (!passInput) return false;
+                // Passwortfeld ODER die WebUntis-Loginmaske verlangen. Vorher
+                // genügte ein beliebiges <form> — das trifft auch die eingeloggte
+                // Oberfläche und liess die Injection alle 2 s weiterlaufen.
+                //
+                // Bewusst OHNE Sichtbarkeitsprüfung: die Maske wird asynchron
+                // eingeblendet, und ein zu enger Test verpasst genau das Zeitfenster,
+                // in dem der Login noch möglich wäre.
+                const passInput = document.querySelector('input[type="password"]');
+                const loginForm = document.querySelector('.un2-login-form');
+                if (!passInput && !loginForm) return false;
                 const authLabel = document.querySelector('.un-input-group__label');
                 return !authLabel || authLabel.textContent !== 'Bestätigungscode';
               })()`);
@@ -854,28 +857,30 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             const loginAttemptResult = await webview.executeJavaScript(`
               (async () => {
                 try {
-                  // Wait for form to be ready
-                  await new Promise((resolve) => {
-                    const checkForm = () => {
-                      const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-                      const passwordInput = document.querySelector('input[type="password"]');
-                      if (form || passwordInput) {
-                        resolve();
-                      } else {
-                        setTimeout(checkForm, 100);
-                      }
-                    };
-                    checkForm();
+                  // Auf die tatsächlich benötigten Felder warten, nicht auf ein
+                  // beliebiges <form>. WebUntis rendert die Loginmaske asynchron;
+                  // die SPA-Hülle enthält oft schon vorher ein <form>. Wer darauf
+                  // wartet, läuft sofort weiter, findet die Felder nicht und bricht
+                  // ab — der Login blieb dann liegen.
+                  const findFields = () => ({
+                    form: document.querySelector('.un2-login-form form') || document.querySelector('form'),
+                    usernameField: document.querySelector('input[type="text"].un-input-group__input') || document.querySelector('input[type="text"]'),
+                    passwordField: document.querySelector('input[type="password"].un-input-group__input') || document.querySelector('input[type="password"]'),
+                    submitButton: document.querySelector('button[type="submit"]'),
                   });
 
-                  // Get form elements - try specific selectors first, then fall back to generic ones
-                  const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-                  const usernameField = document.querySelector('input[type="text"].un-input-group__input') || document.querySelector('input[type="text"]');
-                  const passwordField = document.querySelector('input[type="password"].un-input-group__input') || document.querySelector('input[type="password"]');
-                  const submitButton = document.querySelector('button[type="submit"]');
+                  let fields = findFields();
+                  for (let i = 0; i < 100 && !(fields.usernameField && fields.passwordField && fields.submitButton); i++) {
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    fields = findFields();
+                  }
+
+                  const { form, usernameField, passwordField, submitButton } = fields;
 
                   if (!usernameField || !passwordField || !submitButton) {
-                    return false;
+                    // Loginmaske nach 10 s nicht da -> als "nicht erledigt" melden,
+                    // damit der periodische Check es erneut versuchen darf.
+                    return 'NO_FORM';
                   }
 
                   // Function to find React fiber node
@@ -983,6 +988,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 }
               })();
             `);
+
+            if (loginAttemptResult === 'NO_FORM' || loginAttemptResult === false) {
+              // Nichts ausgefüllt -> nicht als erledigt markieren, sonst blockiert
+              // credsAreSet jeden weiteren Versuch.
+              console.log('[webuntis] Loginmaske nicht gefunden - Versuch wird wiederholt');
+              return;
+            }
 
             if (loginAttemptResult === 'INVALID_CREDENTIALS') {
               failedLogins.current['webuntis'] = true;
