@@ -53,7 +53,7 @@ export const URLS = {
   MOODLE: 'https://moodle.bbz-rd-eck.de',                                  // Learning management system
   
   // Communication tools
-  BBB_SIGNIN: 'https://bbb.bbz-rd-eck.de/b/signin',                       // BigBlueButton video conferencing
+  BBB_SIGNIN: 'https://bbb.bbz-rd-eck.de/signin',                         // BigBlueButton (Greenlight 3) video conferencing
   OUTLOOK: 'https://exchange.bbz-rd-eck.de/owa/#path=/mail',              // Email client
   
   // Productivity applications

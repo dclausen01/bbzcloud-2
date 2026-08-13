@@ -17,6 +17,7 @@ const { v4: uuidv4 } = require('uuid');
 const DatabaseService = require('./services/DatabaseService');
 const viewManager = require('./services/ViewManager');
 const overlayWindow = require('./services/OverlayWindow');
+const { shouldOpenExternally } = require('./services/externalLinks');
 
 // Update check interval (15 minutes)
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
@@ -1726,22 +1727,38 @@ app.on('web-contents-created', (event, contents) => {
   }); // end will-download
   } // end downloadHandlerSessions guard
 
-  contents.on('will-redirect', (e, url) => {
-    if (
-      url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
-      url.includes('meet.stashcat.com') ||
-      url.includes('stash.cat/l/')
-    ) {
-      e.preventDefault();
-      BrowserWindow.getAllWindows().forEach((w) => {
-        if (w.getTitle() === 'Electron' || w.getTitle() === 'BBZ Cloud') {
-          w.close();
-        }
-      });
-      // open url in external browser and activate the browser
-      shell.openExternal(url, { activate: true });
+  // Konferenz-Übergabe an den System-Browser.
+  //
+  // Greenlight 2 hat per Server-Redirect auf die BBB-Join-URL geleitet
+  // ('will-redirect'), Greenlight 3 macht das im React-Client per
+  // window.location.replace() — das feuert 'will-navigate'. Beide Events
+  // werden geprüft, sonst landet die Konferenz im eingebetteten WebView.
+  const handoverToBrowser = (e, url) => {
+    if (!shouldOpenExternally(url)) return;
+    e.preventDefault();
+
+    // Nur das Wrapper-Fenster schließen, das den Link geöffnet hat — niemals
+    // das Hauptfenster. Sonst bleibt ein leeres Fenster zurück.
+    let owner = null;
+    try {
+      owner = BrowserWindow.fromWebContents(contents);
+    } catch (_) { /* ignore */ }
+    if (!owner) {
+      try {
+        const host = contents.hostWebContents;
+        if (host) owner = BrowserWindow.fromWebContents(host);
+      } catch (_) { /* ignore */ }
     }
-  });
+    if (owner && owner !== mainWindow && !owner.isDestroyed()) {
+      owner.close();
+    }
+
+    // open url in external browser and activate the browser
+    shell.openExternal(url, { activate: true });
+  };
+
+  contents.on('will-redirect', handoverToBrowser);
+  contents.on('will-navigate', handoverToBrowser);
 
   // Show our custom Cut/Copy/Paste context menu for all webviews EXCEPT those
   // that ship their own JavaScript context menus (OWA, BBB, Nextcloud, Office 365).
@@ -1782,15 +1799,11 @@ app.on('web-contents-created', (event, contents) => {
   });
 
   contents.setWindowOpenHandler(({ url }) => {
-    if (
-      url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
-      url.includes('meet.stashcat.com') ||
-      // Stashcat-Videokonferenz-Kurzlinks (Moderatoren-/Einladungslink) leiten
-      // auf meet.stashcat.com weiter. Direkt extern oeffnen, damit kein leeres
-      // Wrapper-/Warte-Fenster zurueckbleibt (Warteanimation laeuft jetzt als
-      // In-App-Overlay im stashcat-chat-Hauptfenster).
-      url.includes('stash.cat/l/')
-    ) {
+    // BBB-Konferenzen sowie Stashcat-Videokonferenz-Kurzlinks (Moderatoren-/
+    // Einladungslink, leiten auf meet.stashcat.com weiter) direkt extern
+    // oeffnen, damit kein leeres Wrapper-/Warte-Fenster zurueckbleibt
+    // (Warteanimation laeuft als In-App-Overlay im stashcat-chat-Hauptfenster).
+    if (shouldOpenExternally(url)) {
       shell.openExternal(url);
       return { action: 'deny' };
     }

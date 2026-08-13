@@ -1,6 +1,7 @@
 'use strict';
 
 const { WebContentsView, session, Menu, shell } = require('electron');
+const { shouldOpenExternally } = require('./externalLinks');
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -57,12 +58,24 @@ class ViewManager {
     const entry = this.views.get(this.activeViewId);
     if (!entry) return;
     const { x, y, width, height } = this.contentRect;
-    entry.view.setBounds({
+    const next = {
       x: Math.round(x),
       y: Math.round(y),
       width: Math.round(width),
       height: Math.round(height),
-    });
+    };
+
+    // Unveränderte Bounds nicht erneut setzen. Der Renderer schickt bei jedem
+    // ResizeObserver-/resize-Tick neue Bounds; ein natives Resize der View
+    // kann dabei den Fokus im eingebetteten Dokument zurücksetzen, wodurch
+    // der Cursor aus Textfeldern springt.
+    const prev = entry.appliedBounds;
+    if (prev && prev.x === next.x && prev.y === next.y &&
+        prev.width === next.width && prev.height === next.height) {
+      return;
+    }
+    entry.appliedBounds = next;
+    entry.view.setBounds(next);
   }
 
   _sendEvent(appId, type, extra = {}) {
@@ -191,11 +204,7 @@ class ViewManager {
 
   _installWindowOpenHandler(_appId, view) {
     view.webContents.setWindowOpenHandler(({ url }) => {
-      if (
-        url.includes('bbb.bbz-rd-eck.de/bigbluebutton/api/join?') ||
-        url.includes('meet.stashcat.com') ||
-        url.includes('stash.cat/l/')
-      ) {
+      if (shouldOpenExternally(url)) {
         shell.openExternal(url);
         return { action: 'deny' };
       }
@@ -239,7 +248,7 @@ class ViewManager {
     this.mainWindow.contentView.addChildView(view);
     view.setVisible(false);
 
-    this.views.set(appId, { view, zoomFactor: 1.0 });
+    this.views.set(appId, { view, zoomFactor: 1.0, visible: false, appliedBounds: null });
 
     if (url) {
       view.webContents.loadURL(url);
@@ -249,23 +258,40 @@ class ViewManager {
   show(appId) {
     if (!this.views.has(appId)) return;
 
+    const entry = this.views.get(appId);
+
+    // Bereits aktiv und sichtbar? Dann nichts anfassen. Ein erneutes
+    // setVisible(true) + webContents.focus() setzt den Fokus im eingebetteten
+    // Dokument zurück — der Cursor springt aus Textfeldern heraus. Der
+    // Renderer ruft show() u. a. bei jedem Re-Render der aktiven App auf.
+    if (this.activeViewId === appId && entry.visible) {
+      this._applyBounds();
+      return;
+    }
+
     // Hide the previous active view
     if (this.activeViewId && this.activeViewId !== appId) {
       const prev = this.views.get(this.activeViewId);
-      if (prev) prev.view.setVisible(false);
+      if (prev) {
+        prev.view.setVisible(false);
+        prev.visible = false;
+      }
     }
 
     this.activeViewId = appId;
     this._applyBounds();
-    const entry = this.views.get(appId);
     entry.view.setVisible(true);
+    entry.visible = true;
 
     try { entry.view.webContents.focus(); } catch (_) {}
   }
 
   hide(appId) {
     const entry = this.views.get(appId);
-    if (entry) entry.view.setVisible(false);
+    if (entry) {
+      entry.view.setVisible(false);
+      entry.visible = false;
+    }
     if (this.activeViewId === appId) this.activeViewId = null;
   }
 

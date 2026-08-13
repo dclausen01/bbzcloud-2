@@ -44,6 +44,55 @@ function forceReloadWcv(id, standardApps) {
   window.electron.view.reload(id);
 }
 
+// ---------------------------------------------------------------------------
+// Fokus-Schutz für Credential-Injection
+// ---------------------------------------------------------------------------
+
+// Im Seitenkontext ausgewertet: Tippt der Nutzer gerade irgendwo?
+// "Gerade dabei" heißt: ein editierbares Element hat den Fokus UND enthält
+// bereits Text. Ein leeres, automatisch fokussiertes Loginfeld zählt nicht,
+// damit der Auto-Login auf frisch geladenen Loginseiten weiterhin greift.
+const USER_IS_TYPING_JS = `(function() {
+  try {
+    const el = document.activeElement;
+    if (!el || el === document.body) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA') return !!el.value;
+    if (tag === 'INPUT') {
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      const editable = ['text', 'email', 'password', 'search', 'tel', 'url', 'number'];
+      return editable.includes(type) && !!el.value;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+})()`;
+
+async function isUserTyping(webview) {
+  try {
+    return !!(await webview.executeJavaScript(USER_IS_TYPING_JS));
+  } catch (_) {
+    return false;
+  }
+}
+
+// Wird in injizierte Snippets eingebettet: fokussiert ein Feld nur dann, wenn
+// der Nutzer nicht gerade in einem anderen Eingabefeld schreibt.
+const SAFE_FOCUS_HELPER_JS = `
+  const __bbzSafeFocus = (el) => {
+    try {
+      const active = document.activeElement;
+      const busy = active && active !== el && (
+        active.isContentEditable ||
+        ((active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && !!active.value)
+      );
+      if (!busy) el.focus();
+    } catch (e) { /* ignore */ }
+  };
+`;
+
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   // Expose navigation methods through ref
   React.useImperativeHandle(ref, () => ({
@@ -147,6 +196,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const wcvConfigUrlsRef = useRef({});
   // periodic login-check intervals for WCV apps that need them
   const wcvIntervalsRef = useRef({});
+  // ID der aktuell sichtbaren WebContentsView-App (null bei Dropdown-Apps).
+  // Bewusst nur die ID statt des activeWebView-Objekts: das Objekt bekommt bei
+  // jeder Navigation eine neue Identität und würde Effekte unnötig neu laufen
+  // lassen (show/hide-Zyklen setzen den Fokus im WebView zurück).
+  const activeWcvId = activeWebView && WCV_APPS.has(activeWebView.id) ? activeWebView.id : null;
   const [isLoading, setIsLoading] = useState({});
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
@@ -162,6 +216,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const [isStartupPeriod, setIsStartupPeriod] = useState(true);
   const loginAttempts = useRef({}); // Track login attempts per app (max 3 per session)
   const failedLogins = useRef({}); // Track fatal login failures (e.g. invalid credentials)
+  // Läuft für diese App gerade eine Injection? Die periodischen Checks (alle
+  // 2-5 s) können sonst eine noch laufende Injection überholen — das führt zu
+  // doppelten Klicks und mehrfachem Fokus-Setzen im selben Formular.
+  const injectionInFlight = useRef({});
   const MAX_LOGIN_ATTEMPTS = 3;
 
   // Translate error codes to user-friendly German messages
@@ -354,29 +412,42 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   }, [standardApps]);
 
   // Show/hide WCV views when the active app changes; apply zoom on show.
+  //
+  // Bewusst nur an der App-ID hängen, nicht am ganzen activeWebView-Objekt:
+  // App.js erzeugt bei jedem onNavigate ein neues Objekt ({...activeWebView, url}).
+  // Mit dem Objekt als Dependency lief bei jeder Navigation ein hide()/show()-
+  // Zyklus, der den Fokus im WebView zurücksetzt — der Cursor sprang dann aus
+  // dem gerade benutzten Textfeld heraus.
   useEffect(() => {
-    if (!activeWebView) return;
-    const id = activeWebView.id;
-    if (!WCV_APPS.has(id)) return;
-    window.electron.view.show(id);
+    if (!activeWcvId) return;
+    window.electron.view.show(activeWcvId);
     // Apply current zoom to the newly visible view
-    applyZoom(null, id);
+    applyZoom(null, activeWcvId);
     return () => {
-      window.electron.view.hide(id);
+      window.electron.view.hide(activeWcvId);
     };
-  }, [activeWebView, applyZoom]);
+  }, [activeWcvId, applyZoom]);
 
   // Hide the schulcloud WCV while the BBZ Chat spinner is shown so the React
   // overlay is visible (WCV is a native layer composited above the renderer).
+  // Nur bei echtem Wechsel umschalten — ein wiederholtes show() würde den
+  // Fokus im WebView zurücksetzen.
+  const schulcloudVisibilityRef = useRef(null);
   useEffect(() => {
     if (!hasBbzChatCredentials) return;
-    if (activeWebView?.id !== 'schulcloud') return;
-    if (bbzChatLoginActive) {
-      window.electron.view.hide('schulcloud');
-    } else {
-      window.electron.view.show('schulcloud');
+    if (activeWcvId !== 'schulcloud') {
+      schulcloudVisibilityRef.current = null;
+      return;
     }
-  }, [bbzChatLoginActive, hasBbzChatCredentials, activeWebView]);
+    const shouldBeVisible = !bbzChatLoginActive;
+    if (schulcloudVisibilityRef.current === shouldBeVisible) return;
+    schulcloudVisibilityRef.current = shouldBeVisible;
+    if (shouldBeVisible) {
+      window.electron.view.show('schulcloud');
+    } else {
+      window.electron.view.hide('schulcloud');
+    }
+  }, [bbzChatLoginActive, hasBbzChatCredentials, activeWcvId]);
 
   // Track navigation URL for WCV apps (used by getWcvProxy); also drive the
   // BBZ Chat loading overlay state when the schulcloud WCV navigates.
@@ -384,7 +455,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     const unsubscribe = window.electron.view.onEvent((event) => {
       if (!WCV_APPS.has(event.appId)) return;
       if (event.type === 'did-navigate' || event.type === 'did-navigate-in-page') {
+        const previousUrl = wcvUrlsRef.current[event.appId] || '';
         wcvUrlsRef.current[event.appId] = event.url;
+
+        // BBB/Greenlight 3 ist eine SPA: Ab-/Anmelden wechselt die Route ohne
+        // erneutes dom-ready. Beim Wechsel auf /signin den Login-State
+        // zurücksetzen und einen Auto-Login-Versuch starten.
+        if (event.appId === 'bbb' && event.url && previousUrl !== event.url) {
+          const onSignInPage = /\/(signin|b\/signin)(\?|#|$)/.test(event.url);
+          if (onSignInPage) {
+            credsAreSet.current.bbb = false;
+            loginAttempts.current.bbb = 0;
+            failedLogins.current.bbb = false;
+            injectCredentials(getWcvProxy('bbb'), 'bbb');
+          }
+        }
+
         if (event.appId === 'schulcloud' && event.type === 'did-navigate') {
           if (event.url && event.url.includes('chat.bbz-rd-eck.com')) {
             setBbzChatLoginActive(true); // refined to false once login is confirmed
@@ -533,12 +619,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     return false; // network error — assume valid
                   }
                 }
+                // Nur sichtbare Login-Elemente zählen. Die frühere Erkennung
+                // hat u. a. document.body.textContent auf 'Verschlüsselungskennwort'
+                // geprüft — dieser Text steht in der eingeloggten App aber auch
+                // in Einstellungen/Hinweisen. Dadurch lief die Injection alle 5 s
+                // dauerhaft weiter und riss den Cursor aus dem Eingabefeld.
+                // getClientRects() statt offsetParent: offsetParent ist auch bei
+                // sichtbaren Elementen null, wenn ein Vorfahre position:fixed hat.
+                const isVisible = (el) => !!(el && typeof el.getClientRects === 'function' && el.getClientRects().length > 0);
                 const emailInput = document.querySelector('input#username[type="text"]');
-                const passwordInputs = document.querySelectorAll('input[type="password"]');
-                const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
+                const visiblePasswordInputs = Array.from(document.querySelectorAll('input[type="password"]')).filter(isVisible);
                 const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => btn.textContent.includes('Durch dein Verschlüsselungskennwort'));
-                const onEncryptionPage = !!encryptionButton || document.body.textContent.includes('Verschlüsselungskennwort');
-                return ((emailInput || passwordInputs.length > 0) && !loggedIn) || (onEncryptionPage && !loggedIn);
+                const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
+                if (loggedIn) return false;
+                return isVisible(emailInput) || visiblePasswordInputs.length > 0 || isVisible(encryptionButton);
               })()`);
               if (isBbzChatPage && needsLogin) {
                 setBbzChatLoginActive(true);
@@ -560,10 +654,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           wcvIntervalsRef.current[appId] = setInterval(async () => {
             try {
               const isLoginPage = await window.electron.view.executeJavaScript(appId, `(function() {
-                const form = document.querySelector('.un2-login-form form') || document.querySelector('form');
-                const passInput = document.querySelector('input[type="password"]');
+                // Ein sichtbares Passwortfeld verlangen. Vorher genügte ein
+                // beliebiges <form> auf der Seite — das trifft auch die
+                // eingeloggte WebUntis-Oberfläche und liess die Injection alle
+                // 2 s weiterlaufen.
+                const isVisible = (el) => !!(el && typeof el.getClientRects === 'function' && el.getClientRects().length > 0);
+                const passInput = Array.from(document.querySelectorAll('input[type="password"]')).find(isVisible);
+                if (!passInput) return false;
                 const authLabel = document.querySelector('.un-input-group__label');
-                return (form || passInput) && (!authLabel || authLabel.textContent !== 'Bestätigungscode');
+                return !authLabel || authLabel.textContent !== 'Bestätigungscode';
               })()`);
               if (isLoginPage) {
                 credsAreSet.current[appId] = false;
@@ -591,9 +690,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Bounds binding for the active WCV anchor div
   // -------------------------------------------------------------------------
 
-  // Anchor ref for the currently active WCV app
+  // Anchor ref for the currently active WCV app (activeWcvId siehe oben)
   const activeWcvAnchorRef = useRef(null);
-  const activeWcvId = activeWebView && WCV_APPS.has(activeWebView.id) ? activeWebView.id : null;
 
   // Keep activeWcvAnchorRef in sync with the active WCV anchor div
   useEffect(() => {
@@ -628,7 +726,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   }), []);
 
   // Function to inject credentials based on webview ID
-  const injectCredentials = useCallback(async (webview, id) => {
+  // (nicht direkt aufrufen — der Wrapper injectCredentials weiter unten
+  // serialisiert die Aufrufe pro App)
+  const injectCredentialsImpl = useCallback(async (webview, id) => {
     if (!webview || credsAreSet.current[id]) {
       return;
     }
@@ -636,6 +736,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     // Stop if we already had a fatal login failure for this app
     if (failedLogins.current[id]) {
       console.log(`[${id}] Previous login failed - stopping auto-login`);
+      return;
+    }
+
+    // Niemals injizieren, während der Nutzer gerade tippt.
+    //
+    // Die Login-Handler setzen Feldwerte, klicken Buttons und rufen teilweise
+    // .focus() auf — läuft das während einer Eingabe, springt der Cursor aus
+    // dem Textfeld. Weil mehrere Apps alle 2-5 s einen periodischen Login-Check
+    // fahren, kann eine fehlerhafte "eingeloggt?"-Erkennung dazu führen, dass
+    // das dauerhaft passiert und Eingaben praktisch unmöglich werden.
+    //
+    // Ein leeres, fokussiertes Feld gilt nicht als "tippt gerade" — sonst
+    // würde der Autofocus vieler Loginseiten (z. B. BBB/Greenlight) die
+    // Anmeldung dauerhaft blockieren.
+    if (await isUserTyping(webview)) {
+      console.log(`[${id}] Skipping credential injection - user is typing`);
       return;
     }
 
@@ -931,24 +1047,97 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           );
           break;
 
-        case 'bbb':
-          await webview.executeJavaScript(
-            `document.querySelector('#session_email').value = ${JSON.stringify(emailAddress)}; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('#session_password').value = ${JSON.stringify(bbbPassword)}; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('.signin-button').click();`
-          );
-          
-          // Save credentials after successful login
-          await window.electron.saveCredentials({
-            service: 'bbzcloud',
-            account: 'bbbPassword',
-            password: bbbPassword
-          });
+        case 'bbb': {
+          // Greenlight 3 (React + react-hook-form) statt Greenlight 2 (Rails-Form).
+          // Feld-IDs: #signInFormEmail / #signInFormPwd, Submit-Button im Formular.
+          // Die alten Greenlight-2-Selektoren (#session_email/#session_password/
+          // .signin-button) bleiben als Fallback erhalten.
+          //
+          // react-hook-form registriert einen React-onChange-Handler; ein direkt
+          // gesetztes .value wird von React ignoriert. Deshalb der native Setter
+          // plus ein gebubbletes 'input'-Event.
+          const bbbResult = await webview.executeJavaScript(`
+            (async function() {
+              try {
+                ${SAFE_FOCUS_HELPER_JS}
+                const findFields = () => ({
+                  emailInput: document.querySelector('#signInFormEmail') ||
+                              document.querySelector('#session_email'),
+                  passwordInput: document.querySelector('#signInFormPwd') ||
+                                 document.querySelector('#session_password'),
+                });
+
+                // Greenlight 3 rendert das Formular clientseitig. Auf der
+                // Loginroute kurz auf die Felder warten, sonst sofort abbrechen.
+                const onSignInRoute = /\\/(signin)\\/?$/.test(window.location.pathname);
+                let { emailInput, passwordInput } = findFields();
+                if (onSignInRoute) {
+                  for (let i = 0; i < 50 && !(emailInput && passwordInput); i++) {
+                    await new Promise((r) => setTimeout(r, 100));
+                    ({ emailInput, passwordInput } = findFields());
+                  }
+                }
+
+                if (!emailInput || !passwordInput) {
+                  // Kein Loginformular -> entweder bereits angemeldet oder
+                  // gerade auf einer anderen Greenlight-Seite (/rooms, /rooms/<id>/join)
+                  return 'NO_FORM';
+                }
+
+                const setValue = (el, value) => {
+                  const setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                  ).set;
+                  setter.call(el, value);
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                };
+
+                __bbzSafeFocus(emailInput);
+                setValue(emailInput, ${JSON.stringify(emailAddress)});
+                setValue(passwordInput, ${JSON.stringify(bbbPassword)});
+
+                const form = emailInput.closest('form');
+                const submitButton =
+                  (form && form.querySelector('button[type="submit"], input[type="submit"]')) ||
+                  document.querySelector('.signin-button');
+
+                if (submitButton) {
+                  submitButton.click();
+                  return 'SUBMITTED';
+                }
+                if (form && typeof form.requestSubmit === 'function') {
+                  form.requestSubmit();
+                  return 'SUBMITTED';
+                }
+                return 'NO_SUBMIT_BUTTON';
+              } catch (err) {
+                return 'ERROR: ' + err.message;
+              }
+            })()
+          `);
+
+          console.log('[bbb] Login injection result:', bbbResult);
+
+          if (bbbResult === 'NO_FORM') {
+            // Kein Loginformular sichtbar (bereits angemeldet oder andere
+            // Greenlight-Seite). Das war kein Loginversuch — Zähler
+            // zurücknehmen, damit ein späteres Abmelden wieder einen
+            // Auto-Login erlaubt.
+            loginAttempts.current[id] = Math.max(0, (loginAttempts.current[id] || 1) - 1);
+            break;
+          }
+
+          if (bbbResult === 'SUBMITTED') {
+            // Save credentials after successful login
+            await window.electron.saveCredentials({
+              service: 'bbzcloud',
+              account: 'bbbPassword',
+              password: bbbPassword
+            });
+          }
           break;
+        }
 
         case 'handbook':
           // Check if login form exists and wait for it if necessary
@@ -1171,7 +1360,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 const loggedIn = document.querySelector('.user-menu') ||
                                document.querySelector('.dashboard') ||
                                document.querySelector('.main-content');
-                const onEncryptionPage = document.body.textContent.includes('Verschlüsselungskennwort') || document.body.textContent.includes('Smartphone');
+
+                // Verschlüsselungsseite an konkreten Elementen erkennen, nicht am
+                // Seitentext: 'Verschlüsselungskennwort'/'Smartphone' kommen auch
+                // in der eingeloggten App vor (Einstellungen, Chatnachrichten) und
+                // haben die Injection dauerhaft weiterlaufen lassen.
+                const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn =>
+                  btn.textContent.includes('Durch dein Verschlüsselungskennwort')
+                );
+                const onEncryptionPage = !!encryptionButton || !!encryptionInput;
 
                 const state = {
                   emailInput: !!emailInput,
@@ -1207,6 +1404,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const result = await webview.executeJavaScript(`
                 (function() {
                   try {
+                    ${SAFE_FOCUS_HELPER_JS}
                     const emailInput = document.querySelector('input#username[type="text"]');
                     const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
 
@@ -1223,8 +1421,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       // Method 2: Also set value directly (fallback)
                       emailInput.value = ${JSON.stringify(emailAddress)};
                       
-                      emailInput.focus();
-                      emailInput.select();
+                      // Fokus nur übernehmen, wenn der Nutzer nicht gerade
+                      // woanders tippt (sonst springt der Cursor heraus).
+                      __bbzSafeFocus(emailInput);
+                      if (document.activeElement === emailInput) emailInput.select();
 
                       // Trigger Angular events in correct order
                       const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
@@ -1264,6 +1464,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const result = await webview.executeJavaScript(`
                 (function() {
                   try {
+                    ${SAFE_FOCUS_HELPER_JS}
                     // Find password input but exclude encryption password field
                     const allPasswordInputs = document.querySelectorAll('input[type="password"]');
                     let passwordInput = null;
@@ -1301,8 +1502,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       
                       // Also set directly as fallback
                       passwordInput.value = ${JSON.stringify(password)};
-                      
-                      passwordInput.focus();
+
+                      __bbzSafeFocus(passwordInput);
 
                       // Trigger Angular events
                       const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
@@ -1414,6 +1615,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               const result = await webview.executeJavaScript(`
                 (function() {
                   try {
+                    ${SAFE_FOCUS_HELPER_JS}
                     const passwordInputs = document.querySelectorAll('input[type="password"]');
                     const weiterButton = Array.from(document.querySelectorAll('button')).find(btn =>
                       btn.textContent.includes('Weiter')
@@ -1444,7 +1646,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       nativeInputValueSetter.call(encryptionInput, ${JSON.stringify(schulcloudEncryptionPassword)});
                       
                       encryptionInput.value = ${JSON.stringify(schulcloudEncryptionPassword)};
-                      encryptionInput.focus();
+                      __bbzSafeFocus(encryptionInput);
 
                       // Trigger Angular events
                       const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
@@ -2023,6 +2225,22 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       console.error(`Error injecting credentials for ${id}:`, error);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pro App immer nur eine Injection gleichzeitig.
+  //
+  // Mehrere Auslöser (dom-ready, did-navigate, periodischer 2-5s-Check) können
+  // sonst parallel laufen. Da die Login-Handler zwischendurch warten (sleep,
+  // setTimeout vor dem Klick), überholen sich die Läufe, klicken doppelt und
+  // setzen wiederholt den Fokus — genau das reisst den Cursor aus Textfeldern.
+  const injectCredentials = useCallback(async (webview, id) => {
+    if (!webview || injectionInFlight.current[id]) return;
+    injectionInFlight.current[id] = true;
+    try {
+      await injectCredentialsImpl(webview, id);
+    } finally {
+      injectionInFlight.current[id] = false;
+    }
+  }, [injectCredentialsImpl]);
 
   // Listen for system resume events — reload webviews with special handling per app
   useEffect(() => {
