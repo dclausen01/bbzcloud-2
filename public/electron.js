@@ -9,7 +9,6 @@ const decompress = util.promisify(zlib.gunzip);
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
-const keytar = require('keytar');
 const fs = require('fs-extra');
 const { Notification } = require('electron');
 const os = require('os');
@@ -18,6 +17,7 @@ const DatabaseService = require('./services/DatabaseService');
 const viewManager = require('./services/ViewManager');
 const overlayWindow = require('./services/OverlayWindow');
 const { shouldOpenExternally } = require('./services/externalLinks');
+const credentialStore = require('./services/CredentialStore');
 
 // Update check interval (15 minutes)
 const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
@@ -903,7 +903,9 @@ async function createWebviewWindow(url, title) {
 
 async function getCredentials(service, account) {
   try {
-    return await keytar.getPassword(service, account);
+    // Liest aus dem gebündelten Keychain-Eintrag (siehe CredentialStore) —
+    // ein Zugriff für alle Felder statt einer Schlüsselbund-Abfrage pro Feld.
+    return await credentialStore.get(service, account);
   } catch (error) {
     console.error('Error getting credentials:', error);
     return null;
@@ -1164,8 +1166,8 @@ app.on('before-quit', () => {
 ipcMain.handle('save-credentials', async (event, { service, account, password }) => {
   try {
     // Always save to keytar (primary storage)
-    await keytar.setPassword(service, account, password);
-    
+    await credentialStore.set(service, account, password);
+
     // Also save to database as encrypted fallback
     try {
       // If saving the password account, set it as encryption key first
@@ -1189,8 +1191,8 @@ ipcMain.handle('save-credentials', async (event, { service, account, password })
 ipcMain.handle('delete-credentials', async (event, { service, account }) => {
   try {
     // Delete from keytar
-    await keytar.deletePassword(service, account);
-    
+    await credentialStore.remove(service, account);
+
     // Also delete from database fallback
     try {
       await db.deleteCredential(service, account);
@@ -1261,11 +1263,12 @@ ipcMain.handle('restore-credentials-from-db', async (event, { service }) => {
   try {
     const creds = await db.getAllCredentials(service);
     const accounts = Object.keys(creds);
-    
-    for (const account of accounts) {
-      await keytar.setPassword(service, account, creds[account]);
+
+    // In einem Schreibvorgang statt einem Keychain-Eintrag pro Feld
+    if (accounts.length > 0) {
+      await credentialStore.setMany(service, creds);
     }
-    
+
     return { success: true, restoredCount: accounts.length };
   } catch (error) {
     console.error('Error in restore-credentials-from-db:', error);
@@ -1871,7 +1874,7 @@ app.on('before-quit', async () => {
 // Get encryption password from keytar
 async function getEncryptionPassword() {
   try {
-    const password = await keytar.getPassword('bbzcloud', 'password');
+    const password = await credentialStore.get('bbzcloud', 'password');
     if (!password) {
       throw new Error('Kein Passwort in den Einstellungen gefunden');
     }
@@ -1886,7 +1889,7 @@ async function getEncryptionPassword() {
 // Secure store handlers
 ipcMain.handle('check-secure-store-access', async () => {
   try {
-    const password = await keytar.getPassword('bbzcloud', 'password');
+    const password = await credentialStore.get('bbzcloud', 'password');
     if (!password) {
       return { 
         success: false, 
