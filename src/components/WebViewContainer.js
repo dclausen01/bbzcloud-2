@@ -239,6 +239,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // 2-5 s) können sonst eine noch laufende Injection überholen — das führt zu
   // doppelten Klicks und mehrfachem Fokus-Setzen im selben Formular.
   const injectionInFlight = useRef({});
+  // Auslöser, die während einer laufenden Injection kamen und danach
+  // nachgezogen werden müssen (siehe injectCredentials weiter unten).
+  const injectionRerunRef = useRef({});
   const MAX_LOGIN_ATTEMPTS = 3;
 
   // Translate error codes to user-friendly German messages
@@ -387,6 +390,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     } catch (error) {
       console.warn('Error setting up download progress listener:', error);
     }
+  }, []);
+
+  // Zugangsdaten einmal vorab laden, noch bevor die ersten Injections starten.
+  //
+  // Der erste Schlüsselbund-Zugriff öffnet auf macOS einen Systemdialog und
+  // wartet auf die Bestätigung. Läuft das erst innerhalb der ersten Injection,
+  // hängt diese mit — und in dieser Zeit kommen die Loginseiten der Apps hoch,
+  // ohne dass jemand sie ausfüllt. Vorab geladen liegen die Daten im Cache des
+  // Main-Prozesses, und alle Injections greifen ohne Wartezeit darauf zu.
+  useEffect(() => {
+    if (!window.electron?.getCredentials) return;
+    window.electron.getCredentials({ service: 'bbzcloud', account: 'email' })
+      .then(() => console.log('[Credentials] Schlüsselbund vorgeladen'))
+      .catch((error) => console.warn('[Credentials] Vorladen fehlgeschlagen:', error?.message));
   }, []);
 
   // -------------------------------------------------------------------------
@@ -2303,12 +2320,36 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // sonst parallel laufen. Da die Login-Handler zwischendurch warten (sleep,
   // setTimeout vor dem Klick), überholen sich die Läufe, klicken doppelt und
   // setzen wiederholt den Fokus — genau das reisst den Cursor aus Textfeldern.
+  // Ein überholter Auslöser wird NICHT verworfen, sondern vorgemerkt und nach
+  // dem laufenden Versuch einmal nachgezogen.
+  //
+  // Wichtig, weil ein Versuch lange hängen kann: der erste Zugriff auf den
+  // Schlüsselbund öffnet auf macOS einen Systemdialog und wartet, bis der
+  // Nutzer bestätigt. Wurden Auslöser in dieser Zeit einfach verworfen, ging
+  // die gesamte Wiederholungskette verloren — der Auto-Login blieb dann bis
+  // zum nächsten ausdrücklichen Reload liegen.
   const injectCredentials = useCallback(async (webview, id) => {
-    if (!webview || injectionInFlight.current[id]) return;
+    if (!webview) return;
+
+    if (injectionInFlight.current[id]) {
+      injectionRerunRef.current[id] = webview;
+      return;
+    }
+
     injectionInFlight.current[id] = true;
     try {
-      await injectCredentialsImpl(webview, id);
+      let target = webview;
+      // Begrenzt, damit sich nichts endlos im Kreis dreht
+      for (let round = 0; round < 3; round++) {
+        injectionRerunRef.current[id] = null;
+        await injectCredentialsImpl(target, id);
+        const pending = injectionRerunRef.current[id];
+        if (!pending) break;
+        console.log(`[${id}] Auslöser während laufender Injection - ziehe nach`);
+        target = pending;
+      }
     } finally {
+      injectionRerunRef.current[id] = null;
       injectionInFlight.current[id] = false;
     }
   }, [injectCredentialsImpl]);
