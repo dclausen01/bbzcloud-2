@@ -108,6 +108,98 @@ const SAFE_FOCUS_HELPER_JS = `
   };
 `;
 
+
+// ---------------------------------------------------------------------------
+// Login-Wächter
+// ---------------------------------------------------------------------------
+
+// Wie oft geprüft wird, ob eine App eine Loginmaske zeigt.
+const LOGIN_WATCHER_INTERVAL_MS = 2500;
+
+// Apps, deren Loginmaske asynchron erscheint oder mehrstufig ist. Der Wächter
+// prüft mit diesen Snippets im Seitenkontext, ob noch eine Anmeldung aussteht.
+//
+// Diese Prüfungen liefen früher in fünf einzelnen Intervallen, die erst im
+// dom-ready-Handler gestartet wurden. Wurde dieses Ereignis verpasst oder lief
+// die erste Injection zu früh, existierte überhaupt kein Wiederholungs-
+// mechanismus — der Login blieb bis zum nächsten ausdrücklichen Reload liegen.
+const LOGIN_WATCHERS = {
+  schulportal: `(function() {
+                const u = document.querySelector('input#username');
+                const p = document.querySelector('input#password');
+                const s = document.querySelector('input#kc-login[type="submit"]');
+                return !!(u && p && s);
+              })()`,
+  nextcloud: `(function() {
+                const adfs = document.querySelector('a[href*="user_saml/saml/login"]') ||
+                             Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
+                const u = document.querySelector('#userNameInput');
+                const p = document.querySelector('#passwordInput');
+                const ja = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                const ok = document.querySelector('#header') || document.querySelector('.app-navigation') ||
+                           document.querySelector('#nextcloud') || window.location.href.includes('/apps/');
+                return (adfs || u || p || ja) && !ok;
+              })()`,
+  office: `(function() {
+                const email = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
+                const pass  = document.querySelector('input[name="passwd"]#i0118[type="password"]');
+                const weiter   = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
+                const anmelden = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
+                const ja   = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                const tile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
+                const ok   = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
+                return (email || pass || weiter || anmelden || ja || tile) && !ok;
+              })()`,
+  schulcloud: `(async function() {
+                const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
+                if (isBbzChat) {
+                  const loginForm = document.querySelector('input[type="email"]');
+                  if (!loginForm) return false;
+                  const token = localStorage.getItem('schulchat_token');
+                  if (!token) return true;
+                  // Validate token; remove if expired so re-login proceeds
+                  try {
+                    const r = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+                    if (!r.ok) {
+                      localStorage.removeItem('schulchat_token');
+                      return true;
+                    }
+                    return false;
+                  } catch (_) {
+                    return false; // network error — assume valid
+                  }
+                }
+                // Die Verschlüsselungsseite wird an konkreten Elementen erkannt,
+                // nicht mehr an document.body.textContent auf 'Verschlüsselungskennwort'
+                // — dieser Text steht in der eingeloggten App auch in Einstellungen
+                // und Chatnachrichten. Dadurch lief die Injection alle 5 s dauerhaft
+                // weiter und riss den Cursor aus dem Eingabefeld.
+                //
+                // Bewusst ohne Sichtbarkeitsprüfung: ein zu enger Test kann das
+                // Zeitfenster verpassen, in dem der Login noch möglich wäre.
+                const emailInput = document.querySelector('input#username[type="text"]');
+                const passwordInputs = document.querySelectorAll('input[type="password"]');
+                const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => btn.textContent.includes('Durch dein Verschlüsselungskennwort'));
+                const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
+                if (loggedIn) return false;
+                return !!emailInput || passwordInputs.length > 0 || !!encryptionButton;
+              })()`,
+  webuntis: `(function() {
+                // Passwortfeld ODER die WebUntis-Loginmaske verlangen. Vorher
+                // genügte ein beliebiges <form> — das trifft auch die eingeloggte
+                // Oberfläche und liess die Injection alle 2 s weiterlaufen.
+                //
+                // Bewusst OHNE Sichtbarkeitsprüfung: die Maske wird asynchron
+                // eingeblendet, und ein zu enger Test verpasst genau das Zeitfenster,
+                // in dem der Login noch möglich wäre.
+                const passInput = document.querySelector('input[type="password"]');
+                const loginForm = document.querySelector('.un2-login-form');
+                if (!passInput && !loginForm) return false;
+                const authLabel = document.querySelector('.un-input-group__label');
+                return !authLabel || authLabel.textContent !== 'Bestätigungscode';
+              })()`,
+};
+
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   // Expose navigation methods through ref
   React.useImperativeHandle(ref, () => ({
@@ -242,6 +334,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Auslöser, die während einer laufenden Injection kamen und danach
   // nachgezogen werden müssen (siehe injectCredentials weiter unten).
   const injectionRerunRef = useRef({});
+  // Sperrzeiten pro Host, nur im Speicher (siehe WebUntis-Handler)
+  const loginCooldownRef = useRef({});
   const MAX_LOGIN_ATTEMPTS = 3;
 
   // Translate error codes to user-friendly German messages
@@ -597,70 +691,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // Reset on each dom-ready so session-expiry triggers re-injection
           credsAreSet.current[appId] = false;
           injectCredentials(proxy, appId);
-          // Periodic check in case login form reappears without a navigation
-          clearInterval(wcvIntervalsRef.current[appId]);
-          wcvIntervalsRef.current[appId] = setInterval(async () => {
-            try {
-              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
-                const u = document.querySelector('input#username');
-                const p = document.querySelector('input#password');
-                const s = document.querySelector('input#kc-login[type="submit"]');
-                return !!(u && p && s);
-              })()`);
-              if (needsLogin) {
-                credsAreSet.current[appId] = false;
-                injectCredentials(getWcvProxy(appId), appId);
-              }
-            } catch (_) {}
-          }, 5000);
 
         } else if (appId === 'nextcloud') {
           // Multi-step ADFS chain: reset on every dom-ready so each step can inject
           credsAreSet.current[appId] = false;
           injectCredentials(proxy, appId);
-          clearInterval(wcvIntervalsRef.current[appId]);
-          wcvIntervalsRef.current[appId] = setInterval(async () => {
-            try {
-              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
-                const adfs = document.querySelector('a[href*="user_saml/saml/login"]') ||
-                             Array.from(document.querySelectorAll('a')).find(a => a.textContent.trim() === 'BBZ ADFS');
-                const u = document.querySelector('#userNameInput');
-                const p = document.querySelector('#passwordInput');
-                const ja = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                const ok = document.querySelector('#header') || document.querySelector('.app-navigation') ||
-                           document.querySelector('#nextcloud') || window.location.href.includes('/apps/');
-                return (adfs || u || p || ja) && !ok;
-              })()`);
-              if (needsLogin) {
-                credsAreSet.current[appId] = false;
-                injectCredentials(getWcvProxy(appId), appId);
-              }
-            } catch (_) {}
-          }, 5000);
 
         } else if (appId === 'office') {
           // Multi-step Microsoft login: reset on every dom-ready
           credsAreSet.current[appId] = false;
           injectCredentials(proxy, appId);
-          clearInterval(wcvIntervalsRef.current[appId]);
-          wcvIntervalsRef.current[appId] = setInterval(async () => {
-            try {
-              const needsLogin = await window.electron.view.executeJavaScript(appId, `(function() {
-                const email = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                const pass  = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                const weiter   = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                const anmelden = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                const ja   = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                const tile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                const ok   = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
-                return (email || pass || weiter || anmelden || ja || tile) && !ok;
-              })()`);
-              if (needsLogin) {
-                credsAreSet.current[appId] = false;
-                injectCredentials(getWcvProxy(appId), appId);
-              }
-            } catch (_) {}
-          }, 5000);
 
         } else if (appId === 'outlook') {
           // Each ADFS navigation step fires dom-ready — reset so every step can inject
@@ -670,85 +710,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         } else if (appId === 'schulcloud') {
           // schulcloud never sets credsAreSet = true (multi-step login manages its own state)
           injectCredentials(proxy, appId);
-          // 5s periodic check — mirrors the webview's checkSchulCloudLogin interval
-          clearInterval(wcvIntervalsRef.current[appId]);
-          wcvIntervalsRef.current[appId] = setInterval(async () => {
-            try {
-              const currentUrl = wcvUrlsRef.current[appId] || '';
-              const isBbzChatPage = currentUrl.includes('chat.bbz-rd-eck.com');
-              const needsLogin = await window.electron.view.executeJavaScript(appId, `(async function() {
-                const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
-                if (isBbzChat) {
-                  const loginForm = document.querySelector('input[type="email"]');
-                  if (!loginForm) return false;
-                  const token = localStorage.getItem('schulchat_token');
-                  if (!token) return true;
-                  // Validate token; remove if expired so re-login proceeds
-                  try {
-                    const r = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
-                    if (!r.ok) {
-                      localStorage.removeItem('schulchat_token');
-                      return true;
-                    }
-                    return false;
-                  } catch (_) {
-                    return false; // network error — assume valid
-                  }
-                }
-                // Die Verschlüsselungsseite wird an konkreten Elementen erkannt,
-                // nicht mehr an document.body.textContent auf 'Verschlüsselungskennwort'
-                // — dieser Text steht in der eingeloggten App auch in Einstellungen
-                // und Chatnachrichten. Dadurch lief die Injection alle 5 s dauerhaft
-                // weiter und riss den Cursor aus dem Eingabefeld.
-                //
-                // Bewusst ohne Sichtbarkeitsprüfung: ein zu enger Test kann das
-                // Zeitfenster verpassen, in dem der Login noch möglich wäre.
-                const emailInput = document.querySelector('input#username[type="text"]');
-                const passwordInputs = document.querySelectorAll('input[type="password"]');
-                const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => btn.textContent.includes('Durch dein Verschlüsselungskennwort'));
-                const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
-                if (loggedIn) return false;
-                return !!emailInput || passwordInputs.length > 0 || !!encryptionButton;
-              })()`);
-              if (isBbzChatPage && needsLogin) {
-                setBbzChatLoginActive(true);
-              } else {
-                setBbzChatLoginActive(false);
-              }
-              if (needsLogin) {
-                credsAreSet.current[appId] = false;
-                injectCredentials(getWcvProxy(appId), appId);
-              }
-            } catch (_) {}
-          }, 5000);
 
         } else if (appId === 'webuntis') {
-          // 2s interval (same as webview path) — WebUntis login form loads async
           credsAreSet.current[appId] = false;
           injectCredentials(proxy, appId);
-          clearInterval(wcvIntervalsRef.current[appId]);
-          wcvIntervalsRef.current[appId] = setInterval(async () => {
-            try {
-              const isLoginPage = await window.electron.view.executeJavaScript(appId, `(function() {
-                // Passwortfeld ODER die WebUntis-Loginmaske verlangen. Vorher
-                // genügte ein beliebiges <form> — das trifft auch die eingeloggte
-                // Oberfläche und liess die Injection alle 2 s weiterlaufen.
-                //
-                // Bewusst OHNE Sichtbarkeitsprüfung: die Maske wird asynchron
-                // eingeblendet, und ein zu enger Test verpasst genau das Zeitfenster,
-                // in dem der Login noch möglich wäre.
-                const passInput = document.querySelector('input[type="password"]');
-                const loginForm = document.querySelector('.un2-login-form');
-                if (!passInput && !loginForm) return false;
-                const authLabel = document.querySelector('.un-input-group__label');
-                return !authLabel || authLabel.textContent !== 'Bestätigungscode';
-              })()`);
-              if (isLoginPage) {
-                credsAreSet.current[appId] = false;
-                injectCredentials(getWcvProxy(appId), appId);
-              }
-            } catch (_) {}
-          }, 2000);
 
         } else if (appId === 'wiki') {
           // Reset on each dom-ready so session-expiry/logout triggers re-injection
@@ -885,8 +850,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       switch (id.toLowerCase()) {
         case 'webuntis':
           try {
-            // Check cooldown period (15 minutes) to avoid disrupting 2FA process
-            const COOLDOWN_MINUTES_WEBUNTIS = 15;
+            // Sperre gegen zu haeufige Loginversuche (schuetzt den 2FA-Ablauf).
+            // Frueher 15 Minuten und in localStorage — damit ueberlebte sie den
+            // App-Neustart und blockierte den Auto-Login selbst dann, wenn
+            // gerade eine frische Loginmaske dastand. Jetzt kuerzer und nur im
+            // Speicher, ein Neustart raeumt sie also auf.
+            const COOLDOWN_MINUTES_WEBUNTIS = 3;
             
             // Use hostname-specific key to allow testing on new URLs without waiting
             let hostname = 'unknown';
@@ -894,13 +863,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               hostname = new URL(webview.getURL()).hostname;
             } catch (e) { console.warn('Could not get hostname for cooldown key'); }
             
-            const storageKey = `webuntis_last_login_attempt_${hostname}`;
-            const lastLoginAttemptWebuntis = localStorage.getItem(storageKey);
+            const cooldownKey = `webuntis_${hostname}`;
+            const lastLoginAttemptWebuntis = loginCooldownRef.current[cooldownKey];
             const nowWebuntis = Date.now();
             
             if (lastLoginAttemptWebuntis) {
               const timeSinceLastAttempt = nowWebuntis - parseInt(lastLoginAttemptWebuntis, 10);
-              const cooldownPeriod = COOLDOWN_MINUTES_WEBUNTIS * 60 * 1000; // 15 minutes in milliseconds
+              const cooldownPeriod = COOLDOWN_MINUTES_WEBUNTIS * 60 * 1000;
               
               if (timeSinceLastAttempt < cooldownPeriod) {
                 const remainingMinutes = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / (60 * 1000));
@@ -1087,8 +1056,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
             // Store timestamp only if login button was actually clicked (success or unknown state)
             if (loginAttemptResult === 'SUCCESS' || loginAttemptResult === true) {
-              localStorage.setItem(storageKey, nowWebuntis.toString());
-              console.log(`WebUntis login attempted for ${hostname}. 15-minute cooldown started.`);
+              loginCooldownRef.current[cooldownKey] = nowWebuntis;
+              console.log(`WebUntis login attempted for ${hostname}. ${COOLDOWN_MINUTES_WEBUNTIS}-minute cooldown started.`);
             }
 
           } catch (error) {
@@ -2353,6 +2322,54 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       injectionInFlight.current[id] = false;
     }
   }, [injectCredentialsImpl]);
+
+  // -------------------------------------------------------------------------
+  // Login-Wächter — ein Timer für alle Apps, ab dem Mount
+  // -------------------------------------------------------------------------
+  //
+  // Läuft bewusst unabhängig von dom-ready. Vorher hing jede Wiederholung an
+  // diesem Ereignis: wurde es verpasst oder lief die erste Injection zu früh
+  // (Loginmaske noch nicht gerendert), gab es überhaupt keinen Wiederholungs-
+  // mechanismus mehr. Genau daher kam "läuft, aber oft erst nach manuellem
+  // Reload".
+  useEffect(() => {
+    const tick = async () => {
+      for (const [appId, check] of Object.entries(LOGIN_WATCHERS)) {
+        if (!WCV_APPS.has(appId)) continue;
+        // Bei falschen Zugangsdaten nicht weiter hämmern
+        if (failedLogins.current[appId]) continue;
+
+        try {
+          const needsLogin = await window.electron.view.executeJavaScript(appId, check);
+
+          if (appId === 'schulcloud') {
+            const onChat = (wcvUrlsRef.current[appId] || '').includes('chat.bbz-rd-eck.com');
+            setBbzChatLoginActive(!!(onChat && needsLogin));
+          }
+
+          if (!needsLogin) continue;
+
+          // Solange eine Loginmaske sichtbar ist, wird weiter versucht.
+          //
+          // Der Versuchszähler wird mit zurückgesetzt: sonst brauchen drei
+          // Läufe, die gar kein Formular vorgefunden haben (Seite noch nicht
+          // fertig), das Budget von MAX_LOGIN_ATTEMPTS auf — und die App gibt
+          // für den Rest der Sitzung auf, obwohl nie ein echter Loginversuch
+          // stattgefunden hat.
+          credsAreSet.current[appId] = false;
+          loginAttempts.current[appId] = 0;
+          injectCredentials(getWcvProxy(appId), appId);
+        } catch (_) {
+          // View existiert noch nicht oder die Seite lädt gerade — nächster Tick
+        }
+      }
+    };
+
+    const timer = setInterval(tick, LOGIN_WATCHER_INTERVAL_MS);
+    return () => clearInterval(timer);
+  // injectCredentials und getWcvProxy sind stabile useCallbacks
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Listen for system resume events — reload webviews with special handling per app
   useEffect(() => {

@@ -90,6 +90,33 @@ durch parallele `Promise.all`-Ladevorgänge auch noch gleichzeitig stapelten.
   eine andere App, die Keychain-ACL greift nicht mehr und selbst „Immer
   erlauben" hält nicht. Behebbar nur per Signierung + Notarisierung.
 
+### Login-Wächter (`LOGIN_WATCHERS` in `WebViewContainer.js`)
+**Ein** Timer prüft ab dem Mount alle 2,5 s, ob eine App noch eine Loginmaske
+zeigt, und stösst dann die Injection an. Er läuft bewusst unabhängig von
+`dom-ready`.
+
+Vorher gab es fünf einzelne Intervalle, die erst *im* `dom-ready`-Handler
+gestartet wurden. Wurde das Ereignis verpasst oder lief die erste Injection zu
+früh (Maske noch nicht gerendert), existierte überhaupt kein Wiederholungs-
+mechanismus — der Login blieb bis zum nächsten ausdrücklichen Reload liegen.
+Das war die Ursache von „läuft, aber oft erst nach manuellem Reload".
+
+Beim Ändern beachten:
+- **`loginAttempts` mit zurücksetzen**, solange eine Loginmaske sichtbar ist.
+  Sonst brauchen Läufe, die gar kein Formular vorgefunden haben, das Budget
+  von `MAX_LOGIN_ATTEMPTS` (3) auf, und die App gibt für den Rest der Sitzung
+  auf, ohne je einen echten Loginversuch gemacht zu haben.
+- **`failedLogins` stoppt den Wächter** — nur so hört er bei tatsächlich
+  falschen Zugangsdaten auf.
+- **Ein überholter Auslöser wird vorgemerkt, nicht verworfen**
+  (`injectionRerunRef`). Der erste Schlüsselbund-Zugriff kann auf macOS
+  minutenlang am Systemdialog hängen; verworfene Auslöser in dieser Zeit
+  bedeuten verlorene Loginversuche.
+- **Sperrzeiten gehören in den Speicher, nicht in `localStorage`.** Die
+  WebUntis-Sperre lag früher dort und überlebte den App-Neustart — sie
+  blockierte den Auto-Login dann selbst bei frisch dastehender Loginmaske.
+  (Der `antraege`-Handler nutzt noch das alte Muster.)
+
 ### Fokus-Schutz bei der Credential-Injection
 Symptom, wenn das fehlt: Der Cursor springt in WebViews immer wieder aus
 Textfeldern heraus, Eingaben sind praktisch unmöglich. Ursache sind die
