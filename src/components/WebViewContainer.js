@@ -516,10 +516,19 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         console.error(`[WCV] Failed to create view for ${id}:`, err)
       );
     }
-    // Cleanup: destroy WCV views and clear any periodic intervals on unmount
+    // Cleanup: NUR die Timer stoppen — die Views bleiben bestehen.
+    //
+    // Vorher wurden hier alle WebContentsViews zerstoert. Wird die Komponente
+    // waehrend des Starts neu aufgebaut (der SettingsProvider haengt den
+    // gesamten Baum ab, sobald er die Einstellungen nachlaedt), riss das
+    // mitten im Laden alle Seiten weg — samt der laufenden Anmeldungen.
+    // Je nachdem, wann das passierte, klappte der Login oder eben nicht.
+    //
+    // Die Views gehoeren ohnehin zur Lebensdauer der App und werden beim
+    // Beenden vom Main-Prozess abgeraeumt. Ein erneutes create() ist ein
+    // No-op, solange die View existiert — der Neuaufbau ist damit harmlos.
     return () => {
       for (const id of WCV_APPS) {
-        window.electron.view.destroy(id).catch(() => {});
         clearInterval(wcvIntervalsRef.current[id]);
       }
     };

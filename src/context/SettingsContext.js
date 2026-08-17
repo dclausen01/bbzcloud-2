@@ -183,6 +183,8 @@ export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(defaultSettings);
   const [customApps, setCustomApps] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Ist der erste Ladevorgang durch? Steuert nur den Ladebildschirm (s. unten).
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [updateStatus, setUpdateStatus] = useState('');
 
   // Function to load custom apps
@@ -207,6 +209,7 @@ export function SettingsProvider({ children }) {
     if (!window.electron) {
       console.warn('Electron API not available, using default settings');
       setIsLoading(false);
+      setHasLoadedOnce(true);
       return;
     }
     try {
@@ -253,6 +256,7 @@ export function SettingsProvider({ children }) {
       console.error('Failed to load settings:', error);
     } finally {
       setIsLoading(false);
+      setHasLoadedOnce(true);
     }
   }, []);
 
@@ -457,10 +461,20 @@ export function SettingsProvider({ children }) {
     return () => unsubscribe();
   }, []);
 
-  // Don't render children until settings are loaded
+  // Ladebildschirm NUR beim allerersten Laden.
+  //
+  // Vorher hing das an `isLoading`, das bei jedem Nachladen der Einstellungen
+  // erneut auf true geht. Damit wurde der komplette App-Baum abgehaengt und neu
+  // aufgebaut — inklusive WebViewContainer, der dabei alle WebContentsViews
+  // zerstoert hat. Passierte das waehrend die Loginseiten luden, waren die
+  // laufenden Anmeldungen weg; passierte es frueh genug, fiel es nicht auf.
+  // Genau daher kam die Unzuverlaessigkeit beim Auto-Login.
+  //
+  // Nachfolgende Ladevorgaenge laufen jetzt im Hintergrund; Verbraucher, die
+  // darauf reagieren wollen, lesen weiterhin `isLoading` aus dem Context.
   return (
     <SettingsContext.Provider value={value}>
-      {isLoading ? (
+      {isLoading && !hasLoadedOnce ? (
         <div style={{ 
           display: 'flex', 
           justifyContent: 'center', 
