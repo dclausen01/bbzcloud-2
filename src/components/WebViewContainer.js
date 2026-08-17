@@ -336,6 +336,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const injectionRerunRef = useRef({});
   // Sperrzeiten pro Host, nur im Speicher (siehe WebUntis-Handler)
   const loginCooldownRef = useRef({});
+  // Diagnose des Login-Wächters: Tick-Zähler und letzter berichteter Zustand
+  const watcherTickRef = useRef(0);
+  const watcherLastRef = useRef({});
   const MAX_LOGIN_ATTEMPTS = 3;
 
   // Translate error codes to user-friendly German messages
@@ -670,6 +673,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       } else if (event.type === 'did-stop-loading') {
         setIsLoading(prev => ({ ...prev, [event.appId]: false }));
       } else if (event.type === 'dom-ready') {
+        console.log(`[${event.appId}] dom-ready`);
         const appId = event.appId;
         const proxy = getWcvProxy(appId);
         applyZoom(null, appId);
@@ -819,6 +823,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       }) : null;
 
       if (!emailResult.success || !passwordResult.success || (id === 'bbb' && !bbbPasswordResult?.success)) {
+        console.log(`[${id}] Abbruch: Zugangsdaten nicht lesbar (email/password/bbbPassword)`);
         return;
       }
 
@@ -835,7 +840,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Check login attempt limit (except for Outlook, WebUntis, and schulcloud)
       // schulcloud has a multi-step login process (email -> password -> encryption)
       // and the periodic check may trigger multiple times during this process
-      if (id !== 'outlook' && id !== 'webuntis' && id !== 'schulcloud' && id !== 'nextcloud') {
+      // Zaehler-Limit gilt nur fuer Apps mit einstufigem Login. Die Log-Zeile
+      // laeuft aber fuer ALLE — sonst sind ausgerechnet die mehrstufigen Apps
+      // (outlook, webuntis, schulcloud, nextcloud) im Log unsichtbar, und man
+      // kann nicht unterscheiden, ob eine Injection lief oder nie startete.
+      const countsAttempts =
+        id !== 'outlook' && id !== 'webuntis' && id !== 'schulcloud' && id !== 'nextcloud';
+
+      if (countsAttempts) {
         if (!loginAttempts.current[id]) {
           loginAttempts.current[id] = 0;
         }
@@ -845,6 +857,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         }
         loginAttempts.current[id]++;
         console.log(`[${id}] Login attempt ${loginAttempts.current[id]}/${MAX_LOGIN_ATTEMPTS}`);
+      } else {
+        console.log(`[${id}] Injection gestartet (ohne Versuchslimit)`);
       }
 
       switch (id.toLowerCase()) {
@@ -1065,16 +1079,37 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           }
           break;
 
-        case 'outlook':
-          await webview.executeJavaScript(
-            `document.querySelector('#userNameInput').value = ${JSON.stringify(emailAddress)}; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('#passwordInput').value = ${JSON.stringify(password)}; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('#submitButton').click();`
-          );
+        case 'outlook': {
+          // Alle drei Felder in einem Durchlauf und mit Null-Prüfung.
+          //
+          // Vorher wurde direkt auf querySelector(...).value zugegriffen: fehlt
+          // ein Feld (ADFS-Zwischenseite, bereits angemeldet), wirft das eine
+          // TypeError, executeJavaScript lehnt ab und der gesamte Handler
+          // bricht mit "Error injecting credentials for outlook" ab — noch
+          // bevor irgendetwas anderes passieren konnte.
+          const outlookResult = await webview.executeJavaScript(`
+            (function() {
+              const user = document.querySelector('#userNameInput');
+              const pass = document.querySelector('#passwordInput');
+              const submit = document.querySelector('#submitButton');
+              if (!user || !pass || !submit) {
+                return 'NO_FORM:' + [!!user, !!pass, !!submit].join(',');
+              }
+              user.value = ${JSON.stringify(emailAddress)};
+              pass.value = ${JSON.stringify(password)};
+              submit.click();
+              return 'SUBMITTED';
+            })()
+          `);
+
+          console.log('[outlook] Login injection result:', outlookResult);
+
+          if (outlookResult !== 'SUBMITTED') {
+            // Kein Formular -> nichts als erledigt markieren, damit der
+            // nächste Schritt der ADFS-Kette es erneut versuchen darf
+            credsAreSet.current[id] = false;
+            break;
+          }
 
           // Save credentials after successful login
           await window.electron.saveCredentials({
@@ -1091,18 +1126,32 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           await sleep(5000);
           webview.reload();
           break;
+        }
 
-        case 'moodle':
-          await webview.executeJavaScript(
-            `document.querySelector('input[name="username"][id="username"]').value = ${JSON.stringify(emailAddress.toLowerCase())}; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('input[name="password"][id="password"]').value = ${JSON.stringify(password)}; void(0);`
-          );
-          await webview.executeJavaScript(
-            `document.querySelector('button[type="submit"][id="loginbtn"]').click();`
-          );
+        case 'moodle': {
+          // Ebenfalls mit Null-Prüfung: auf der bereits angemeldeten
+          // Moodle-Startseite gibt es kein Loginformular, und der direkte
+          // Zugriff auf .value warf dort einen Fehler.
+          const moodleResult = await webview.executeJavaScript(`
+            (function() {
+              const user = document.querySelector('input[name="username"][id="username"]');
+              const pass = document.querySelector('input[name="password"][id="password"]');
+              const submit = document.querySelector('button[type="submit"][id="loginbtn"]');
+              if (!user || !pass || !submit) {
+                return 'NO_FORM:' + [!!user, !!pass, !!submit].join(',');
+              }
+              user.value = ${JSON.stringify(emailAddress.toLowerCase())};
+              pass.value = ${JSON.stringify(password)};
+              submit.click();
+              return 'SUBMITTED';
+            })()
+          `);
+          console.log('[moodle] Login injection result:', moodleResult);
+          if (moodleResult !== 'SUBMITTED') {
+            loginAttempts.current[id] = Math.max(0, (loginAttempts.current[id] || 1) - 1);
+          }
           break;
+        }
 
         case 'bbb': {
           // Greenlight 3 (React + react-hook-form) statt Greenlight 2 (Rails-Form).
@@ -2334,13 +2383,43 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Reload".
   useEffect(() => {
     const tick = async () => {
+      watcherTickRef.current += 1;
+      const tickNo = watcherTickRef.current;
+
       for (const [appId, check] of Object.entries(LOGIN_WATCHERS)) {
         if (!WCV_APPS.has(appId)) continue;
         // Bei falschen Zugangsdaten nicht weiter hämmern
         if (failedLogins.current[appId]) continue;
 
         try {
-          const needsLogin = await window.electron.view.executeJavaScript(appId, check);
+          // Die Prüfung wird eingebettet ausgeführt und zusätzlich ein kleines
+          // Abbild der Seite mitgeliefert. Ohne das lässt sich nicht
+          // unterscheiden, ob die Loginmaske fehlt, die Seite noch lädt oder
+          // die Selektoren nicht mehr passen.
+          const probe = await window.electron.view.executeJavaScript(appId, `
+            (async function() {
+              const needsLogin = await (${check});
+              return {
+                needsLogin: !!needsLogin,
+                url: location.href,
+                title: document.title,
+                inputs: document.querySelectorAll('input').length,
+                passwords: document.querySelectorAll('input[type="password"]').length,
+                forms: document.querySelectorAll('form').length,
+                iframes: document.querySelectorAll('iframe').length,
+                ready: document.readyState,
+              };
+            })()
+          `);
+
+          const needsLogin = probe && probe.needsLogin;
+
+          // Bei jeder Änderung berichten, sonst als Lebenszeichen alle ~30 s
+          const fingerprint = JSON.stringify(probe);
+          if (fingerprint !== watcherLastRef.current[appId] || tickNo % 12 === 0) {
+            watcherLastRef.current[appId] = fingerprint;
+            console.log(`[watcher] ${appId}`, probe);
+          }
 
           if (appId === 'schulcloud') {
             const onChat = (wcvUrlsRef.current[appId] || '').includes('chat.bbz-rd-eck.com');
