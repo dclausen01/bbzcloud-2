@@ -951,20 +951,18 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     return 'NO_FORM';
                   }
 
-                  // Function to find React fiber node
+                  // React-Fiber-Zugriff (bleibt als Zusatzweg erhalten)
                   const getFiberNode = (element) => {
-                    const key = Object.keys(element).find(key => 
-                      key.startsWith('__reactFiber$') || 
+                    const key = Object.keys(element).find(key =>
+                      key.startsWith('__reactFiber$') ||
                       key.startsWith('__reactInternalInstance$')
                     );
                     return element[key];
                   };
 
-                  // Function to find React props
                   const getReactProps = (element) => {
                     const fiberNode = getFiberNode(element);
                     if (!fiberNode) return null;
-                    
                     let current = fiberNode;
                     while (current) {
                       if (current.memoizedProps?.onChange) {
@@ -975,92 +973,104 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     return null;
                   };
 
-                  // Fill username
-                  const usernameProps = getReactProps(usernameField);
-                  if (usernameProps?.onChange) {
-                    usernameField.value = ${JSON.stringify(webuntisEmail)};
-                    usernameProps.onChange({
-                      target: usernameField,
-                      currentTarget: usernameField,
-                      type: 'change',
-                      bubbles: true,
-                      cancelable: true,
-                      defaultPrevented: false,
+                  // Wert setzen — nativer Setter plus gebubbeltes input-Event.
+                  //
+                  // Das ist der Weg, der ohne React-Interna auskommt: React
+                  // erkennt die Aenderung ueber den value-Tracker. Der
+                  // Fiber-Weg bleibt als Zusatz erhalten, ist aber nicht mehr
+                  // Voraussetzung — er scheiterte beim ersten Laden, weil
+                  // React zu diesem Zeitpunkt noch nicht am Feld haengt.
+                  const setFieldValue = (el, value) => {
+                    const setter = Object.getOwnPropertyDescriptor(
+                      window.HTMLInputElement.prototype, 'value'
+                    ).set;
+                    setter.call(el, value);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    const props = getReactProps(el);
+                    if (props?.onChange) {
+                      try {
+                        props.onChange({
+                          target: el, currentTarget: el, type: 'change',
+                          bubbles: true, cancelable: true, defaultPrevented: false,
+                          preventDefault: () => {}, stopPropagation: () => {},
+                          isPropagationStopped: () => false, persist: () => {}
+                        });
+                      } catch (e) { /* Zusatzweg darf scheitern */ }
+                    }
+                  };
+
+                  // Setzen und GEGENPRUEFEN. Solange React die Felder noch als
+                  // kontrollierte Komponenten zuruecksetzt, bleiben sie leer —
+                  // dann wird erneut versucht statt blind abzuschicken.
+                  const USER = ${JSON.stringify(webuntisEmail)};
+                  const PASS = ${JSON.stringify(webuntisPassword)};
+
+                  let filled = false;
+                  for (let attempt = 0; attempt < 20 && !filled; attempt++) {
+                    setFieldValue(usernameField, USER);
+                    setFieldValue(passwordField, PASS);
+                    await new Promise(resolve => setTimeout(resolve, 150));
+                    filled = usernameField.value === USER && passwordField.value === PASS;
+                  }
+
+                  if (!filled) {
+                    // Nichts abschicken! Ein leeres Formular wurde frueher als
+                    // Erfolg gewertet, setzte die Sperre und blockierte damit
+                    // jede Wiederholung — genau daran scheiterte der erste Login.
+                    return 'NOT_FILLED';
+                  }
+
+                  // Warten, bis der Button freigegeben ist
+                  for (let i = 0; i < 20 && submitButton.disabled; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                  }
+
+                  if (submitButton.disabled) {
+                    return 'SUBMIT_DISABLED';
+                  }
+
+                  const formProps = getReactProps(form);
+                  if (formProps?.onSubmit) {
+                    formProps.onSubmit({
                       preventDefault: () => {},
                       stopPropagation: () => {},
-                      isPropagationStopped: () => false,
-                      persist: () => {}
+                      target: form,
+                      currentTarget: form,
+                      nativeEvent: new Event('submit')
                     });
+                  } else {
+                    submitButton.click();
                   }
 
-                  // Wait a bit before password
-                  await new Promise(resolve => setTimeout(resolve, 100));
+                  // Wait 2 seconds for response
+                  await new Promise(resolve => setTimeout(resolve, 2000));
 
-                  // Fill password
-                  const passwordProps = getReactProps(passwordField);
-                  if (passwordProps?.onChange) {
-                    passwordField.value = ${JSON.stringify(webuntisPassword)};
-                    passwordProps.onChange({
-                      target: passwordField,
-                      currentTarget: passwordField,
-                      type: 'change',
-                      bubbles: true,
-                      cancelable: true,
-                      defaultPrevented: false,
-                      preventDefault: () => {},
-                      stopPropagation: () => {},
-                      isPropagationStopped: () => false,
-                      persist: () => {}
-                    });
+                  const bodyText = document.body.innerText || '';
+                  if (bodyText.includes('Ungültiger Benutzername und/oder Passwort')) {
+                    return 'INVALID_CREDENTIALS';
                   }
 
-                  // Wait for button to become enabled
-                  await new Promise(resolve => setTimeout(resolve, 500));
-
-                  // Submit form if button is enabled
-                  if (!submitButton.disabled) {
-                    const formProps = getReactProps(form);
-                    if (formProps?.onSubmit) {
-                      formProps.onSubmit({
-                        preventDefault: () => {},
-                        stopPropagation: () => {},
-                        target: form,
-                        currentTarget: form,
-                        nativeEvent: new Event('submit')
-                      });
-                    } else {
-                      const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
-                      form.dispatchEvent(submitEvent);
-                    }
-
-                    // Wait 2 seconds for response
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-
-                    // Check for invalid credentials error message
-                    const bodyText = document.body.innerText || '';
-                    if (bodyText.includes('Ungültiger Benutzername und/oder Passwort')) {
-                      return 'INVALID_CREDENTIALS';
-                    }
-                    
-                    // Only reload if we're not on the authenticator page
-                    const authLabel = document.querySelector('.un-input-group__label');
-                    if (authLabel?.textContent !== 'Bestätigungscode') {
-                      window.location.reload();
-                    }
-                    return 'SUCCESS';
+                  // Only reload if we're not on the authenticator page
+                  const authLabel = document.querySelector('.un-input-group__label');
+                  if (authLabel?.textContent !== 'Bestätigungscode') {
+                    window.location.reload();
                   }
-
-                  return false;
+                  return 'SUCCESS';
                 } catch (error) {
                   return false;
                 }
               })();
             `);
 
-            if (loginAttemptResult === 'NO_FORM' || loginAttemptResult === false) {
-              // Nichts ausgefüllt -> nicht als erledigt markieren, sonst blockiert
-              // credsAreSet jeden weiteren Versuch.
-              console.log('[webuntis] Loginmaske nicht gefunden - Versuch wird wiederholt');
+            if (loginAttemptResult === 'NO_FORM' ||
+                loginAttemptResult === 'NOT_FILLED' ||
+                loginAttemptResult === 'SUBMIT_DISABLED' ||
+                loginAttemptResult === false) {
+              // Es wurde nichts abgeschickt -> weder als erledigt markieren noch
+              // die Sperre setzen. Der Wächter versucht es in Kürze erneut.
+              console.log(`[webuntis] Kein Loginversuch (${loginAttemptResult}) - wird wiederholt`);
               return;
             }
 
