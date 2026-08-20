@@ -116,6 +116,10 @@ const SAFE_FOCUS_HELPER_JS = `
 // Wie oft geprüft wird, ob eine App eine Loginmaske zeigt.
 const LOGIN_WATCHER_INTERVAL_MS = 2500;
 
+// Nach dieser Zeit gilt eine laufende Injection als haengengeblieben und die
+// Sperre wird freigegeben. Laengster regulaerer Durchlauf liegt bei ~15 s.
+const INJECTION_STALE_MS = 45000;
+
 // Apps, deren Loginmaske asynchron erscheint oder mehrstufig ist. Der Wächter
 // prüft mit diesen Snippets im Seitenkontext, ob noch eine Anmeldung aussteht.
 //
@@ -2365,15 +2369,25 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Nutzer bestätigt. Wurden Auslöser in dieser Zeit einfach verworfen, ging
   // die gesamte Wiederholungskette verloren — der Auto-Login blieb dann bis
   // zum nächsten ausdrücklichen Reload liegen.
+  //
+  // Die Sperre verfaellt nach INJECTION_STALE_MS von selbst. Geht das Geraet in
+  // den Standby, waehrend eine Injection laeuft, wird der Renderer der View
+  // angehalten und das executeJavaScript-Promise loest nie auf — die Sperre
+  // blieb dann fuer immer gesetzt und ALLE weiteren Auslöser wurden verworfen.
+  // Genau daran scheiterte die erneute Anmeldung nach dem Aufwachen.
   const injectCredentials = useCallback(async (webview, id) => {
     if (!webview) return;
 
-    if (injectionInFlight.current[id]) {
-      injectionRerunRef.current[id] = webview;
-      return;
+    const startedAt = injectionInFlight.current[id];
+    if (startedAt) {
+      if (Date.now() - startedAt < INJECTION_STALE_MS) {
+        injectionRerunRef.current[id] = webview;
+        return;
+      }
+      console.warn(`[${id}] Vorherige Injection haengt seit ${Math.round((Date.now() - startedAt) / 1000)}s - Sperre wird freigegeben`);
     }
 
-    injectionInFlight.current[id] = true;
+    injectionInFlight.current[id] = Date.now();
     try {
       let target = webview;
       // Begrenzt, damit sich nichts endlos im Kreis dreht
@@ -2387,7 +2401,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       }
     } finally {
       injectionRerunRef.current[id] = null;
-      injectionInFlight.current[id] = false;
+      injectionInFlight.current[id] = null;
     }
   }, [injectCredentialsImpl]);
 
@@ -2482,6 +2496,19 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       Object.keys(credsAreSet.current).forEach(id => {
         credsAreSet.current[id] = false;
       });
+
+      // Injection-Zustand aufräumen. Alles, was beim Einschlafen noch lief, ist
+      // jetzt wertlos: der Renderer der View war angehalten, das zugehörige
+      // executeJavaScript-Promise löst womöglich nie auf. Bliebe die Sperre
+      // stehen, würden alle Auslöser nach dem Aufwachen verworfen und die
+      // erneute Anmeldung fände nie statt.
+      injectionInFlight.current = {};
+      injectionRerunRef.current = {};
+      loginAttempts.current = {};
+
+      // Sperrzeiten verfallen lassen — nach dem Aufwachen ist ein frischer
+      // Loginversuch legitim, auch wenn kurz zuvor einer lief.
+      loginCooldownRef.current = {};
 
       // Reload dropdown app webviews
       Object.keys(webviewRefs.current).forEach(id => {
