@@ -16,7 +16,7 @@ const { v4: uuidv4 } = require('uuid');
 const DatabaseService = require('./services/DatabaseService');
 const viewManager = require('./services/ViewManager');
 const overlayWindow = require('./services/OverlayWindow');
-const { shouldOpenExternally } = require('./services/externalLinks');
+const { shouldOpenExternally, isUnmatchedBbbNavigation } = require('./services/externalLinks');
 const credentialStore = require('./services/CredentialStore');
 
 // Update check interval (15 minutes)
@@ -1737,7 +1737,16 @@ app.on('web-contents-created', (event, contents) => {
   // window.location.replace() — das feuert 'will-navigate'. Beide Events
   // werden geprüft, sonst landet die Konferenz im eingebetteten WebView.
   const handoverToBrowser = (e, url) => {
-    if (!shouldOpenExternally(url)) return;
+    if (!shouldOpenExternally(url)) {
+      // Diagnose: BBB-Navigation, die NICHT als Konferenz erkannt wurde.
+      // Laeuft eine Konferenz doch in der App, steht hier die tatsaechliche
+      // URL — damit ist die Regel gezielt nachziehbar statt geraten.
+      if (isUnmatchedBbbNavigation(url)) {
+        console.log('[BBB] Navigation bleibt in der App:', url);
+      }
+      return;
+    }
+    console.log('[BBB] Konferenz wird extern geoeffnet:', url);
     e.preventDefault();
 
     // Nur das Wrapper-Fenster schließen, das den Link geöffnet hat — niemals
