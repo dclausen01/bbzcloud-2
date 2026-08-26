@@ -8,6 +8,7 @@ import {
   useColorMode,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
+import { getNavbarScale } from '../utils/constants';
 
 function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
   const { colorMode } = useColorMode();
@@ -34,7 +35,12 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
     1.4: baseThreshold + 450,
   };
 
-  const zoomThreshold = zoomThresholds[settings.navbarZoom] || baseThreshold;
+  // Auf zwei Nachkommastellen runden, bevor in der Tabelle gesucht wird.
+  // Der Slider liefert Fliesskommawerte wie 0.8500000000000001, die nie auf
+  // die Objekt-Keys passten — es griff dann stillschweigend immer der
+  // baseThreshold, und die Zoom-Abstufung war wirkungslos.
+  const zoomThreshold =
+    zoomThresholds[Number((settings.navbarZoom ?? 1).toFixed(2))] || baseThreshold;
 
   const showText = windowWidth >= zoomThreshold;
 
@@ -59,7 +65,7 @@ function NavigationBar({ buttons, onButtonClick, onNewWindow }) {
       flexWrap="nowrap"
       flexShrink={0}
       style={{
-        transform: `scale(${settings.navbarZoom - 0.2})`,
+        transform: `scale(${getNavbarScale(settings.navbarZoom)})`,
         transformOrigin: 'center center'
       }}
     >
