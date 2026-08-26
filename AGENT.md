@@ -156,6 +156,14 @@ Schutzmechanismen:
 
 ### Besondere "Quirks" & Workarounds
 - **Session-Reloads**: Webseiten wie **Outlook (OWA)** und **WebUntis** benötigen einen expliziten Reload nach System-Resume (Sleep/Wake), da ihre Sessions sonst ablaufen oder einfrieren. Dies wird im Main Process (`powerMonitor`) behandelt.
+  - **Nur `resume` löst den Reload aus, nicht `unlock-screen`.** Beide Ereignisse
+    schickten früher dasselbe `system-resumed`. Jedes Entsperren des Bildschirms
+    — auch ohne Standby — lud damit alle Apps neu und verwarf Formulareingaben
+    und Scroll-Positionen. `unlock-screen` korrigiert jetzt nur noch die
+    Fensterposition (Monitorwechsel während der Sperre).
+  - Läuft eine Sitzung während eines langen Sperrbildschirms *ohne* Standby ab,
+    fängt das der Login-Wächter ab: er prüft alle 2,5 s auf eine sichtbare
+    Loginmaske — seit dem Outlook-Eintrag auch dort — und injiziert von sich aus.
 - **Benutzer-Filterung**: In `App.js` (`filterNavigationButtons`) wird anhand der E-Mail-Domain (`@bbz-rd-eck.de`) unterschieden, ob der Nutzer Lehrer (alle Apps) oder Schüler (eingeschränkte Apps) ist. Schüler erhalten Zugriff auf: `schulcloud`, `moodle`, `nextcloud`, `cryptpad`, `webuntis`, `wiki`.
 - **macOS Memory Management**: Implementiert eine aggressive Cache-Bereinigung für Bilder und WebViews, um Speicherlecks unter macOS zu verhindern.
 - **Fenster-Sichtbarkeit**: `ensureWindowBoundsVisible` stellt sicher, dass Fenster nicht außerhalb des sichtbaren Bildschirmbereichs wiederhergestellt werden (z.B. bei Monitorwechsel).
