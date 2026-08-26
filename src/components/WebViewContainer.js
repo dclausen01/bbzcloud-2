@@ -20,12 +20,12 @@ import { useViewBoundsBinding } from '../hooks/useWebContentsView';
 // Phase 0:  moodle (simple form-fill login)
 // Phase 2a: wiki, fobizz, taskcards (no auto-login), bbb (simple form-fill)
 // Phase 2b: cryptpad (popup override only), schulportal (periodic form check),
-//           nextcloud (multi-step ADFS/SAML), office (multi-step MS login)
+//           nextcloud (multi-step ADFS/SAML)
 // Phase 2c: outlook (ADFS + clearHistory), schulcloud/BBZ Chat (multi-step +
 //           encryption password), webuntis (React-fiber valueTracker injection)
 const WCV_APPS = new Set([
   'moodle', 'wiki', 'fobizz', 'taskcards', 'bbb',
-  'cryptpad', 'schulportal', 'nextcloud', 'office',
+  'cryptpad', 'schulportal', 'nextcloud',
   'outlook', 'schulcloud', 'webuntis',
 ]);
 
@@ -147,16 +147,6 @@ const LOGIN_WATCHERS = {
                 const ok = document.querySelector('#header') || document.querySelector('.app-navigation') ||
                            document.querySelector('#nextcloud') || window.location.href.includes('/apps/');
                 return (adfs || u || p || ja) && !ok;
-              })()`,
-  office: `(function() {
-                const email = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                const pass  = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                const weiter   = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                const anmelden = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                const ja   = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                const tile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                const ok   = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
-                return (email || pass || weiter || anmelden || ja || tile) && !ok;
               })()`,
   schulcloud: `(async function() {
                 const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
@@ -779,11 +769,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           credsAreSet.current[appId] = false;
           injectCredentials(proxy, appId);
 
-        } else if (appId === 'office') {
-          // Multi-step Microsoft login: reset on every dom-ready
-          credsAreSet.current[appId] = false;
-          injectCredentials(proxy, appId);
-
         } else if (appId === 'outlook') {
           // Each ADFS navigation step fires dom-ready — reset so every step can inject
           credsAreSet.current[appId] = false;
@@ -1398,40 +1383,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           break;
         }
 
-        case 'handbook':
-          // Check if login form exists and wait for it if necessary
-          const formExists = await webview.executeJavaScript(`
-            (async () => {
-              // Wait for form elements to be ready (max 5 seconds)
-              for (let i = 0; i < 50; i++) {
-                const userInput = document.querySelector('#userNameInput');
-                const passwordInput = document.querySelector('#passwordInput');
-                const submitButton = document.querySelector('#submitButton');
-                
-                if (userInput && passwordInput && submitButton) {
-                  return true;
-                }
-                await new Promise(resolve => setTimeout(resolve, 100));
-              }
-              return false;
-            })()
-          `);
-
-          if (formExists) {
-            await webview.executeJavaScript(
-              `document.querySelector('#userNameInput').value = ${JSON.stringify(emailAddress)}; void(0);`
-            );
-            await webview.executeJavaScript(
-              `document.querySelector('#passwordInput').value = ${JSON.stringify(password)}; void(0);`
-            );
-            await webview.executeJavaScript(
-              `document.querySelector('#submitButton').click();`
-            );
-            await sleep(5000);
-            webview.reload();
-          }
-          break;
-
         case 'wiki': {
           const wikiState = await webview.executeJavaScript(`
             (function() {
@@ -1976,115 +1927,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           }
           break;
 
-        case 'antraege':
-          try {
-            // Check cooldown period (15 minutes) to avoid disrupting 2FA process
-            const COOLDOWN_MINUTES_WEBUNTIS = 15;
-            
-            // Use hostname-specific key to allow testing on new URLs without waiting
-            let hostname = 'unknown';
-            try {
-              hostname = new URL(webview.getURL()).hostname;
-            } catch (e) { console.warn('Could not get hostname for cooldown key'); }
-            
-            const storageKey = `webuntis_last_login_attempt_${hostname}`;
-            const lastLoginAttemptWebuntis = localStorage.getItem(storageKey);
-            const nowWebuntis = Date.now();
-            
-            if (lastLoginAttemptWebuntis) {
-              const timeSinceLastAttempt = nowWebuntis - parseInt(lastLoginAttemptWebuntis, 10);
-              const cooldownPeriod = COOLDOWN_MINUTES_WEBUNTIS * 60 * 1000; // 15 minutes in milliseconds
-              
-              if (timeSinceLastAttempt < cooldownPeriod) {
-                const remainingMinutes = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / (60 * 1000));
-                console.log(`WebUntis login cooldown active for ${hostname}. ${remainingMinutes} minutes remaining.`);
-                return;
-              }
-            }
-
-            // Get Anträge credentials (uses WebUntis email/Lehrerkürzel and standard password)
-            const antraegeEmailResult = await window.electron.getCredentials({
-              service: 'bbzcloud',
-              account: 'webuntisEmail'
-            });
-
-            if (!antraegeEmailResult.success || !antraegeEmailResult.password) {
-              return;
-            }
-
-            const antraegeUsername = antraegeEmailResult.password;
-
-            // Inject credentials into the agorum login form
-            const loginResult = await webview.executeJavaScript(`
-              (async () => {
-                try {
-                  // Wait for form to be ready
-                  await new Promise((resolve) => {
-                    const checkForm = () => {
-                      const usernameField = document.querySelector('input[autocomplete="username"]');
-                      const passwordField = document.querySelector('input[autocomplete="current-password"]');
-                      if (usernameField && passwordField) {
-                        resolve();
-                      } else {
-                        setTimeout(checkForm, 100);
-                      }
-                    };
-                    checkForm();
-                  });
-
-                  // Get form elements
-                  const usernameField = document.querySelector('input[autocomplete="username"]');
-                  const passwordField = document.querySelector('input[autocomplete="current-password"]');
-                  const rememberCheckbox = document.querySelector('input.x-form-checkbox[type="button"]');
-                  const loginButton = Array.from(document.querySelectorAll('a.x-btn')).find(btn => 
-                    btn.textContent.includes('Anmelden')
-                  );
-
-                  if (!usernameField || !passwordField || !loginButton) {
-                    return false;
-                  }
-
-                  // Fill username
-                  usernameField.value = ${JSON.stringify(antraegeUsername)};
-                  usernameField.dispatchEvent(new Event('input', { bubbles: true }));
-                  usernameField.dispatchEvent(new Event('change', { bubbles: true }));
-
-                  // Wait a bit
-                  await new Promise(resolve => setTimeout(resolve, 200));
-
-                  // Fill password
-                  passwordField.value = ${JSON.stringify(password)};
-                  passwordField.dispatchEvent(new Event('input', { bubbles: true }));
-                  passwordField.dispatchEvent(new Event('change', { bubbles: true }));
-
-                  // Check "remember me" checkbox if available
-                  if (rememberCheckbox && !rememberCheckbox.closest('.x-form-cb-checked')) {
-                    rememberCheckbox.click();
-                  }
-
-                  // Wait a bit before clicking login
-                  await new Promise(resolve => setTimeout(resolve, 300));
-
-                  // Click login button
-                  if (loginButton) {
-                    loginButton.click();
-                    return true;
-                  }
-
-                  return false;
-                } catch (error) {
-                  console.error('Error during Anträge login:', error);
-                  return false;
-                }
-              })();
-            `);
-
-            // Store timestamp only if login button was actually clicked
-          } catch (error) {
-            console.error('Error during Anträge login:', error);
-          }
-          break;
-
         case 'schulportal':
           try {
             // Get Schulportal credentials
@@ -2155,170 +1997,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             if (schulportalResult === true) noteSubmit(id);
           } catch (error) {
             console.error('Error during Schulportal login:', error);
-          }
-          break;
-
-        case 'office':
-          try {
-            // Detect Office.com login state using exact selectors
-            const loginState = await webview.executeJavaScript(`
-              (function() {
-                // Look for specific Office.com elements
-                const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                
-                // Check for account selection tile
-                const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                
-                // Check if already logged in (look for Office apps or user menu)
-                const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]') ||
-                                 document.body.textContent.includes('Office') ||
-                                 document.body.textContent.includes('Microsoft 365');
-                
-                return {
-                  emailInput: !!emailInput,
-                  passwordInput: !!passwordInput,
-                  weiterButton: !!weiterButton,
-                  anmeldenButton: !!anmeldenButton,
-                  jaButton: !!jaButton,
-                  emailTile: !!emailTile,
-                  loggedIn: !!officeApps,
-                  url: window.location.href,
-                  title: document.title
-                };
-              })()
-            `);
-
-            console.log('Office.com login state:', loginState);
-
-            if (loginState.loggedIn) {
-              // Already logged in, no action needed
-              return;
-            }
-
-            if (loginState.emailInput && !loginState.passwordInput) {
-              // Email page - fill email and click Weiter
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                  const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                  
-                  if (emailInput && weiterButton) {
-                    console.log('Filling Office email:', ${JSON.stringify(emailAddress)});
-                    emailInput.value = ${JSON.stringify(emailAddress)};
-                    emailInput.focus();
-                    
-                    // Trigger Microsoft form events
-                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    
-                    // Wait then click Weiter button
-                    setTimeout(() => {
-                      console.log('Clicking Office Weiter button');
-                      weiterButton.click();
-                    }, 1000);
-                    
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-              
-              console.log('Office email injection result:', result);
-              
-            } else if (loginState.emailTile && !loginState.passwordInput) {
-              // Account selection page - click on email tile
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                  
-                  if (emailTile) {
-                    console.log('Clicking Office email tile');
-                    
-                    // Look for the clickable parent element
-                    let clickableElement = emailTile;
-                    let parent = emailTile.parentElement;
-                    while (parent && parent !== document.body) {
-                      if (parent.tagName === 'BUTTON' || 
-                          parent.onclick || 
-                          parent.getAttribute('role') === 'button' ||
-                          parent.style.cursor === 'pointer' ||
-                          parent.classList.contains('tile') ||
-                          parent.classList.contains('account')) {
-                        clickableElement = parent;
-                        break;
-                      }
-                      parent = parent.parentElement;
-                    }
-                    
-                    // Click the element
-                    clickableElement.click();
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-              
-              console.log('Office email tile click result:', result);
-              
-            } else if (loginState.passwordInput) {
-              // Password page - fill password and submit
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                  const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                  
-                  if (passwordInput && anmeldenButton) {
-                    console.log('Filling Office password');
-                    passwordInput.value = ${JSON.stringify(password)};
-                    passwordInput.focus();
-                    
-                    // Trigger Microsoft form events
-                    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    
-                    // Wait then click Anmelden button
-                    setTimeout(() => {
-                      console.log('Clicking Office Anmelden button');
-                      anmeldenButton.click();
-                    }, 1000);
-                    
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-              
-              console.log('Office password injection result:', result);
-              
-            } else if (loginState.jaButton) {
-              // "Stay signed in?" page - click Ja
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-
-                  if (jaButton) {
-                    console.log('Clicking Office Ja button');
-
-                    setTimeout(() => {
-                      jaButton.click();
-                    }, 500);
-
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-
-              console.log('Office Ja button click result:', result);
-            }
-          } catch (error) {
-            console.error('Error during Office login:', error);
           }
           break;
 
@@ -2595,8 +2273,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         if (!WCV_APPS.has(appId)) continue;
         // Nur Apps pruefen, fuer die tatsaechlich eine View existiert.
         // Sonst laeuft der Waechter alle 2,5 s in Fehler — fuer Schueler
-        // (eingeschraenkte App-Liste) fuer die halbe Leiste, und fuer 'office'
-        // grundsaetzlich, weil das gar kein Navigationsbutton ist.
+        // etwa fuer die halbe Leiste, weil deren App-Liste eingeschraenkt ist.
         if (!standardAppsRef.current?.[appId]?.visible) continue;
         // Bei falschen Zugangsdaten nicht weiter hämmern
         if (failedLogins.current[appId]) continue;
