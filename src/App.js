@@ -545,6 +545,16 @@ function App() {
         throw new Error(restoreResult.error || 'Fehler beim Wiederherstellen der Anmeldedaten');
       }
 
+      // Ein falsches Passwort wirft nicht, es entschluesselt nur nichts:
+      // getAllCredentials faengt Entschluesselungsfehler pro Zeile ab und
+      // liefert dann ein leeres Ergebnis. Ohne diese Pruefung galt das als
+      // Erfolg, der Dialog schloss sich, die App lud neu — und der Nutzer
+      // landete wieder im Willkommensdialog, ohne je eine Fehlermeldung
+      // gesehen zu haben.
+      if (!restoreResult.restoredCount) {
+        throw new Error('Falsches Passwort. Bitte versuchen Sie es erneut.');
+      }
+
       // Close modal and reload to apply changes
       setShowPasswordModal(false);
       await sleep(1000);

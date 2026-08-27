@@ -2195,14 +2195,24 @@ app.on('ready', async () => {
     windowRegistry.forEach((win) => adjustWindowBounds(win));
   });
 
-  // Handle screen unlock: same as resume
+  // Handle screen unlock: NUR Fensterposition korrigieren, KEIN Reload.
+  //
+  // Vorher wurde hier dasselbe 'system-resumed' geschickt wie beim Aufwachen
+  // aus dem Standby. Jedes Entsperren des Bildschirms — auch ohne Standby, also
+  // im Schulalltag mehrmals pro Stunde — lud damit alle Apps neu, verwarf
+  // Formulareingaben und Scroll-Positionen und stiess saemtliche Anmeldungen
+  // erneut an.
+  //
+  // Ein echtes Aufwachen deckt weiterhin 'resume' ab. Laeuft die Sitzung
+  // waehrend eines langen Sperrbildschirms ohne Standby ab, faengt das der
+  // Login-Waechter (WebViewContainer.js) ab: er prueft alle 2,5 s auf eine
+  // sichtbare Loginmaske — inzwischen auch fuer Outlook — und injiziert dann
+  // von sich aus.
   powerMonitor.on('unlock-screen', () => {
     console.log('[System] Screen unlocked');
 
     if (mainWindow) {
       adjustWindowBounds(mainWindow);
-      // Notify renderer to reset credsAreSet
-      mainWindow.webContents.send('system-resumed', 'all');
     }
 
     windowRegistry.forEach((win) => adjustWindowBounds(win));

@@ -20,12 +20,12 @@ import { useViewBoundsBinding } from '../hooks/useWebContentsView';
 // Phase 0:  moodle (simple form-fill login)
 // Phase 2a: wiki, fobizz, taskcards (no auto-login), bbb (simple form-fill)
 // Phase 2b: cryptpad (popup override only), schulportal (periodic form check),
-//           nextcloud (multi-step ADFS/SAML), office (multi-step MS login)
+//           nextcloud (multi-step ADFS/SAML)
 // Phase 2c: outlook (ADFS + clearHistory), schulcloud/BBZ Chat (multi-step +
 //           encryption password), webuntis (React-fiber valueTracker injection)
 const WCV_APPS = new Set([
   'moodle', 'wiki', 'fobizz', 'taskcards', 'bbb',
-  'cryptpad', 'schulportal', 'nextcloud', 'office',
+  'cryptpad', 'schulportal', 'nextcloud',
   'outlook', 'schulcloud', 'webuntis',
 ]);
 
@@ -35,7 +35,11 @@ const WCV_APPS = new Set([
 // SPA deep-links don't get stuck on error pages.
 function forceReloadWcv(id, standardApps, currentUrl) {
   const url = standardApps?.[id]?.url;
-  if (id === 'outlook' && url) {
+  // Outlook/OWA und WebUntis sind beides SPAs, die nach einem abgelaufenen
+  // Login auf einer toten Huelle stehenbleiben koennen. Ein reload() laedt
+  // genau diese Huelle erneut; erst eine frische Navigation auf die
+  // konfigurierte URL bringt die Loginmaske zurueck.
+  if ((id === 'outlook' || id === 'webuntis') && url) {
     window.electron.view.clearHistory(id)
       .then(() => window.electron.view.navigate(id, url))
       .catch(() => window.electron.view.navigate(id, url));
@@ -144,16 +148,6 @@ const LOGIN_WATCHERS = {
                            document.querySelector('#nextcloud') || window.location.href.includes('/apps/');
                 return (adfs || u || p || ja) && !ok;
               })()`,
-  office: `(function() {
-                const email = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                const pass  = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                const weiter   = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                const anmelden = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                const ja   = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                const tile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                const ok   = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]');
-                return (email || pass || weiter || anmelden || ja || tile) && !ok;
-              })()`,
   schulcloud: `(async function() {
                 const isBbzChat = window.location.href.includes('chat.bbz-rd-eck.com');
                 if (isBbzChat) {
@@ -187,6 +181,26 @@ const LOGIN_WATCHERS = {
                 const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
                 if (loggedIn) return false;
                 return !!emailInput || passwordInputs.length > 0 || !!encryptionButton;
+              })()`,
+  // Outlook/OWA verliert seine Sitzung still: die SPA feuert dabei kein
+  // dom-ready, also gab es bisher ueberhaupt keinen Ausloeser mehr und die
+  // Oberflaeche stand nur noch da, ohne zu aktualisieren. Die ADFS-Elemente
+  // sind eindeutig — sie existieren in der angemeldeten OWA-Oberflaeche nicht.
+  outlook: `(function() {
+                const u = document.querySelector('#userNameInput');
+                const p = document.querySelector('#passwordInput');
+                const s = document.querySelector('#submitButton');
+                const ja = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
+                return !!((u && p && s) || ja);
+              })()`,
+  // Moodle hat weder einen dom-ready-Reset noch bisher einen Waechter: lief
+  // die erste Injection auf eine bereits angemeldete Seite, blieb der Login
+  // fuer den Rest der Sitzung aus, sobald die Moodle-Sitzung ablief.
+  moodle: `(function() {
+                const u = document.querySelector('input[name="username"][id="username"]');
+                const p = document.querySelector('input[name="password"][id="password"]');
+                const s = document.querySelector('button[type="submit"][id="loginbtn"]');
+                return !!(u && p && s);
               })()`,
   webuntis: `(function() {
                 // Passwortfeld ODER die WebUntis-Loginmaske verlangen. Vorher
@@ -249,6 +263,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       loginAttempts.current[id] = 0;
       failedLogins.current[id] = false;
       credsAreSet.current[id] = false;
+      // Auch Sperrzeiten aufheben — sonst wirkt ein manuelles Reload bei
+      // aktiver Cooldown (z. B. WebUntis) wie ein Nichtstun: die Injection
+      // bricht dann sofort und stillschweigend ab (siehe injectCredentialsImpl).
+      // Nur Keys dieser App betreffen, nicht die anderer Apps.
+      Object.keys(loginCooldownRef.current).forEach((key) => {
+        if (key.startsWith(`${id}_`)) delete loginCooldownRef.current[key];
+      });
+      submitAttempts.current[id] = 0;
+      submitLimitNotified.current[id] = false;
       if (WCV_APPS.has(id)) {
         forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]);
         return;
@@ -268,9 +291,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       loginAttempts.current = {};
       failedLogins.current = {};
       credsAreSet.current = {};
+      submitAttempts.current = {};
+      submitLimitNotified.current = {};
+      // Sperrzeiten mit aufheben — ein ausdrueckliches Reload ist eine
+      // Nutzeraktion und soll nicht an einer Cooldown haengenbleiben.
+      loginCooldownRef.current = {};
       // Reload each WCV individually so per-app reload quirks (e.g. Outlook
       // needing a full clearHistory+navigate) are honored.
       for (const id of WCV_APPS) {
+        if (!standardApps?.[id]?.visible) continue;
         try { forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]); } catch (_) {}
       }
       // Also reload any legacy <webview> elements (dropdown apps)
@@ -338,12 +367,38 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Auslöser, die während einer laufenden Injection kamen und danach
   // nachgezogen werden müssen (siehe injectCredentials weiter unten).
   const injectionRerunRef = useRef({});
+  // Laufende Generation pro App — nur der aktuelle Durchlauf darf die Sperre
+  // wieder freigeben (siehe injectCredentials).
+  const injectionRunSeq = useRef({});
   // Sperrzeiten pro Host, nur im Speicher (siehe WebUntis-Handler)
   const loginCooldownRef = useRef({});
   // Diagnose des Login-Wächters: Tick-Zähler und letzter berichteter Zustand
   const watcherTickRef = useRef(0);
   const watcherLastRef = useRef({});
   const MAX_LOGIN_ATTEMPTS = 3;
+
+  // Tatsaechlich abgeschickte Anmeldungen pro App.
+  //
+  // `loginAttempts` zaehlt jeden Durchlauf mit, auch die, die gar kein Formular
+  // vorgefunden haben — und der Waechter setzt den Zaehler bei sichtbarer
+  // Loginmaske jeden Tick zurueck. Damit greift MAX_LOGIN_ATTEMPTS fuer
+  // waechter-ueberwachte Apps nie, und bei falschem Passwort feuert die App
+  // alle 2,5 s eine Anmeldung — das sperrt bei Keycloak (Schulportal) und ADFS
+  // schnell das Konto.
+  //
+  // Dieser Zaehler wird deshalb NUR erhoeht, wenn wirklich abgeschickt wurde,
+  // und NICHT vom Waechter zurueckgesetzt. Zurueckgesetzt wird er, wenn die
+  // Loginmaske verschwunden ist (also der Login geklappt hat) und bei
+  // ausdruecklichen Nutzeraktionen (Reload, Resume).
+  const submitAttempts = useRef({});
+  const MAX_SUBMIT_ATTEMPTS = 5;
+  // Damit die Warnung pro App nur einmal erscheint
+  const submitLimitNotified = useRef({});
+
+  // Immer der aktuelle standardApps-Stand, auch in Effekten/Callbacks mit
+  // leerer Dependency-Liste (Login-Waechter, Resume-Handler, Injection).
+  const standardAppsRef = useRef(standardApps);
+  standardAppsRef.current = standardApps;
 
   // Translate error codes to user-friendly German messages
   const getErrorMessage = (error) => {
@@ -714,11 +769,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           credsAreSet.current[appId] = false;
           injectCredentials(proxy, appId);
 
-        } else if (appId === 'office') {
-          // Multi-step Microsoft login: reset on every dom-ready
-          credsAreSet.current[appId] = false;
-          injectCredentials(proxy, appId);
-
         } else if (appId === 'outlook') {
           // Each ADFS navigation step fires dom-ready — reset so every step can inject
           credsAreSet.current[appId] = false;
@@ -786,6 +836,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     reload: () => window.electron.view.reload(id),
   }), []);
 
+  // Eine tatsaechlich abgeschickte Anmeldung verbuchen. Siehe submitAttempts.
+  const noteSubmit = useCallback((id) => {
+    submitAttempts.current[id] = (submitAttempts.current[id] || 0) + 1;
+    console.log(`[${id}] Anmeldung abgeschickt (${submitAttempts.current[id]}/${MAX_SUBMIT_ATTEMPTS})`);
+  }, []);
+
   // Function to inject credentials based on webview ID
   // (nicht direkt aufrufen — der Wrapper injectCredentials weiter unten
   // serialisiert die Aufrufe pro App)
@@ -797,6 +853,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     // Stop if we already had a fatal login failure for this app
     if (failedLogins.current[id]) {
       console.log(`[${id}] Previous login failed - stopping auto-login`);
+      return;
+    }
+
+    // Harte Obergrenze fuer wirklich abgeschickte Anmeldungen. Schuetzt vor
+    // Kontosperren, wenn die Zugangsdaten falsch sind und die App keine eigene
+    // Fehlererkennung hat (alles ausser WebUntis).
+    if ((submitAttempts.current[id] || 0) >= MAX_SUBMIT_ATTEMPTS) {
+      if (!submitLimitNotified.current[id]) {
+        submitLimitNotified.current[id] = true;
+        console.warn(`[${id}] ${MAX_SUBMIT_ATTEMPTS} Anmeldungen ohne Erfolg - Auto-Login gestoppt`);
+        toast({
+          title: `${standardAppsRef.current?.[id]?.title || id}: Automatische Anmeldung gestoppt`,
+          description: 'Mehrere Anmeldeversuche blieben ohne Erfolg. Bitte Zugangsdaten in den Einstellungen prüfen und die App neu laden.',
+          status: 'warning',
+          duration: null,
+          isClosable: true,
+        });
+      }
       return;
     }
 
@@ -873,6 +947,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       } else {
         console.log(`[${id}] Injection gestartet (ohne Versuchslimit)`);
       }
+
+      // Von einzelnen Handlern gesetzt, wenn die Anmeldung noch nicht
+      // abgeschlossen ist und weitere Ausloeser injizieren duerfen muessen.
+      let keepInjectionOpen = false;
 
       switch (id.toLowerCase()) {
         case 'webuntis':
@@ -1056,12 +1134,25 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     return 'INVALID_CREDENTIALS';
                   }
 
-                  // Only reload if we're not on the authenticator page
+                  // Auf der 2FA-Seite ist der Login aus unserer Sicht erledigt.
                   const authLabel = document.querySelector('.un-input-group__label');
-                  if (authLabel?.textContent !== 'Bestätigungscode') {
-                    window.location.reload();
+                  if (authLabel?.textContent === 'Bestätigungscode') {
+                    return 'SUCCESS';
                   }
-                  return 'SUCCESS';
+
+                  // Kein window.location.reload() mehr an dieser Stelle.
+                  //
+                  // Zwei Gruende: Erstens rennt der Reload dem return-Wert davon —
+                  // wird das Dokument abgeraeumt, bevor executeJavaScript aufloest,
+                  // haengt die Injection bis INJECTION_STALE_MS (45 s) und alle
+                  // Wiederholungen in dieser Zeit laufen ins Leere. Zweitens kann
+                  // ein Reload die gerade erst aufgebaute Sitzung wieder wegwerfen.
+                  //
+                  // Stattdessen wird geprueft, ob die Loginmaske verschwunden ist.
+                  // Nur dann gilt der Versuch als gelungen und setzt die Sperre.
+                  const stillOnLogin = !!(document.querySelector('.un2-login-form') ||
+                                          document.querySelector('input[type="password"]'));
+                  return stillOnLogin ? 'STILL_ON_LOGIN' : 'SUCCESS';
                 } catch (error) {
                   return false;
                 }
@@ -1071,11 +1162,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             if (loginAttemptResult === 'NO_FORM' ||
                 loginAttemptResult === 'NOT_FILLED' ||
                 loginAttemptResult === 'SUBMIT_DISABLED' ||
+                loginAttemptResult === 'STILL_ON_LOGIN' ||
                 loginAttemptResult === false) {
-              // Es wurde nichts abgeschickt -> weder als erledigt markieren noch
-              // die Sperre setzen. Der Wächter versucht es in Kürze erneut.
-              console.log(`[webuntis] Kein Loginversuch (${loginAttemptResult}) - wird wiederholt`);
+              // Es wurde nichts abgeschickt oder die Loginmaske steht noch ->
+              // weder als erledigt markieren noch die Sperre setzen. Sonst
+              // verbrennt ein fehlgeschlagener Versuch drei Minuten, in denen
+              // gar nichts mehr passiert — genau das liess den WebUntis-Login
+              // nach dem Standby "einfach nie" greifen.
+              //
+              // STILL_ON_LOGIN heisst aber sehr wohl, dass abgeschickt wurde:
+              // das zaehlt gegen das Submit-Limit, sonst laeuft die Schleife
+              // bei falschem Passwort ewig.
+              if (loginAttemptResult === 'STILL_ON_LOGIN') noteSubmit('webuntis');
+              console.log(`[webuntis] Kein erfolgreicher Loginversuch (${loginAttemptResult}) - wird wiederholt`);
               return;
+            }
+
+            if (loginAttemptResult === 'SUCCESS' || loginAttemptResult === true) {
+              noteSubmit('webuntis');
             }
 
             if (loginAttemptResult === 'INVALID_CREDENTIALS') {
@@ -1127,10 +1231,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           console.log('[outlook] Login injection result:', outlookResult);
 
+          if (outlookResult === 'SUBMITTED') noteSubmit(id);
+
           if (outlookResult !== 'SUBMITTED') {
             // Kein Formular -> nichts als erledigt markieren, damit der
             // nächste Schritt der ADFS-Kette es erneut versuchen darf
-            credsAreSet.current[id] = false;
+            keepInjectionOpen = true;
             break;
           }
 
@@ -1170,8 +1276,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             })()
           `);
           console.log('[moodle] Login injection result:', moodleResult);
+          if (moodleResult === 'SUBMITTED') noteSubmit(id);
           if (moodleResult !== 'SUBMITTED') {
+            // Kein Formular vorgefunden: das war kein Loginversuch. Zaehler
+            // zuruecknehmen UND die Injection offen lassen, damit ein spaeter
+            // ablaufender Moodle-Login wieder befuellt werden kann. Vorher
+            // blieb credsAreSet fuer den Rest der Sitzung auf true stehen —
+            // Moodle hat sich danach nie wieder selbst angemeldet.
             loginAttempts.current[id] = Math.max(0, (loginAttempts.current[id] || 1) - 1);
+            keepInjectionOpen = true;
           }
           break;
         }
@@ -1254,10 +1367,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             // zurücknehmen, damit ein späteres Abmelden wieder einen
             // Auto-Login erlaubt.
             loginAttempts.current[id] = Math.max(0, (loginAttempts.current[id] || 1) - 1);
+            keepInjectionOpen = true;
             break;
           }
 
           if (bbbResult === 'SUBMITTED') {
+            noteSubmit(id);
             // Save credentials after successful login
             await window.electron.saveCredentials({
               service: 'bbzcloud',
@@ -1267,40 +1382,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           }
           break;
         }
-
-        case 'handbook':
-          // Check if login form exists and wait for it if necessary
-          const formExists = await webview.executeJavaScript(`
-            (async () => {
-              // Wait for form elements to be ready (max 5 seconds)
-              for (let i = 0; i < 50; i++) {
-                const userInput = document.querySelector('#userNameInput');
-                const passwordInput = document.querySelector('#passwordInput');
-                const submitButton = document.querySelector('#submitButton');
-                
-                if (userInput && passwordInput && submitButton) {
-                  return true;
-                }
-                await new Promise(resolve => setTimeout(resolve, 100));
-              }
-              return false;
-            })()
-          `);
-
-          if (formExists) {
-            await webview.executeJavaScript(
-              `document.querySelector('#userNameInput').value = ${JSON.stringify(emailAddress)}; void(0);`
-            );
-            await webview.executeJavaScript(
-              `document.querySelector('#passwordInput').value = ${JSON.stringify(password)}; void(0);`
-            );
-            await webview.executeJavaScript(
-              `document.querySelector('#submitButton').click();`
-            );
-            await sleep(5000);
-            webview.reload();
-          }
-          break;
 
         case 'wiki': {
           const wikiState = await webview.executeJavaScript(`
@@ -1441,7 +1522,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               }
 
               // API error or fetch error — allow retry for temporary failures
-              if (loginResult.startsWith('API_ERROR') || loginResult === 'FETCH_ERROR') {
+              // typeof-Pruefung, weil executeJavaScript bei verschwundener View
+              // undefined liefert und .startsWith dann den ganzen Handler
+              // als "Fehler beim schul.cloud-Login" abbrechen liess.
+              if (typeof loginResult === 'string' &&
+                  (loginResult.startsWith('API_ERROR') || loginResult === 'FETCH_ERROR')) {
                 console.warn('[BBZ Chat] Login failed (temporary):', loginResult, '- will retry on next check');
                 // DON'T set credsAreSet - allow retry on next periodic check
                 // The 5-second interval check will try again
@@ -1501,6 +1586,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
                 const state = {
                   emailInput: !!emailInput,
+                  // Ist das E-Mail-Feld schon befuellt? Ohne diese Information
+                  // laesst sich "E-Mail-Schritt noch offen" nicht von "E-Mail
+                  // steht bereits, jetzt kommt das Passwort" unterscheiden.
+                  emailFilled: !!(emailInput && emailInput.value && emailInput.value.trim()),
                   passwordInputs: passwordInputs.length,
                   weiterButton: !!weiterButton,
                   loginButton: !!loginButton,
@@ -1526,57 +1615,73 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               return;
             }
 
-            if (loginState.emailInput && !loginState.passwordInputs) {
-              // Email page - fill email and click Weiter
+            if (loginState.emailInput && !loginState.emailFilled) {
+              // E-Mail-Schritt: leeres E-Mail-Feld sichtbar.
+              //
+              // Vorher lautete die Bedingung `emailInput && !passwordInputs`.
+              // Rendert schul.cloud auf der E-Mail-Seite ein (auch verstecktes)
+              // Passwortfeld mit, ist passwordInputs > 0 — die Bedingung war
+              // dann falsch, der E-Mail-Zweig wurde uebersprungen und statt-
+              // dessen sofort der Passwort-Zweig ausgefuehrt. Ergebnis: alles
+              // wurde befuellt ausser der E-Mail-Adresse.
               console.log('[schul.cloud] Email page detected - filling email field');
               
               const result = await webview.executeJavaScript(`
-                (function() {
+                (async function() {
                   try {
                     ${SAFE_FOCUS_HELPER_JS}
+                    const EMAIL = ${JSON.stringify(emailAddress)};
                     const emailInput = document.querySelector('input#username[type="text"]');
-                    const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
+                    if (!emailInput) return 'NO_ELEMENTS';
 
-                    console.log('[schul.cloud] Email input found:', !!emailInput);
-                    console.log('[schul.cloud] Weiter button found:', !!weiterButton);
+                    // Wert setzen und GEGENPRUEFEN.
+                    //
+                    // Angular fuehrt das Feld als kontrollierte Komponente und
+                    // setzt einen direkt zugewiesenen Wert wieder zurueck. Ohne
+                    // Gegenpruefung wurde trotzdem 'SUCCESS' gemeldet und auf
+                    // "Weiter" geklickt — mit leerem Feld.
+                    const setValue = (el, value) => {
+                      const setter = Object.getOwnPropertyDescriptor(
+                        window.HTMLInputElement.prototype, 'value'
+                      ).set;
+                      setter.call(el, value);
+                      // Kein 'blur'/'focus' mehr: das markiert das Feld in
+                      // Angular als "touched" und loeste die Validierung aus,
+                      // bevor der Wert uebernommen war.
+                      el.dispatchEvent(new Event('input', { bubbles: true }));
+                      el.dispatchEvent(new Event('change', { bubbles: true }));
+                    };
 
-                    if (emailInput && weiterButton) {
-                      console.log('[schul.cloud] Filling email:', ${JSON.stringify(emailAddress)});
-                      
-                      // Method 1: Direct value set with native setter override
-                      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                      nativeInputValueSetter.call(emailInput, ${JSON.stringify(emailAddress)});
-                      
-                      // Method 2: Also set value directly (fallback)
-                      emailInput.value = ${JSON.stringify(emailAddress)};
-                      
-                      // Fokus nur übernehmen, wenn der Nutzer nicht gerade
-                      // woanders tippt (sonst springt der Cursor heraus).
-                      __bbzSafeFocus(emailInput);
-                      if (document.activeElement === emailInput) emailInput.select();
+                    __bbzSafeFocus(emailInput);
 
-                      // Trigger Angular events in correct order
-                      const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
-                      events.forEach(eventType => {
-                        emailInput.dispatchEvent(new Event(eventType, { bubbles: true }));
-                      });
-                      
-                      // Also try React-specific events
-                      emailInput.dispatchEvent(new Event('textInput', { bubbles: true }));
-
-                      console.log('[schul.cloud] Email filled, waiting 1000ms then clicking Weiter...');
-
-                      // Wait then click Weiter button
-                      setTimeout(() => {
-                        console.log('[schul.cloud] Attempting to click Weiter button');
-                        weiterButton.click();
-                        console.log('[schul.cloud] Weiter button clicked');
-                      }, 1000);
-
-                      return 'SUCCESS';
+                    let filled = false;
+                    for (let attempt = 0; attempt < 20 && !filled; attempt++) {
+                      setValue(emailInput, EMAIL);
+                      await new Promise(r => setTimeout(r, 150));
+                      filled = emailInput.value === EMAIL;
                     }
-                    
-                    return 'NO_ELEMENTS';
+
+                    if (!filled) return 'NOT_FILLED';
+
+                    // Den Button erst JETZT suchen, nicht vor dem Befuellen:
+                    // Angular tauscht ihn beim Rendern aus, eine frueh
+                    // gemerkte Referenz zeigt dann ins Leere.
+                    const findWeiter = () =>
+                      document.querySelector('button[type="submit"].btn.btn-contained') ||
+                      Array.from(document.querySelectorAll('button')).find(b =>
+                        b.textContent.trim() === 'Weiter' || b.textContent.trim() === 'Anmelden');
+
+                    let weiterButton = findWeiter();
+                    for (let i = 0; i < 20 && (!weiterButton || weiterButton.disabled); i++) {
+                      await new Promise(r => setTimeout(r, 100));
+                      weiterButton = findWeiter();
+                    }
+
+                    if (!weiterButton) return 'NO_SUBMIT_BUTTON';
+                    if (weiterButton.disabled) return 'SUBMIT_DISABLED';
+
+                    weiterButton.click();
+                    return 'SUCCESS';
                   } catch (err) {
                     console.error('[schul.cloud] Error filling email:', err);
                     return 'ERROR: ' + err.message;
@@ -1586,7 +1691,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
               console.log('[schul.cloud] Email injection result:', result);
               
-            } else if (loginState.passwordInputs && !loginState.onEncryptionPage) {
+            } else if (loginState.passwordInputs && !loginState.onEncryptionPage &&
+                       (!loginState.emailInput || loginState.emailFilled)) {
               // Password page - fill password, check remember me, and submit
               console.log('[schul.cloud] Password page detected - filling password');
               
@@ -1634,12 +1740,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
                       __bbzSafeFocus(passwordInput);
 
-                      // Trigger Angular events
-                      const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
-                      events.forEach(eventType => {
-                        passwordInput.dispatchEvent(new Event(eventType, { bubbles: true }));
-                      });
-                      passwordInput.dispatchEvent(new Event('textInput', { bubbles: true }));
+                      // Kein 'blur'/'focus': das markiert das Feld in Angular
+                      // als "touched" und stoesst die Validierung an, bevor der
+                      // Wert uebernommen ist.
+                      passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
 
                       // Click remember login checkbox if available
                       if (rememberCheckbox) {
@@ -1774,15 +1879,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
                       nativeInputValueSetter.call(encryptionInput, ${JSON.stringify(schulcloudEncryptionPassword)});
                       
-                      encryptionInput.value = ${JSON.stringify(schulcloudEncryptionPassword)};
                       __bbzSafeFocus(encryptionInput);
 
-                      // Trigger Angular events
-                      const events = ['input', 'change', 'keydown', 'keyup', 'blur', 'focus'];
-                      events.forEach(eventType => {
-                        encryptionInput.dispatchEvent(new Event(eventType, { bubbles: true }));
-                      });
-                      encryptionInput.dispatchEvent(new Event('textInput', { bubbles: true }));
+                      // Kein 'blur'/'focus' (siehe E-Mail-/Passwort-Zweig).
+                      encryptionInput.dispatchEvent(new Event('input', { bubbles: true }));
+                      encryptionInput.dispatchEvent(new Event('change', { bubbles: true }));
 
                       console.log('[schul.cloud] Encryption password filled, waiting then clicking Weiter...');
 
@@ -1826,115 +1927,6 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           }
           break;
 
-        case 'antraege':
-          try {
-            // Check cooldown period (15 minutes) to avoid disrupting 2FA process
-            const COOLDOWN_MINUTES_WEBUNTIS = 15;
-            
-            // Use hostname-specific key to allow testing on new URLs without waiting
-            let hostname = 'unknown';
-            try {
-              hostname = new URL(webview.getURL()).hostname;
-            } catch (e) { console.warn('Could not get hostname for cooldown key'); }
-            
-            const storageKey = `webuntis_last_login_attempt_${hostname}`;
-            const lastLoginAttemptWebuntis = localStorage.getItem(storageKey);
-            const nowWebuntis = Date.now();
-            
-            if (lastLoginAttemptWebuntis) {
-              const timeSinceLastAttempt = nowWebuntis - parseInt(lastLoginAttemptWebuntis, 10);
-              const cooldownPeriod = COOLDOWN_MINUTES_WEBUNTIS * 60 * 1000; // 15 minutes in milliseconds
-              
-              if (timeSinceLastAttempt < cooldownPeriod) {
-                const remainingMinutes = Math.ceil((cooldownPeriod - timeSinceLastAttempt) / (60 * 1000));
-                console.log(`WebUntis login cooldown active for ${hostname}. ${remainingMinutes} minutes remaining.`);
-                return;
-              }
-            }
-
-            // Get Anträge credentials (uses WebUntis email/Lehrerkürzel and standard password)
-            const antraegeEmailResult = await window.electron.getCredentials({
-              service: 'bbzcloud',
-              account: 'webuntisEmail'
-            });
-
-            if (!antraegeEmailResult.success || !antraegeEmailResult.password) {
-              return;
-            }
-
-            const antraegeUsername = antraegeEmailResult.password;
-
-            // Inject credentials into the agorum login form
-            const loginResult = await webview.executeJavaScript(`
-              (async () => {
-                try {
-                  // Wait for form to be ready
-                  await new Promise((resolve) => {
-                    const checkForm = () => {
-                      const usernameField = document.querySelector('input[autocomplete="username"]');
-                      const passwordField = document.querySelector('input[autocomplete="current-password"]');
-                      if (usernameField && passwordField) {
-                        resolve();
-                      } else {
-                        setTimeout(checkForm, 100);
-                      }
-                    };
-                    checkForm();
-                  });
-
-                  // Get form elements
-                  const usernameField = document.querySelector('input[autocomplete="username"]');
-                  const passwordField = document.querySelector('input[autocomplete="current-password"]');
-                  const rememberCheckbox = document.querySelector('input.x-form-checkbox[type="button"]');
-                  const loginButton = Array.from(document.querySelectorAll('a.x-btn')).find(btn => 
-                    btn.textContent.includes('Anmelden')
-                  );
-
-                  if (!usernameField || !passwordField || !loginButton) {
-                    return false;
-                  }
-
-                  // Fill username
-                  usernameField.value = ${JSON.stringify(antraegeUsername)};
-                  usernameField.dispatchEvent(new Event('input', { bubbles: true }));
-                  usernameField.dispatchEvent(new Event('change', { bubbles: true }));
-
-                  // Wait a bit
-                  await new Promise(resolve => setTimeout(resolve, 200));
-
-                  // Fill password
-                  passwordField.value = ${JSON.stringify(password)};
-                  passwordField.dispatchEvent(new Event('input', { bubbles: true }));
-                  passwordField.dispatchEvent(new Event('change', { bubbles: true }));
-
-                  // Check "remember me" checkbox if available
-                  if (rememberCheckbox && !rememberCheckbox.closest('.x-form-cb-checked')) {
-                    rememberCheckbox.click();
-                  }
-
-                  // Wait a bit before clicking login
-                  await new Promise(resolve => setTimeout(resolve, 300));
-
-                  // Click login button
-                  if (loginButton) {
-                    loginButton.click();
-                    return true;
-                  }
-
-                  return false;
-                } catch (error) {
-                  console.error('Error during Anträge login:', error);
-                  return false;
-                }
-              })();
-            `);
-
-            // Store timestamp only if login button was actually clicked
-          } catch (error) {
-            console.error('Error during Anträge login:', error);
-          }
-          break;
-
         case 'schulportal':
           try {
             // Get Schulportal credentials
@@ -1959,7 +1951,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             }
 
             // Inject credentials into Schulportal login form
-            await webview.executeJavaScript(`
+            const schulportalResult = await webview.executeJavaScript(`
               (async () => {
                 try {
                   // Wait for form to be ready
@@ -2001,172 +1993,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 }
               })();
             `);
+            console.log('[schulportal] Login injection result:', schulportalResult);
+            if (schulportalResult === true) noteSubmit(id);
           } catch (error) {
             console.error('Error during Schulportal login:', error);
-          }
-          break;
-
-        case 'office':
-          try {
-            // Detect Office.com login state using exact selectors
-            const loginState = await webview.executeJavaScript(`
-              (function() {
-                // Look for specific Office.com elements
-                const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-                
-                // Check for account selection tile
-                const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                
-                // Check if already logged in (look for Office apps or user menu)
-                const officeApps = document.querySelector('.o365cs-nav-appTitle, .ms-Nav, .od-TopBar, [data-automation-id="appLauncher"]') ||
-                                 document.body.textContent.includes('Office') ||
-                                 document.body.textContent.includes('Microsoft 365');
-                
-                return {
-                  emailInput: !!emailInput,
-                  passwordInput: !!passwordInput,
-                  weiterButton: !!weiterButton,
-                  anmeldenButton: !!anmeldenButton,
-                  jaButton: !!jaButton,
-                  emailTile: !!emailTile,
-                  loggedIn: !!officeApps,
-                  url: window.location.href,
-                  title: document.title
-                };
-              })()
-            `);
-
-            console.log('Office.com login state:', loginState);
-
-            if (loginState.loggedIn) {
-              // Already logged in, no action needed
-              return;
-            }
-
-            if (loginState.emailInput && !loginState.passwordInput) {
-              // Email page - fill email and click Weiter
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const emailInput = document.querySelector('input[name="loginfmt"]#i0116[type="email"]');
-                  const weiterButton = document.querySelector('input[type="submit"]#idSIButton9[value="Weiter"]');
-                  
-                  if (emailInput && weiterButton) {
-                    console.log('Filling Office email:', ${JSON.stringify(emailAddress)});
-                    emailInput.value = ${JSON.stringify(emailAddress)};
-                    emailInput.focus();
-                    
-                    // Trigger Microsoft form events
-                    emailInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    emailInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    
-                    // Wait then click Weiter button
-                    setTimeout(() => {
-                      console.log('Clicking Office Weiter button');
-                      weiterButton.click();
-                    }, 1000);
-                    
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-              
-              console.log('Office email injection result:', result);
-              
-            } else if (loginState.emailTile && !loginState.passwordInput) {
-              // Account selection page - click on email tile
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const emailTile = document.querySelector('div[data-bind*="session.tileDisplayName"]');
-                  
-                  if (emailTile) {
-                    console.log('Clicking Office email tile');
-                    
-                    // Look for the clickable parent element
-                    let clickableElement = emailTile;
-                    let parent = emailTile.parentElement;
-                    while (parent && parent !== document.body) {
-                      if (parent.tagName === 'BUTTON' || 
-                          parent.onclick || 
-                          parent.getAttribute('role') === 'button' ||
-                          parent.style.cursor === 'pointer' ||
-                          parent.classList.contains('tile') ||
-                          parent.classList.contains('account')) {
-                        clickableElement = parent;
-                        break;
-                      }
-                      parent = parent.parentElement;
-                    }
-                    
-                    // Click the element
-                    clickableElement.click();
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-              
-              console.log('Office email tile click result:', result);
-              
-            } else if (loginState.passwordInput) {
-              // Password page - fill password and submit
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const passwordInput = document.querySelector('input[name="passwd"]#i0118[type="password"]');
-                  const anmeldenButton = document.querySelector('input[type="submit"]#idSIButton9[value="Anmelden"]');
-                  
-                  if (passwordInput && anmeldenButton) {
-                    console.log('Filling Office password');
-                    passwordInput.value = ${JSON.stringify(password)};
-                    passwordInput.focus();
-                    
-                    // Trigger Microsoft form events
-                    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    passwordInput.dispatchEvent(new Event('blur', { bubbles: true }));
-                    
-                    // Wait then click Anmelden button
-                    setTimeout(() => {
-                      console.log('Clicking Office Anmelden button');
-                      anmeldenButton.click();
-                    }, 1000);
-                    
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-              
-              console.log('Office password injection result:', result);
-              
-            } else if (loginState.jaButton) {
-              // "Stay signed in?" page - click Ja
-              const result = await webview.executeJavaScript(`
-                (function() {
-                  const jaButton = document.querySelector('input[type="submit"]#idSIButton9[value="Ja"]');
-
-                  if (jaButton) {
-                    console.log('Clicking Office Ja button');
-
-                    setTimeout(() => {
-                      jaButton.click();
-                    }, 500);
-
-                    return true;
-                  }
-                  return false;
-                })()
-              `);
-
-              console.log('Office Ja button click result:', result);
-            }
-          } catch (error) {
-            console.error('Error during Office login:', error);
           }
           break;
 
@@ -2291,6 +2121,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               `);
               
               console.log('[Nextcloud] ADFS credential injection result:', result);
+              if (result === 'SUCCESS') noteSubmit(id);
             } else if (ncLoginState.jaButton) {
               // "Stay signed in?" page - click Ja
               console.log('[Nextcloud] "Stay signed in?" page detected - clicking Ja');
@@ -2347,7 +2178,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // schulcloud has a multi-step login (email -> password -> encryption) and we need
       // the periodic check to keep triggering until fully logged in.
       // Only set credsAreSet for other apps that complete login in one shot.
-      if (id !== 'schulcloud') {
+      //
+      // Ein Handler, der erkannt hat, dass noch ein weiterer Schritt folgt
+      // (z. B. Outlook auf einer ADFS-Zwischenseite ohne Formular), setzt
+      // keepInjectionOpen. Vorher setzte dieser Block das dort gesetzte
+      // credsAreSet = false drei Zeilen spaeter stumpf wieder auf true und
+      // hob den Reset damit auf.
+      if (id !== 'schulcloud' && !keepInjectionOpen) {
         credsAreSet.current[id] = true;
       }
     } catch (error) {
@@ -2387,21 +2224,34 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       console.warn(`[${id}] Vorherige Injection haengt seit ${Math.round((Date.now() - startedAt) / 1000)}s - Sperre wird freigegeben`);
     }
 
+    // Generations-Token.
+    //
+    // Bei der Uebernahme einer haengenden Sperre laeuft der alte Durchlauf
+    // weiter. Loeste sein Promise doch noch auf, raeumte sein finally die
+    // Sperre und die Vormerkung des NACHFOLGERS ab — danach konnten wieder
+    // mehrere Injections parallel laufen, also genau der Zustand, den die
+    // Sperre verhindern soll. Aufraeumen darf nur, wer die Sperre haelt.
+    const myRun = (injectionRunSeq.current[id] || 0) + 1;
+    injectionRunSeq.current[id] = myRun;
     injectionInFlight.current[id] = Date.now();
+
     try {
       let target = webview;
       // Begrenzt, damit sich nichts endlos im Kreis dreht
       for (let round = 0; round < 3; round++) {
         injectionRerunRef.current[id] = null;
         await injectCredentialsImpl(target, id);
+        if (injectionRunSeq.current[id] !== myRun) return;
         const pending = injectionRerunRef.current[id];
         if (!pending) break;
         console.log(`[${id}] Auslöser während laufender Injection - ziehe nach`);
         target = pending;
       }
     } finally {
-      injectionRerunRef.current[id] = null;
-      injectionInFlight.current[id] = null;
+      if (injectionRunSeq.current[id] === myRun) {
+        injectionRerunRef.current[id] = null;
+        injectionInFlight.current[id] = null;
+      }
     }
   }, [injectCredentialsImpl]);
 
@@ -2421,6 +2271,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
       for (const [appId, check] of Object.entries(LOGIN_WATCHERS)) {
         if (!WCV_APPS.has(appId)) continue;
+        // Nur Apps pruefen, fuer die tatsaechlich eine View existiert.
+        // Sonst laeuft der Waechter alle 2,5 s in Fehler — fuer Schueler
+        // etwa fuer die halbe Leiste, weil deren App-Liste eingeschraenkt ist.
+        if (!standardAppsRef.current?.[appId]?.visible) continue;
         // Bei falschen Zugangsdaten nicht weiter hämmern
         if (failedLogins.current[appId]) continue;
 
@@ -2459,7 +2313,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             setBbzChatLoginActive(!!(onChat && needsLogin));
           }
 
-          if (!needsLogin) continue;
+          if (!needsLogin) {
+            // Keine Loginmaske mehr -> die Anmeldung hat geklappt. Das Budget
+            // fuer abgeschickte Anmeldungen wieder freigeben, damit ein
+            // spaeterer Sitzungsablauf erneut bedient werden kann.
+            if (submitAttempts.current[appId]) {
+              submitAttempts.current[appId] = 0;
+              submitLimitNotified.current[appId] = false;
+            }
+            continue;
+          }
 
           // Solange eine Loginmaske sichtbar ist, wird weiter versucht.
           //
@@ -2468,6 +2331,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // fertig), das Budget von MAX_LOGIN_ATTEMPTS auf — und die App gibt
           // für den Rest der Sitzung auf, obwohl nie ein echter Loginversuch
           // stattgefunden hat.
+          //
+          // Die Bremse gegen echtes Dauerfeuer ist NICHT dieser Zaehler,
+          // sondern submitAttempts: der zaehlt nur tatsaechlich abgeschickte
+          // Anmeldungen und wird hier bewusst nicht angefasst.
           credsAreSet.current[appId] = false;
           loginAttempts.current[appId] = 0;
           injectCredentials(getWcvProxy(appId), appId);
@@ -2505,6 +2372,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       injectionInFlight.current = {};
       injectionRerunRef.current = {};
       loginAttempts.current = {};
+      // Budget fuer abgeschickte Anmeldungen wieder freigeben: nach dem
+      // Aufwachen ist ein frischer Anlauf legitim.
+      submitAttempts.current = {};
+      submitLimitNotified.current = {};
 
       // Sperrzeiten verfallen lassen — nach dem Aufwachen ist ein frischer
       // Loginversuch legitim, auch wenn kurz zuvor einer lief.
@@ -2524,10 +2395,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
       // Reload WCV apps with special handling
       for (const id of WCV_APPS) {
+        if (!standardAppsRef.current?.[id]?.visible) continue;
         try {
           if (id === 'outlook') {
             console.log('[System Resume] WCV outlook: forcing complete reload');
-            forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]);
+            forceReloadWcv(id, standardAppsRef.current, wcvUrlsRef.current[id]);
           } else if (id === 'webuntis') {
             window.electron.view.executeJavaScript(id, `(function() {
               const authLabel = document.querySelector('.un-input-group__label');
@@ -2536,10 +2408,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               if (isAuthPage) {
                 console.log('[System Resume] WCV webuntis: skipping (auth page active)');
               } else {
-                console.log('[System Resume] WCV webuntis: reloading');
-                window.electron.view.reload(id);
+                // Erzwungene Navigation statt reload(): nach dem Standby steht
+                // die SPA sonst auf ihrer alten, abgelaufenen Huelle.
+                console.log('[System Resume] WCV webuntis: forcing complete reload');
+                forceReloadWcv(id, standardAppsRef.current, wcvUrlsRef.current[id]);
               }
-            }).catch(() => window.electron.view.reload(id));
+            }).catch(() => forceReloadWcv(id, standardAppsRef.current, wcvUrlsRef.current[id]));
           } else {
             console.log('[System Resume] WCV', id + ': reloading');
             window.electron.view.reload(id);

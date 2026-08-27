@@ -23,10 +23,11 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import { useSettings } from '../context/SettingsContext';
+import { getNavbarScale } from '../utils/constants';
 
 function SettingsPanel({ onClose, onOpenShortcuts }) {
   const { settings, toggleButtonVisibility, addCustomApp, removeCustomApp, updateGlobalZoom, updateNavbarZoom, toggleAutostart, toggleMinimizedStart, toggleDarkMode, toggleBbzChat, updateSettings, updateStatus } = useSettings();
-  const { setColorMode } = useColorMode();
+  const { colorMode, setColorMode } = useColorMode();
   const [newAppTitle, setNewAppTitle] = useState('');
   const [newAppUrl, setNewAppUrl] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -106,15 +107,21 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
           service: 'bbzcloud',
           account: 'schulcloudEncryptionPassword'
         });
+        // get-credentials liefert bei fehlendem Wert { success: true,
+        // password: null }. Ohne das ?? '' landete null im value eines
+        // kontrollierten Inputs — React warnt und schaltet das Feld auf
+        // unkontrolliert um.
+        const valueOf = (result) => (result?.success ? result.password : null) ?? '';
+
         setCredentials({
-          email: emailResult.success ? emailResult.password : '',
-          password: passwordResult.success ? passwordResult.password : '',
-          bbbPassword: bbbPasswordResult.success ? bbbPasswordResult.password : '',
-          webuntisEmail: webuntisEmailResult.success ? webuntisEmailResult.password : '',
-          webuntisPassword: webuntisPasswordResult.success ? webuntisPasswordResult.password : '',
-          schulportalEmail: schulportalEmailResult.success ? schulportalEmailResult.password : '',
-          schulportalPassword: schulportalPasswordResult.success ? schulportalPasswordResult.password : '',
-          schulcloudEncryptionPassword: schulcloudEncryptionPasswordResult.success ? schulcloudEncryptionPasswordResult.password : ''
+          email: valueOf(emailResult),
+          password: valueOf(passwordResult),
+          bbbPassword: valueOf(bbbPasswordResult),
+          webuntisEmail: valueOf(webuntisEmailResult),
+          webuntisPassword: valueOf(webuntisPasswordResult),
+          schulportalEmail: valueOf(schulportalEmailResult),
+          schulportalPassword: valueOf(schulportalPasswordResult),
+          schulcloudEncryptionPassword: valueOf(schulcloudEncryptionPasswordResult)
         });
       } catch (error) {
         console.error('Error loading credentials:', error);
@@ -178,51 +185,36 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
   const handleSaveCredentials = async () => {
     setIsSaving(true);
     try {
-      const results = await Promise.all([
-        credentials.email ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'email',
-          password: credentials.email
-        }) : Promise.resolve({ success: true }),
-        credentials.password ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'password',
-          password: credentials.password
-        }) : Promise.resolve({ success: true }),
-        credentials.bbbPassword ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'bbbPassword',
-          password: credentials.bbbPassword
-        }) : Promise.resolve({ success: true }),
-        credentials.webuntisEmail ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'webuntisEmail',
-          password: credentials.webuntisEmail
-        }) : Promise.resolve({ success: true }),
-        credentials.webuntisPassword ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'webuntisPassword',
-          password: credentials.webuntisPassword
-        }) : Promise.resolve({ success: true }),
-        credentials.schulportalEmail ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'schulportalEmail',
-          password: credentials.schulportalEmail
-        }) : Promise.resolve({ success: true }),
-        credentials.schulportalPassword ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'schulportalPassword',
-          password: credentials.schulportalPassword
-        }) : Promise.resolve({ success: true }),
-        credentials.schulcloudEncryptionPassword ? window.electron.saveCredentials({
-          service: 'bbzcloud',
-          account: 'schulcloudEncryptionPassword',
-          password: credentials.schulcloudEncryptionPassword
-        }) : Promise.resolve({ success: true }),
-      ]);
+      // Ein geleertes Feld MUSS den Eintrag loeschen.
+      //
+      // Vorher wurden leere Werte stillschweigend uebersprungen ("nur
+      // nicht-leere speichern"). Wer sein Passwort im Dialog loeschte und
+      // speicherte, bekam "Zugangsdaten gespeichert" — im Schluesselbund
+      // stand der alte Wert aber weiter und der Auto-Login benutzte ihn.
+      // Ueber die Oberflaeche gab es damit gar keinen Weg, Zugangsdaten
+      // wieder loszuwerden.
+      const accounts = [
+        'email',
+        'password',
+        'bbbPassword',
+        'webuntisEmail',
+        'webuntisPassword',
+        'schulportalEmail',
+        'schulportalPassword',
+        'schulcloudEncryptionPassword',
+      ];
 
-      const allSuccessful = results.every(result => result.success);
-      
+      const results = await Promise.all(
+        accounts.map((account) => {
+          const value = (credentials[account] || '').trim();
+          return value
+            ? window.electron.saveCredentials({ service: 'bbzcloud', account, password: value })
+            : window.electron.deleteCredentials({ service: 'bbzcloud', account });
+        })
+      );
+
+      const allSuccessful = results.every(result => result?.success);
+
       if (allSuccessful) {
         toast({
           title: 'Zugangsdaten gespeichert',
@@ -336,6 +328,10 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
     );
   }
 
+  // Meldet der Status etwas Erfreuliches (Update da/geladen) oder nur Betrieb?
+  const isUpdateNews =
+    updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar');
+
   return (
     <VStack spacing={6} align="stretch">
       {version && (
@@ -389,14 +385,24 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
             {updateStatus && (
               <Box 
                 p={3} 
-                bg={updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar') ? 'green.50' : 'gray.50'} 
+                bg={isUpdateNews
+                  ? (colorMode === 'light' ? 'green.50' : 'green.900')
+                  : (colorMode === 'light' ? 'gray.50' : 'gray.700')}
                 borderRadius="md"
               >
                 <VStack align="stretch" spacing={3}>
-                  <Text color={updateStatus.includes('heruntergeladen') || updateStatus.includes('Update verfügbar') ? 'green.600' : 'gray.600'}>
+                  <Text color={isUpdateNews
+                    ? (colorMode === 'light' ? 'green.600' : 'green.200')
+                    : (colorMode === 'light' ? 'gray.600' : 'gray.300')}>
                     {updateStatus}
                   </Text>
-                  {updateStatus && (
+                  {/* Nur anbieten, wenn wirklich etwas heruntergeladen ist.
+                      Vorher genuegte ein beliebiger Status — der Button
+                      erschien auch bei "Suche nach Updates...", "Fehler beim
+                      Auto-Update." und waehrend des Downloads. Ein Klick rief
+                      dann quitAndInstall() ohne vorliegendes Update auf und
+                      beendete die App einfach. */}
+                  {updateStatus.includes('heruntergeladen') && (
                     <Button
                       colorScheme="green"
                       size="md"
@@ -540,7 +546,7 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
                       <SliderFilledTrack />
                     </SliderTrack>
                     <Tooltip 
-                      label={`${Math.round(settings.navbarZoom * 100)}%`} 
+                      label={`${Math.round(getNavbarScale(settings.navbarZoom) * 100)}%`} 
                       placement="top" 
                       isOpen={true}
                     >
@@ -548,8 +554,11 @@ function SettingsPanel({ onClose, onOpenShortcuts }) {
                     </Tooltip>
                   </Slider>
                 </Box>
+                {/* Die tatsaechlich angewandte Skalierung anzeigen, nicht den
+                    rohen Einstellungswert: NavigationBar rendert mit einem
+                    Abschlag, angezeigt wurden vorher 90% bei real 70%. */}
                 <Text minW="45px" textAlign="right">
-                  {Math.round(settings.navbarZoom * 100)}%
+                  {Math.round(getNavbarScale(settings.navbarZoom) * 100)}%
                 </Text>
               </HStack>
             </FormControl>

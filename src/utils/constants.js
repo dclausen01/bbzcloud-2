@@ -264,9 +264,23 @@ export const ZOOM_CONFIG = {
   MIN_ZOOM: 0.5,                   // Minimum allowed zoom level (50%)
   MAX_ZOOM: 2.0,                   // Maximum allowed zoom level (200%)
   DEFAULT_ZOOM: 1.0,               // Default zoom for webviews (100%)
-  DEFAULT_NAVBAR_ZOOM: 0.9,        // Default zoom for navigation bar (90%)
+  DEFAULT_NAVBAR_ZOOM: 0.9,        // Default navbar setting (ergibt 70% Skalierung)
   ZOOM_STEP: 0.1,                  // Increment for zoom in/out operations
+  // Die Navigationsleiste wird bewusst kleiner gerendert als der eingestellte
+  // Wert, damit sie auch bei vielen Buttons in eine Zeile passt.
+  NAVBAR_SCALE_OFFSET: 0.2,
 };
+
+/**
+ * Tatsaechliche Skalierung der Navigationsleiste zu einem Einstellungswert.
+ *
+ * Muss ueberall verwendet werden, wo die Groesse angewandt ODER angezeigt
+ * wird. Vorher stand die Rechnung nur in NavigationBar.js, waehrend der
+ * Einstellungsdialog den rohen Wert als Prozent ausgab — angezeigt wurden
+ * 90%, gerendert wurden 70%.
+ */
+export const getNavbarScale = (navbarZoom) =>
+  Math.max(0.1, (navbarZoom ?? ZOOM_CONFIG.DEFAULT_NAVBAR_ZOOM) - ZOOM_CONFIG.NAVBAR_SCALE_OFFSET);
 
 // ============================================================================
 // FILE HANDLING CONFIGURATION

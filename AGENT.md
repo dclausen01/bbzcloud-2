@@ -108,6 +108,14 @@ Beim Ändern beachten:
   auf, ohne je einen echten Loginversuch gemacht zu haben.
 - **`failedLogins` stoppt den Wächter** — nur so hört er bei tatsächlich
   falschen Zugangsdaten auf.
+- **`submitAttempts` ist die eigentliche Bremse.** `loginAttempts` wird vom
+  Wächter jeden Tick genullt, `MAX_LOGIN_ATTEMPTS` greift für überwachte Apps
+  also nie. `submitAttempts` zählt nur *tatsächlich abgeschickte* Anmeldungen,
+  wird vom Wächter nicht angefasst und stoppt nach `MAX_SUBMIT_ATTEMPTS` (5).
+  Ohne das feuert die App bei falschem Passwort alle 2,5 s eine Anmeldung —
+  Keycloak (Schulportal) und ADFS sperren dann das Konto.
+  Zurückgesetzt wird der Zähler, wenn die Loginmaske verschwunden ist, sowie
+  bei Reload und System-Resume.
 - **Ein überholter Auslöser wird vorgemerkt, nicht verworfen**
   (`injectionRerunRef`). Der erste Schlüsselbund-Zugriff kann auf macOS
   minutenlang am Systemdialog hängen; verworfene Auslöser in dieser Zeit
@@ -115,7 +123,15 @@ Beim Ändern beachten:
 - **Sperrzeiten gehören in den Speicher, nicht in `localStorage`.** Die
   WebUntis-Sperre lag früher dort und überlebte den App-Neustart — sie
   blockierte den Auto-Login dann selbst bei frisch dastehender Loginmaske.
-  (Der `antraege`-Handler nutzt noch das alte Muster.)
+- **Eine Sperre darf nur nach einem ERFOLGREICHEN Versuch gesetzt werden.**
+  Das WebUntis-Skript meldete `SUCCESS`, sobald der Button geklickt war — ein
+  fehlgeschlagener Login verbrannte damit drei Minuten, in denen gar nichts
+  passierte. Jetzt wird geprüft, ob die Loginmaske verschwunden ist
+  (`STILL_ON_LOGIN`), und ein ausdrückliches Reload hebt die Sperre auf.
+- **Kein `window.location.reload()` im injizierten Skript.** Der Reload rennt
+  dem Rückgabewert davon: wird das Dokument abgeräumt, bevor
+  `executeJavaScript` auflöst, hängt die Injection bis `INJECTION_STALE_MS`
+  (45 s) und alle Wiederholungen in dieser Zeit laufen ins Leere.
 
 ### Fokus-Schutz bei der Credential-Injection
 Symptom, wenn das fehlt: Der Cursor springt in WebViews immer wieder aus
@@ -140,6 +156,14 @@ Schutzmechanismen:
 
 ### Besondere "Quirks" & Workarounds
 - **Session-Reloads**: Webseiten wie **Outlook (OWA)** und **WebUntis** benötigen einen expliziten Reload nach System-Resume (Sleep/Wake), da ihre Sessions sonst ablaufen oder einfrieren. Dies wird im Main Process (`powerMonitor`) behandelt.
+  - **Nur `resume` löst den Reload aus, nicht `unlock-screen`.** Beide Ereignisse
+    schickten früher dasselbe `system-resumed`. Jedes Entsperren des Bildschirms
+    — auch ohne Standby — lud damit alle Apps neu und verwarf Formulareingaben
+    und Scroll-Positionen. `unlock-screen` korrigiert jetzt nur noch die
+    Fensterposition (Monitorwechsel während der Sperre).
+  - Läuft eine Sitzung während eines langen Sperrbildschirms *ohne* Standby ab,
+    fängt das der Login-Wächter ab: er prüft alle 2,5 s auf eine sichtbare
+    Loginmaske — seit dem Outlook-Eintrag auch dort — und injiziert von sich aus.
 - **Benutzer-Filterung**: In `App.js` (`filterNavigationButtons`) wird anhand der E-Mail-Domain (`@bbz-rd-eck.de`) unterschieden, ob der Nutzer Lehrer (alle Apps) oder Schüler (eingeschränkte Apps) ist. Schüler erhalten Zugriff auf: `schulcloud`, `moodle`, `nextcloud`, `cryptpad`, `webuntis`, `wiki`.
 - **macOS Memory Management**: Implementiert eine aggressive Cache-Bereinigung für Bilder und WebViews, um Speicherlecks unter macOS zu verhindern.
 - **Fenster-Sichtbarkeit**: `ensureWindowBoundsVisible` stellt sicher, dass Fenster nicht außerhalb des sichtbaren Bildschirmbereichs wiederhergestellt werden (z.B. bei Monitorwechsel).
@@ -198,7 +222,14 @@ Die automatische Anmeldung ist in `WebViewContainer.js` implementiert und wird a
 | **BBZ Chat** | Direkter API-Call: `fetch('/api/login', {email, password, securityPassword})` → Token in `localStorage('schulchat_token')` speichern → `webview.reload()`. Umgeht die React-19-Login-Form komplett. Webview-ID ist `schulcloud` (URL-Erkennung via `chat.bbz-rd-eck.com`). |
 | **WebUntis** | Periodenbasiert, eigene Selektor-Logik |
 | **Schulportal** | Keycloak: `input#username` + `input#password` → `input#kc-login` |
-| **Handbuch/Anträge** | ADFS-Login analog Outlook |
+
+**Nicht (mehr) unterstützt:** Für `handbook`, `antraege` und `office` existierten
+Handler, die nie erreichbar waren — die Dropdown-App „Handbuch" hat die ID
+`Handbuch` (also `handbuch`, nicht `handbook`), `antraege` gibt es gar nicht, und
+`office` ist kein Navigationsbutton (die Dropdown-App heißt `MSOffice`). Die
+Handler wurden entfernt. Soll das Handbuch tatsächlich automatisch angemeldet
+werden, ist das eine bewusste Entscheidung: es würde erstmals ADFS-Zugangsdaten
+an `viflow.bbz-rd-eck.de` senden.
 
 Die Credentials (E-Mail, Passwort) werden aus dem System-Keychain (`keytar`) geladen. Nextcloud verwendet dieselben Zugangsdaten wie Outlook (ADFS-Domain-Login). BBZ Chat nutzt zusätzlich das `schulcloudEncryptionPassword` (Fallback: Hauptpasswort).
 
