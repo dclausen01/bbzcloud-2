@@ -200,6 +200,40 @@ Wichtige Konfigurationsdateien:
 - `npm run dist`: Erstellt Installationspakete für das aktuelle OS.
 - `npm run release`: Baut und veröffentlicht (via GitHub Actions).
 
+### Release-Matrix (`.github/workflows/release.yml`)
+Jede Plattform/Architektur hat einen eigenen Job; `create-release` sammelt
+die Artefakte ein und legt einen Draft-Release an.
+
+| Job | Runner | Ergebnis |
+|-----|--------|----------|
+| `build-linux-x64` | `ubuntu-latest` | AppImage, deb, rpm, pacman |
+| `build-linux-arm64` | `ubuntu-24.04-arm` | AppImage |
+| `build-mac-arm64` | `macos-15` | DMG (Apple Silicon) |
+| `build-mac-x64` | `macos-15-intel` | DMG (Intel) |
+| `build-windows` | `windows-latest` | exe, msi |
+
+Beim Ändern beachten:
+- **Intel-Macs bauen auf einem Intel-Runner, nicht per Cross-Compiling.**
+  `sqlite3` und `keytar` sind native Module; sie vom ARM-Runner aus für x64
+  zu übersetzen ist deutlich fehleranfälliger als ein nativer Build.
+- **`macos-13` gibt es nicht mehr.** GitHub hält maximal zwei GA-Images vor.
+  Aktuelle Intel-Standard-Runner sind `macos-15-intel` und `macos-26-intel`
+  (Standard-Runner, für öffentliche Repos kostenlos). Die `-large`-Labels
+  sind kostenpflichtige Runner und hier nicht nötig.
+- **Der Intel-Job lädt bewusst KEINE `*.yml` hoch.** `electron-builder`
+  schreibt pro Build eine `latest-mac.yml`, die nur die eigenen Artefakte
+  auflistet. Würden beide Mac-Jobs sie hochladen, überschriebe eine die
+  andere und der Auto-Update-Feed beschriebe nur noch eine Architektur —
+  und zwar je nach Reihenfolge zufällig welche. Der Intel-Build wird als
+  DMG zum Herunterladen veröffentlicht.
+- **Auto-Update für Intel würde ohnehin eine Signierung voraussetzen**, die
+  es noch nicht gibt (siehe „Zugangsdaten im Schlüsselbund"). Soll Intel
+  später auch Updates bekommen, müssen beide Architekturen in *einem*
+  `electron-builder`-Lauf gebaut werden, damit eine gemeinsame
+  `latest-mac.yml` entsteht.
+- `artifactName` enthält `${arch}`, die DMGs kollidieren beim Zusammenführen
+  also nicht (`BBZ-Cloud-<version>-arm64.dmg` / `-x64.dmg`).
+
 ### Assets
 Icons und Bilder liegen unter `assets/`. Es gibt spezifische Logiken für Tray-Icons (Windows vs. macOS/Linux) und Badges (Benachrichtigungs-Indikatoren).
 
