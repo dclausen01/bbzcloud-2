@@ -97,6 +97,16 @@ async function isUserTyping(webview) {
   }
 }
 
+// Steht auf der Seite ungespeicherter Text (z. B. eine halb geschriebene
+// E-Mail in OWA)? Wird vor automatischen Reloads geprueft.
+async function hasUnsavedText(webview) {
+  try {
+    return !!(await webview.executeJavaScript(HAS_UNSAVED_TEXT_JS));
+  } catch (_) {
+    return false;
+  }
+}
+
 // Wird in injizierte Snippets eingebettet: fokussiert ein Feld nur dann, wenn
 // der Nutzer nicht gerade in einem anderen Eingabefeld schreibt.
 const SAFE_FOCUS_HELPER_JS = `
@@ -218,6 +228,138 @@ const LOGIN_WATCHERS = {
               })()`,
 };
 
+// ---------------------------------------------------------------------------
+// Selbstheilung der WebContentsViews
+// ---------------------------------------------------------------------------
+
+// Abstand zwischen den Ladevorgaengen beim Start.
+//
+// Vorher liefen alle elf Ansichten gleichzeitig los. Wer zuerst drankam,
+// gewann; die schwereren SPAs (schul.cloud) blieben dabei gelegentlich auf
+// halber Strecke stehen — genau das "laedt nicht zuverlaessig, nach einem
+// Reload dann schon". Der Versatz kostet hoechstens zwei Sekunden.
+const WCV_CREATE_STAGGER_MS = 250;
+
+// Wie oft geprueft wird, ob eine Ansicht noch mit ihrem Server spricht.
+const HEALTH_CHECK_INTERVAL_MS = 60 * 1000;
+
+// Wie lange nach did-stop-loading gewartet wird, bevor auf eine leer
+// gebliebene Seite geprueft wird. Muss reichen, damit eine SPA booten kann.
+const BLANK_CHECK_DELAY_MS = 6000;
+
+// Ab welchem Alter eine Ansicht als abgestanden gilt und neu geladen wird.
+//
+// Betrifft nur Apps, deren Oberflaeche bei abgelaufener Sitzung einfach
+// stehenbleibt, OHNE eine Loginmaske zu zeigen: der Login-Waechter sieht dort
+// nichts, und ohne diesen Zusatz bleibt die Seite bis zu einem ausdruecklichen
+// Reload durch den Nutzer taub. Gezaehlt wird ab dem letzten erfolgreichen
+// Laden (did-finish-load / did-navigate); reine Hash-Navigation innerhalb der
+// SPA zaehlt bewusst nicht mit, die beweist keine lebende Verbindung.
+//
+// Bewusst nur Outlook: dort ist der stille Sitzungsverlust belegt. WebUntis
+// wird beim Aufwachen ohnehin ausdruecklich neu geladen (Resume-Handler) und
+// haette hier ein echtes Risiko — ein Hintergrund-Reload waehrend der Eingabe
+// des Bestaetigungscodes wuerde die Anmeldung abwuergen. Weitere Apps sind ein
+// Einzeiler, aber eine bewusste Entscheidung.
+const WCV_MAX_AGE_MS = {
+  outlook: 20 * 60 * 1000,
+};
+
+// Mindestabstand zwischen zwei automatischen Reloads derselben App. Bremst
+// Reload-Schleifen, falls eine Pruefung faelschlich "tot" meldet.
+const AUTO_RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
+
+// Kuerzerer Abstand fuer den Sonderfall "Seite ist leer geblieben": dort hilft
+// ein zweiter Anlauf sofort, und ein 5-Minuten-Fenster waere beim Start zu
+// traege. Zusaetzlich begrenzt MAX_BLANK_RELOADS die Wiederholungen.
+const BLANK_RELOAD_COOLDOWN_MS = 30 * 1000;
+const MAX_BLANK_RELOADS = 3;
+
+// Wartezeiten nach did-fail-load, ansteigend. Der letzte Wert wiederholt sich:
+// ein Server in der Wartung oder ein laenger fehlendes WLAN soll sich von
+// selbst wieder einrenken, ohne dass der Nutzer eingreifen muss.
+const LOAD_RETRY_DELAYS_MS = [3000, 10000, 30000, 60000, 300000];
+
+// Fehlercodes ohne Wiederholung: 0 = kein Fehler, -3 = ABORTED (kommt von
+// unseren eigenen Navigationen).
+const IGNORED_LOAD_ERROR_CODES = new Set([0, -3]);
+
+// Gesundheitspruefungen, die im Seitenkontext laufen.
+//
+// Outlook/OWA verliert seine Sitzung still: die Oberflaeche bleibt stehen und
+// aktualisiert nichts mehr, zeigt aber keine Loginmaske — der Login-Waechter
+// findet also nichts, worauf er reagieren koennte. Eine HEAD-Anfrage an den
+// eigenen Ursprung verraet den Zustand dagegen eindeutig: eine abgelaufene
+// OWA-Sitzung antwortet mit 401/403/440 oder leitet auf logon.aspx bzw. den
+// ADFS um (redirect: 'manual' macht daraus eine opaqueredirect-Antwort).
+const WCV_HEALTH_PROBES = {
+  outlook: `(async function() {
+    try {
+      // Nur pruefen, wenn die Seite wirklich OWA zeigt. Waehrend des
+      // ADFS-Logins liegt ein fremder Ursprung vor — dort waere '/owa/' die
+      // falsche Adresse, und um die Loginmaske kuemmert sich der Waechter.
+      if (!location.pathname.toLowerCase().startsWith('/owa')) return 'UNKNOWN';
+      const r = await fetch('/owa/', {
+        method: 'HEAD',
+        cache: 'no-store',
+        credentials: 'include',
+        redirect: 'manual',
+      });
+      if (r.type === 'opaqueredirect') return 'SESSION_DEAD';
+      if (r.status === 401 || r.status === 403 || r.status === 440) return 'SESSION_DEAD';
+      return 'ALIVE';
+    } catch (e) {
+      // Netzwerkfehler koennen auch nur eine kurze Stoerung sein — nicht als
+      // Sitzungsverlust werten, sonst laedt jeder WLAN-Wackler die Seite neu.
+      return 'UNKNOWN';
+    }
+  })()`,
+};
+
+// Erkennt eine leer gebliebene Seite: die SPA hat nicht gebootet, das Dokument
+// steht praktisch leer da. Chromium-Fehlerseiten haben Text und fallen hier
+// nicht hinein — die deckt did-fail-load ab.
+const BLANK_PAGE_PROBE_JS = `(function() {
+  try {
+    const body = document.body;
+    if (!body) return 'BLANK';
+    // Erst die Elementzahl, dann erst der Text: innerText erzwingt ein Layout,
+    // und das jede Minute auf einem vollen Posteingang waere unnoetige Last.
+    if (body.querySelectorAll('*').length >= 5) return 'OK';
+    return (body.innerText || '').trim() ? 'OK' : 'BLANK';
+  } catch (e) {
+    return 'OK';
+  }
+})()`;
+
+// Hat der Nutzer irgendwo einen laengeren, ungespeicherten Text stehen?
+// Bewusst nur contenteditable und <textarea>: das trifft eine offene
+// E-Mail in OWA, nicht aber ein Suchfeld, in dem ein Wort steht — sonst
+// wuerde ein einziges getipptes Zeichen den Reload dauerhaft blockieren.
+const HAS_UNSAVED_TEXT_JS = `(function() {
+  try {
+    const editables = document.querySelectorAll('[contenteditable="true"], [contenteditable=""], textarea');
+    for (const el of editables) {
+      const value = el.tagName === 'TEXTAREA' ? el.value : el.innerText;
+      if ((value || '').trim().length > 0) return true;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+})()`;
+
+// Nach so langer Zeit wird der BBZ-Chat-Spinner ausgeblendet, damit der Nutzer
+// die Seite darunter sieht und selbst handeln kann.
+const BBZ_CHAT_OVERLAY_TIMEOUT_MS = 30 * 1000;
+
+// Hoechstzahl tatsaechlich abgeschickter /api/login-Aufrufe fuer BBZ Chat.
+//
+// Bewusst niedrig: jeder Aufruf legt serverseitig ein neues Geraet in
+// schul.cloud an. Bei falschem Verschluesselungskennwort lief das frueher alle
+// 2,5 s weiter und hat dutzende Geraete erzeugt.
+const MAX_BBZCHAT_LOGIN_CALLS = 3;
+
 const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }, ref) => {
   // Expose navigation methods through ref
   React.useImperativeHandle(ref, () => ({
@@ -272,6 +414,18 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       });
       submitAttempts.current[id] = 0;
       submitLimitNotified.current[id] = false;
+      // Selbstheilungs-Zaehler mit freigeben: ein Reload von Hand ist eine
+      // ausdrueckliche Nutzeraktion und soll nicht an einer Cooldown oder an
+      // einem verbrauchten Versuchsbudget haengenbleiben.
+      autoReloadAtRef.current[id] = 0;
+      blankReloadsRef.current[id] = 0;
+      healthStrikeRef.current[id] = 0;
+      clearTimeout(loadRetryRef.current[id]?.timer);
+      loadRetryRef.current[id] = { attempt: 0, timer: null };
+      if (id === 'schulcloud') {
+        bbzChatLoginCallsRef.current = 0;
+        bbzChatOverlayGaveUpRef.current = false;
+      }
       if (WCV_APPS.has(id)) {
         forceReloadWcv(id, standardApps, wcvUrlsRef.current[id]);
         return;
@@ -296,6 +450,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Sperrzeiten mit aufheben — ein ausdrueckliches Reload ist eine
       // Nutzeraktion und soll nicht an einer Cooldown haengenbleiben.
       loginCooldownRef.current = {};
+      // Dasselbe fuer die Selbstheilung.
+      autoReloadAtRef.current = {};
+      blankReloadsRef.current = {};
+      healthStrikeRef.current = {};
+      Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
+      loadRetryRef.current = {};
+      bbzChatLoginCallsRef.current = 0;
+      bbzChatOverlayGaveUpRef.current = false;
       // Reload each WCV individually so per-app reload quirks (e.g. Outlook
       // needing a full clearHistory+navigate) are honored.
       for (const id of WCV_APPS) {
@@ -345,6 +507,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // jeder Navigation eine neue Identität und würde Effekte unnötig neu laufen
   // lassen (show/hide-Zyklen setzen den Fokus im WebView zurück).
   const activeWcvId = activeWebView && WCV_APPS.has(activeWebView.id) ? activeWebView.id : null;
+  // Dieselbe ID als Ref, damit Effekte mit leerer Dependency-Liste (z. B. der
+  // Gesundheitscheck) wissen, welche App der Nutzer gerade ansieht.
+  const activeWcvIdRef = useRef(activeWcvId);
+  activeWcvIdRef.current = activeWcvId;
   const [isLoading, setIsLoading] = useState({});
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [overviewImagePath, setOverviewImagePath] = useState('');
@@ -375,6 +541,27 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Diagnose des Login-Wächters: Tick-Zähler und letzter berichteter Zustand
   const watcherTickRef = useRef(0);
   const watcherLastRef = useRef({});
+
+  // --- Selbstheilung der WebContentsViews -----------------------------------
+  // Zeitpunkt des letzten erfolgreich abgeschlossenen Ladevorgangs pro App
+  const wcvLastLoadRef = useRef({});
+  // Laufende Wiederholungen nach did-fail-load: { attempt, timer }
+  const loadRetryRef = useRef({});
+  // Verzoegerte Pruefungen auf leer gebliebene Seiten
+  const blankCheckTimersRef = useRef({});
+  // Zeitpunkt des letzten automatischen Reloads (Cooldown gegen Schleifen)
+  const autoReloadAtRef = useRef({});
+  // Wie oft die Gesundheitspruefung hintereinander "tot" gemeldet hat
+  const healthStrikeRef = useRef({});
+  // Wie oft wegen einer leeren Seite bereits neu geladen wurde
+  const blankReloadsRef = useRef({});
+
+  // --- BBZ Chat -------------------------------------------------------------
+  // Tatsaechlich abgeschickte /api/login-Aufrufe (jeder legt ein Geraet an)
+  const bbzChatLoginCallsRef = useRef(0);
+  // Wurde der Spinner aufgegeben? Verhindert, dass der Login-Waechter ihn
+  // 2,5 s spaeter wieder einblendet und er dauerhaft flackert.
+  const bbzChatOverlayGaveUpRef = useRef(false);
   const MAX_LOGIN_ATTEMPTS = 3;
 
   // Tatsaechlich abgeschickte Anmeldungen pro App.
@@ -569,11 +756,27 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Create WCV apps on mount (mirroring the webview preload logic).
   useEffect(() => {
     if (!standardApps) return;
+    // Gestaffelt erzeugen statt alle Ansichten im selben Tick.
+    //
+    // Vorher startete jeder Ladevorgang gleichzeitig. Elf parallele
+    // Erstaufrufe — darunter mehrere schwere SPAs und zwei ADFS-Ketten —
+    // haben sich gegenseitig ausgebremst; einzelne blieben auf halber Strecke
+    // stehen und standen dann bis zu einem Reload durch den Nutzer leer da.
+    // Die erste App (im Normalfall die sichtbare) startet unveraendert sofort.
+    let createIndex = 0;
     for (const [id, config] of Object.entries(standardApps)) {
       if (!WCV_APPS.has(id) || !config.visible) continue;
-      window.electron.view.create({ appId: id, url: config.url }).catch((err) =>
-        console.error(`[WCV] Failed to create view for ${id}:`, err)
-      );
+      const delay = createIndex * WCV_CREATE_STAGGER_MS;
+      createIndex += 1;
+      const create = () =>
+        window.electron.view.create({ appId: id, url: config.url }).catch((err) =>
+          console.error(`[WCV] Failed to create view for ${id}:`, err)
+        );
+      // Nicht abgebrochen beim Unmount: create() ist idempotent, und ein
+      // Neuaufbau der Komponente waehrend des Starts (siehe unten) darf die
+      // noch ausstehenden Ansichten nicht verschlucken.
+      if (delay === 0) create();
+      else setTimeout(create, delay);
     }
     // Cleanup: NUR die Timer stoppen — die Views bleiben bestehen.
     //
@@ -669,18 +872,41 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     };
   }, [activeWcvId, applyZoom]);
 
+  // Notbremse gegen den Dauer-Spinner.
+  //
+  // Bleibt die BBZ-Chat-Anmeldung haengen — Server antwortet nicht, Token laesst
+  // sich nicht pruefen, Zugangsdaten passen nicht —, blieb bisher nur der
+  // Ladekreis stehen. Nach dieser Zeit wird das Overlay ausgeblendet, damit der
+  // Nutzer die Seite darunter sieht und sich selbst anmelden kann.
+  useEffect(() => {
+    if (!bbzChatLoginActive) return;
+    const timer = setTimeout(() => {
+      console.warn('[BBZ Chat] Anmeldung dauert zu lange - Overlay wird ausgeblendet');
+      bbzChatOverlayGaveUpRef.current = true;
+      setBbzChatLoginActive(false);
+    }, BBZ_CHAT_OVERLAY_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [bbzChatLoginActive]);
+
   // Hide the schulcloud WCV while the BBZ Chat spinner is shown so the React
   // overlay is visible (WCV is a native layer composited above the renderer).
   // Nur bei echtem Wechsel umschalten — ein wiederholtes show() würde den
   // Fokus im WebView zurücksetzen.
   const schulcloudVisibilityRef = useRef(null);
   useEffect(() => {
-    if (!hasBbzChatCredentials) return;
     if (activeWcvId !== 'schulcloud') {
       schulcloudVisibilityRef.current = null;
       return;
     }
-    const shouldBeVisible = !bbzChatLoginActive;
+    // Ohne vollstaendige Zugangsdaten wird gar kein Overlay gezeigt — dann muss
+    // die Ansicht sichtbar sein.
+    //
+    // Vorher stieg der Effekt bei fehlenden Zugangsdaten sofort aus. War die
+    // Ansicht in dem Moment gerade ausgeblendet (Overlay stand noch) und fiel
+    // hasBbzChatCredentials danach auf false, blieb sie fuer den Rest der
+    // Sitzung unsichtbar: schul.cloud zeigte nur noch eine leere Flaeche, und
+    // auch ein Reload half nicht, weil das Problem gar nicht die Seite war.
+    const shouldBeVisible = !(bbzChatLoginActive && hasBbzChatCredentials);
     if (schulcloudVisibilityRef.current === shouldBeVisible) return;
     schulcloudVisibilityRef.current = shouldBeVisible;
     if (shouldBeVisible) {
@@ -714,7 +940,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
         if (event.appId === 'schulcloud' && event.type === 'did-navigate') {
           if (event.url && event.url.includes('chat.bbz-rd-eck.com')) {
-            setBbzChatLoginActive(true); // refined to false once login is confirmed
+            // Frische Navigation = frischer Anlauf, auch fuer das Overlay.
+            bbzChatOverlayGaveUpRef.current = false;
+            if (!failedLogins.current.schulcloud) {
+              setBbzChatLoginActive(true); // refined to false once login is confirmed
+            }
           } else if (event.url) {
             setBbzChatLoginActive(false);
           }
@@ -722,7 +952,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       } else if (event.type === 'dom-ready' && event.appId === 'schulcloud') {
         // Also catch initial load / reload where did-navigate fires before dom-ready
         const url = wcvUrlsRef.current['schulcloud'] || '';
-        if (url.includes('chat.bbz-rd-eck.com')) {
+        if (url.includes('chat.bbz-rd-eck.com') &&
+            !failedLogins.current.schulcloud &&
+            !bbzChatOverlayGaveUpRef.current) {
           setBbzChatLoginActive(true);
         }
       }
@@ -835,6 +1067,261 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     getURL: () => wcvUrlsRef.current[id] || '',
     reload: () => window.electron.view.reload(id),
   }), []);
+
+  // -------------------------------------------------------------------------
+  // Selbstheilung: Ladefehler, leere Seiten und stille Sitzungsverluste
+  // -------------------------------------------------------------------------
+
+  // Ein automatischer Reload — im Gegensatz zum Reload per Tastendruck eine
+  // Massnahme der App selbst, deshalb mit Cooldown gegen Endlosschleifen.
+  //
+  // Bewusst NICHT zurueckgesetzt wird `failedLogins` und `submitAttempts`: sind
+  // die Zugangsdaten falsch, soll ein automatischer Reload nicht die naechste
+  // Runde Anmeldeversuche freigeben. Nur ausdrueckliche Nutzeraktionen
+  // (Reload-Taste, Aufwachen aus dem Standby) duerfen das.
+  const autoReloadWcv = useCallback((id, reason, cooldownMs = AUTO_RELOAD_COOLDOWN_MS) => {
+    const last = autoReloadAtRef.current[id] || 0;
+    if (Date.now() - last < cooldownMs) {
+      return false;
+    }
+    autoReloadAtRef.current[id] = Date.now();
+    console.warn(`[${id}] Automatischer Reload: ${reason}`);
+
+    credsAreSet.current[id] = false;
+    loginAttempts.current[id] = 0;
+    injectionInFlight.current[id] = null;
+    injectionRerunRef.current[id] = null;
+
+    try {
+      forceReloadWcv(id, standardAppsRef.current, wcvUrlsRef.current[id]);
+    } catch (error) {
+      console.warn(`[${id}] Automatischer Reload fehlgeschlagen:`, error);
+      return false;
+    }
+    return true;
+  }, []);
+
+  // Nach einem Ladefehler mit wachsendem Abstand erneut versuchen.
+  const scheduleLoadRetry = useCallback((id) => {
+    const state = loadRetryRef.current[id] || { attempt: 0, timer: null };
+    loadRetryRef.current[id] = state;
+    if (state.timer) return;
+    const step = Math.min(state.attempt, LOAD_RETRY_DELAYS_MS.length - 1);
+    const delay = LOAD_RETRY_DELAYS_MS[step];
+    state.attempt += 1;
+    const attemptNo = state.attempt;
+    state.timer = setTimeout(() => {
+      state.timer = null;
+      console.log(`[${id}] Ladeversuch ${attemptNo} nach Fehler`);
+      try {
+        forceReloadWcv(id, standardAppsRef.current, wcvUrlsRef.current[id]);
+      } catch (_) {
+        // Naechster Versuch kommt ueber das naechste did-fail-load
+      }
+    }, delay);
+  }, []);
+
+  // Leer gebliebene Seite erkennen und einmal nachladen.
+  const checkBlankPage = useCallback(async (id) => {
+    const url = wcvUrlsRef.current[id] || '';
+    if (!url || url.startsWith('about:')) return;
+    if ((blankReloadsRef.current[id] || 0) >= MAX_BLANK_RELOADS) return;
+
+    let result;
+    try {
+      result = await window.electron.view.executeJavaScript(id, BLANK_PAGE_PROBE_JS);
+    } catch (_) {
+      return; // View existiert nicht oder navigiert gerade
+    }
+    if (result !== 'BLANK') {
+      blankReloadsRef.current[id] = 0;
+      return;
+    }
+
+    console.warn(`[${id}] Seite ist leer geblieben`);
+    if (autoReloadWcv(id, 'leere Seite', BLANK_RELOAD_COOLDOWN_MS)) {
+      blankReloadsRef.current[id] = (blankReloadsRef.current[id] || 0) + 1;
+    }
+  }, [autoReloadWcv]);
+
+  // Ladefehler, Abstuerze und erfolgreiche Ladevorgaenge auswerten.
+  //
+  // ViewManager schickt did-fail-load und render-process-gone schon lange an
+  // den Renderer, ausgewertet hat sie bisher niemand: schlug der erste
+  // Ladeversuch fehl (Netz beim Start noch nicht oben, kurzer Aussetzer,
+  // ueberlasteter Server), stand die Ansicht bis zu einem Reload durch den
+  // Nutzer auf der Chromium-Fehlerseite.
+  useEffect(() => {
+    const unsubscribe = window.electron.view.onEvent((event) => {
+      if (!WCV_APPS.has(event.appId)) return;
+      const id = event.appId;
+
+      if (event.type === 'did-finish-load' || event.type === 'did-navigate') {
+        wcvLastLoadRef.current[id] = Date.now();
+        healthStrikeRef.current[id] = 0;
+        const state = loadRetryRef.current[id];
+        if (state) {
+          clearTimeout(state.timer);
+          loadRetryRef.current[id] = { attempt: 0, timer: null };
+        }
+        return;
+      }
+
+      if (event.type === 'did-fail-load') {
+        // isMainFrame kann bei aelteren Ereignissen fehlen -> nur ein
+        // ausdrueckliches false gilt als Unterrahmen.
+        if (event.isMainFrame === false) return;
+        if (IGNORED_LOAD_ERROR_CODES.has(event.errorCode)) return;
+        console.warn(`[${id}] Laden fehlgeschlagen:`, event.errorCode, event.errorDescription, event.validatedURL);
+        scheduleLoadRetry(id);
+        return;
+      }
+
+      if (event.type === 'render-process-gone') {
+        console.warn(`[${id}] Renderer beendet:`, event.details);
+        scheduleLoadRetry(id);
+        return;
+      }
+
+      if (event.type === 'did-stop-loading') {
+        clearTimeout(blankCheckTimersRef.current[id]);
+        blankCheckTimersRef.current[id] = setTimeout(() => checkBlankPage(id), BLANK_CHECK_DELAY_MS);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      Object.values(blankCheckTimersRef.current).forEach(clearTimeout);
+      Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
+    };
+  }, [scheduleLoadRetry, checkBlankPage]);
+
+  // Kommt das Netz zurueck, sofort erneut laden statt den naechsten
+  // Backoff-Schritt abzuwarten.
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[Netz] Verbindung zurueck');
+      for (const id of WCV_APPS) {
+        if (!standardAppsRef.current?.[id]?.visible) continue;
+        const state = loadRetryRef.current[id];
+        if (!state || (!state.attempt && !state.timer)) continue;
+        clearTimeout(state.timer);
+        loadRetryRef.current[id] = { attempt: 0, timer: null };
+        try {
+          forceReloadWcv(id, standardAppsRef.current, wcvUrlsRef.current[id]);
+        } catch (_) { /* naechster Versuch ueber did-fail-load */ }
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
+
+  // Gesundheitscheck: stille Sitzungsverluste und abgestandene Ansichten.
+  //
+  // Outlook/OWA ist der Grund dafuer. Laeuft die Sitzung ab oder reisst die
+  // Verbindung (Standby, Netzwechsel, langer Sperrbildschirm), bleibt die
+  // Oberflaeche stehen und "wird taub": sie zeigt weiter den alten Stand,
+  // aktualisiert aber nichts mehr und zeigt auch keine Loginmaske, auf die der
+  // Login-Waechter reagieren koennte. Ohne diesen Check half nur ein Reload
+  // von Hand.
+  useEffect(() => {
+    const tick = async () => {
+      for (const id of WCV_APPS) {
+        if (!standardAppsRef.current?.[id]?.visible) continue;
+        if (!wcvUrlsRef.current[id]) continue;
+        // Waehrend eine Wiederholung nach Ladefehler laeuft, nicht dazwischenfunken
+        const retry = loadRetryRef.current[id];
+        if (retry && retry.timer) continue;
+
+        // 1) Leer gebliebene Seite (Sicherheitsnetz zur Sofortpruefung nach
+        //    did-stop-loading, falls dieses Ereignis ausgeblieben ist)
+        await checkBlankPage(id);
+
+        const proxy = getWcvProxy(id);
+
+        // 2) Stiller Sitzungsverlust
+        const probe = WCV_HEALTH_PROBES[id];
+        if (probe) {
+          try {
+            const result = await window.electron.view.executeJavaScript(id, probe);
+            if (result === 'SESSION_DEAD') {
+              healthStrikeRef.current[id] = (healthStrikeRef.current[id] || 0) + 1;
+              console.warn(`[${id}] Server lehnt die Sitzung ab (${healthStrikeRef.current[id]}/2)`);
+              // Erst beim zweiten Mal handeln: eine einzelne abgelehnte
+              // Anfrage kann auch ein Aussetzer sein.
+              if (healthStrikeRef.current[id] >= 2 && !(await hasUnsavedText(proxy))) {
+                if (autoReloadWcv(id, 'Sitzung abgelaufen')) {
+                  healthStrikeRef.current[id] = 0;
+                }
+              }
+              continue;
+            }
+            if (result === 'ALIVE') healthStrikeRef.current[id] = 0;
+          } catch (_) {
+            // View nicht erreichbar — naechster Durchlauf
+          }
+        }
+
+        // 3) Abgestandene Ansicht auffrischen.
+        //
+        //    Im Hintergrund nach WCV_MAX_AGE_MS, waehrend der Nutzer die App
+        //    ansieht erst nach der doppelten Zeit. Ein Reload vor der Nase des
+        //    Nutzers ist aufdringlich — aber gar nicht auffrischen ist keine
+        //    Loesung: bleibt Outlook den ganzen Vormittag die aktive App und
+        //    schlaeft der Rechner zwischendurch, faengt sonst niemand den
+        //    stillen Verbindungsverlust ab.
+        const maxAge = WCV_MAX_AGE_MS[id];
+        if (!maxAge) continue;
+        const threshold = activeWcvIdRef.current === id ? maxAge * 2 : maxAge;
+        const lastLoad = wcvLastLoadRef.current[id];
+        if (!lastLoad || Date.now() - lastLoad < threshold) continue;
+        if (await hasUnsavedText(proxy)) {
+          console.log(`[${id}] Auffrischen verschoben - ungespeicherter Text auf der Seite`);
+          continue;
+        }
+        autoReloadWcv(id, `seit ${Math.round((Date.now() - lastLoad) / 60000)} min nicht neu geladen`);
+      }
+    };
+
+    const timer = setInterval(tick, HEALTH_CHECK_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [checkBlankPage, autoReloadWcv, getWcvProxy]);
+
+  // Beim Wechsel auf eine App pruefen, ob sie zu lange nicht geladen wurde.
+  //
+  // Deckt den haeufigsten Fall im Alltag ab: der Rechner war im Standby oder
+  // der Bildschirm lange gesperrt, und beim Zurueckkommen soll die App nicht
+  // erst nach dem naechsten Gesundheitscheck wieder leben.
+  useEffect(() => {
+    if (!activeWcvId) return;
+    const maxAge = WCV_MAX_AGE_MS[activeWcvId];
+    if (!maxAge) return;
+    const lastLoad = wcvLastLoadRef.current[activeWcvId];
+    if (!lastLoad || Date.now() - lastLoad < maxAge) return;
+    autoReloadWcv(activeWcvId, 'beim Wechsel abgestanden');
+  }, [activeWcvId, autoReloadWcv]);
+
+  // Automatische BBZ-Chat-Anmeldung endgueltig stoppen und den Nutzer
+  // informieren. `failedLogins` haelt den Login-Waechter an, das Overlay wird
+  // ausgeblendet und bleibt es auch (bbzChatOverlayGaveUpRef) — sonst blendet
+  // der Waechter 2,5 s spaeter wieder einen Spinner ein, hinter dem nichts
+  // mehr passiert.
+  const stopBbzChatAutoLogin = useCallback((id, title, description) => {
+    failedLogins.current[id] = true;
+    credsAreSet.current[id] = false;
+    bbzChatOverlayGaveUpRef.current = true;
+    setBbzChatLoginActive(false);
+    console.warn(`[BBZ Chat] ${title}: ${description}`);
+    toast({
+      title,
+      description,
+      status: 'error',
+      duration: null,
+      isClosable: true,
+    });
+  // toast ist stabil, setBbzChatLoginActive ist ein React-Setter
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Eine tatsaechlich abgeschickte Anmeldung verbuchen. Siehe submitAttempts.
   const noteSubmit = useCallback((id) => {
@@ -1449,6 +1936,24 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             // stashcat-chat's POST /api/login returns {token, user}, and the app
             // reads the token from localStorage('schulchat_token') on startup.
             if (isBbzChat) {
+              // Jeder /api/login-Aufruf legt serverseitig ein neues Geraet in
+              // schul.cloud an. Deshalb hier eine eigene, sehr enge Obergrenze
+              // — und nicht erst MAX_SUBMIT_ATTEMPTS.
+              //
+              // Vorher wurde jede Fehlerantwort als "voruebergehend" behandelt
+              // und der Login-Waechter stiess sie alle 2,5 s erneut an. Bei
+              // falschem Verschluesselungskennwort hiess das: Spinner bleibt
+              // stehen, und in schul.cloud stapeln sich dutzende Geraete.
+              if (bbzChatLoginCallsRef.current >= MAX_BBZCHAT_LOGIN_CALLS) {
+                stopBbzChatAutoLogin(
+                  id,
+                  'BBZ Chat: Automatische Anmeldung gestoppt',
+                  `Nach ${MAX_BBZCHAT_LOGIN_CALLS} Versuchen hat der Server die Anmeldung nicht angenommen. ` +
+                  'Bitte E-Mail, Passwort und Verschlüsselungskennwort in den Einstellungen prüfen und die App danach neu laden.'
+                );
+                break;
+              }
+
               const loginResult = await webview.executeJavaScript(`
                 (async function() {
                   try {
@@ -1461,7 +1966,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                         });
                         if (me.ok) {
                           console.log('[BBZ Chat] Token validated via /api/me');
-                          return 'ALREADY_LOGGED_IN';
+                          return { state: 'ALREADY_LOGGED_IN' };
                         }
                         // Token expired/invalid — remove and fall through to fresh login
                         console.log('[BBZ Chat] Existing token invalid, removing and re-logging in');
@@ -1469,7 +1974,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       } catch (e) {
                         // Network error — trust the token to avoid logging the user out unnecessarily
                         console.log('[BBZ Chat] Token validation network error, trusting token');
-                        return 'ALREADY_LOGGED_IN';
+                        return { state: 'ALREADY_LOGGED_IN' };
                       }
                     }
 
@@ -1484,55 +1989,94 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                       })
                     });
 
+                    // Antworttext einmal lesen und mitgeben: nur damit laesst
+                    // sich im Renderer ein falsches Kennwort von einer
+                    // Serverstoerung unterscheiden.
+                    let bodyText = '';
+                    try { bodyText = (await response.text()).slice(0, 500); } catch (e) { /* egal */ }
+
                     if (!response.ok) {
-                      const errorText = await response.text();
-                      console.error('[BBZ Chat] Login API error:', response.status, errorText);
-                      return 'API_ERROR_' + response.status;
+                      console.error('[BBZ Chat] Login API error:', response.status, bodyText);
+                      return { state: 'API_ERROR', status: response.status, body: bodyText };
                     }
 
-                    const data = await response.json();
-                    if (data.token) {
+                    let data = null;
+                    try { data = JSON.parse(bodyText); } catch (e) { /* kein JSON */ }
+
+                    if (data && data.token) {
                       localStorage.setItem('schulchat_token', data.token);
                       console.log('[BBZ Chat] Token stored, reloading...');
-                      return 'TOKEN_STORED';
-                    } else {
-                      console.error('[BBZ Chat] No token in response:', JSON.stringify(data));
-                      return 'NO_TOKEN';
+                      return { state: 'TOKEN_STORED' };
                     }
+
+                    console.error('[BBZ Chat] No token in response:', bodyText);
+                    return { state: 'NO_TOKEN', status: response.status, body: bodyText };
                   } catch (err) {
-                    console.error('[BBZ Chat] Login fetch error:', err.message);
-                    return 'FETCH_ERROR';
+                    console.error('[BBZ Chat] Login fetch error:', err && err.message);
+                    return { state: 'FETCH_ERROR', message: err && err.message };
                   }
                 })()
               `);
 
               console.log('[BBZ Chat] Login result:', loginResult);
 
-              if (loginResult === 'TOKEN_STORED') {
-                // Token saved — reload the page so the app picks it up
+              // executeJavaScript liefert undefined, wenn die View
+              // zwischenzeitlich verschwunden ist — dann nichts weiter tun.
+              const loginState = loginResult && loginResult.state;
+              if (!loginState) break;
+
+              if (loginState === 'ALREADY_LOGGED_IN') {
+                credsAreSet.current[id] = true;
+                bbzChatLoginCallsRef.current = 0;
+                setBbzChatLoginActive(false);
+                break;
+              }
+
+              // Ab hier ist der Aufruf tatsaechlich rausgegangen (oder koennte
+              // es sein) — also zaehlen, egal wie er ausgegangen ist.
+              bbzChatLoginCallsRef.current += 1;
+              noteSubmit(id);
+
+              if (loginState === 'TOKEN_STORED') {
+                // Token saved — reload the page so the app picks it up.
+                //
+                // Der Zaehler wird hier bewusst NICHT zurueckgesetzt: ein
+                // gespeicherter Token ist noch kein geglueckter Login. Verwirft
+                // die App ihn beim Start wieder (etwa weil sich der private
+                // Schluessel mit dem angegebenen Verschluesselungskennwort
+                // nicht entsperren laesst), stuende sonst wieder ein volles
+                // Budget bereit — und die Geraeteliste in schul.cloud waechst
+                // in Endlosschleife weiter. Zurueckgesetzt wird erst, wenn der
+                // Login-Waechter keine Anmeldemaske mehr sieht.
                 credsAreSet.current[id] = true;
                 webview.reload();
                 break;
               }
 
-              if (loginResult === 'ALREADY_LOGGED_IN') {
-                credsAreSet.current[id] = true;
-                setBbzChatLoginActive(false);
+              // Falsche Zugangsdaten von einer Serverstoerung unterscheiden.
+              // 4xx (ausser 408/429) und eine Antwort ohne Token heissen: der
+              // Server hat die Daten abgelehnt — ein Wiederholen erzeugt nur
+              // weitere Geraete.
+              const status = typeof loginResult.status === 'number' ? loginResult.status : 0;
+              const rejected =
+                loginState === 'NO_TOKEN' ||
+                (status >= 400 && status < 500 && status !== 408 && status !== 429);
+
+              if (rejected) {
+                stopBbzChatAutoLogin(
+                  id,
+                  'BBZ Chat: Anmeldedaten abgelehnt',
+                  'Der Server hat die Anmeldung zurückgewiesen — meist stimmt das Verschlüsselungskennwort nicht. ' +
+                  'Bitte in den Einstellungen prüfen und die App danach neu laden. ' +
+                  'Die automatische Anmeldung wurde gestoppt, damit nicht laufend neue Geräte in schul.cloud angelegt werden.'
+                );
                 break;
               }
 
-              // API error or fetch error — allow retry for temporary failures
-              // typeof-Pruefung, weil executeJavaScript bei verschwundener View
-              // undefined liefert und .startsWith dann den ganzen Handler
-              // als "Fehler beim schul.cloud-Login" abbrechen liess.
-              if (typeof loginResult === 'string' &&
-                  (loginResult.startsWith('API_ERROR') || loginResult === 'FETCH_ERROR')) {
-                console.warn('[BBZ Chat] Login failed (temporary):', loginResult, '- will retry on next check');
-                // DON'T set credsAreSet - allow retry on next periodic check
-                // The 5-second interval check will try again
-                break;
-              }
-
+              // Serverstoerung oder Netzproblem: noch einmal versuchen, aber
+              // nur innerhalb von MAX_BBZCHAT_LOGIN_CALLS.
+              console.warn('[BBZ Chat] Anmeldung vorerst fehlgeschlagen:', loginState, status,
+                `(Versuch ${bbzChatLoginCallsRef.current}/${MAX_BBZCHAT_LOGIN_CALLS})`);
               break;
             }
 
@@ -2276,7 +2820,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         // etwa fuer die halbe Leiste, weil deren App-Liste eingeschraenkt ist.
         if (!standardAppsRef.current?.[appId]?.visible) continue;
         // Bei falschen Zugangsdaten nicht weiter hämmern
-        if (failedLogins.current[appId]) continue;
+        if (failedLogins.current[appId]) {
+          // Der Spinner darf nicht stehenbleiben, nur weil wir hier
+          // aussteigen — sonst schaut der Nutzer endlos auf einen Ladekreis,
+          // hinter dem gar nichts mehr passiert.
+          if (appId === 'schulcloud') setBbzChatLoginActive(false);
+          continue;
+        }
 
         try {
           // Die Prüfung wird eingebettet ausgeführt und zusätzlich ein kleines
@@ -2310,7 +2860,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           if (appId === 'schulcloud') {
             const onChat = (wcvUrlsRef.current[appId] || '').includes('chat.bbz-rd-eck.com');
-            setBbzChatLoginActive(!!(onChat && needsLogin));
+            // Wurde der Spinner bereits aufgegeben, nicht erneut einblenden.
+            const showOverlay = !!(onChat && needsLogin) && !bbzChatOverlayGaveUpRef.current;
+            setBbzChatLoginActive(showOverlay);
+            if (!onChat || !needsLogin) bbzChatOverlayGaveUpRef.current = false;
           }
 
           if (!needsLogin) {
@@ -2321,6 +2874,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
               submitAttempts.current[appId] = 0;
               submitLimitNotified.current[appId] = false;
             }
+            // Das gleiche Budget fuer BBZ Chat: wer angemeldet ist, darf beim
+            // naechsten Sitzungsablauf wieder von vorn anfangen.
+            if (appId === 'schulcloud') bbzChatLoginCallsRef.current = 0;
             continue;
           }
 
@@ -2380,6 +2936,16 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       // Sperrzeiten verfallen lassen — nach dem Aufwachen ist ein frischer
       // Loginversuch legitim, auch wenn kurz zuvor einer lief.
       loginCooldownRef.current = {};
+
+      // Selbstheilung ebenfalls zuruecksetzen: die Cooldowns stammen aus der
+      // Zeit vor dem Standby und wuerden einen jetzt noetigen Reload blockieren.
+      autoReloadAtRef.current = {};
+      blankReloadsRef.current = {};
+      healthStrikeRef.current = {};
+      Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
+      loadRetryRef.current = {};
+      bbzChatLoginCallsRef.current = 0;
+      bbzChatOverlayGaveUpRef.current = false;
 
       // Reload dropdown app webviews
       Object.keys(webviewRefs.current).forEach(id => {
