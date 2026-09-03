@@ -78,6 +78,37 @@ class ViewManager {
     entry.view.setBounds(next);
   }
 
+  // Wird das Dokument einer UNSICHTBAREN View ersetzt, muss sie beim
+  // Sichtbarwerden zum Neuzeichnen gezwungen werden — siehe _forceRepaint.
+  _markDocumentReplaced(appId) {
+    const entry = this.views.get(appId);
+    if (entry && !entry.visible) entry.needsRepaint = true;
+  }
+
+  // Ein setBounds mit unveraenderter Groesse kann intern folgenlos bleiben.
+  // Fuer eine View, deren Dokument im Verborgenen ersetzt wurde, erzwingt erst
+  // eine echte Groessenaenderung ein neues Bild.
+  //
+  // Danach wird NICHT auf die gemerkten Bounds zurueckgesetzt, sondern ueber
+  // _applyBounds auf den aktuellen Stand: hat der Nutzer das Fenster in der
+  // Zwischenzeit veraendert, waere das gemerkte Rechteck schon veraltet.
+  _forceRepaint(entry) {
+    const b = entry.appliedBounds;
+    if (!b || b.width < 2 || b.height < 2) return;
+    try {
+      entry.view.setBounds({ ...b, height: b.height - 1 });
+    } catch (_) {
+      return; // View ist weg
+    }
+    setTimeout(() => {
+      try {
+        if (!entry.visible) return;
+        entry.appliedBounds = null;
+        this._applyBounds();
+      } catch (_) { /* View ist weg */ }
+    }, 32);
+  }
+
   _sendEvent(appId, type, extra = {}) {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('view:event', { appId, type, ...extra });
@@ -281,9 +312,25 @@ class ViewManager {
     }
 
     this.activeViewId = appId;
+
+    // Bounds beim Sichtbarwerden IMMER neu setzen.
+    //
+    // _applyBounds ueberspringt unveraenderte Bounds (gegen den springenden
+    // Cursor). Wird das Dokument einer unsichtbaren View ersetzt — Reload nach
+    // Standby, Wiederholung nach Ladefehler —, bekommt der neue Renderer beim
+    // Sichtbarwerden dadurch weder Bounds noch Resize und liefert nie ein
+    // Bild: die App stand als weisse Flaeche da, bis der Nutzer von Hand neu
+    // lud. Beim allerersten show() ging es nur deshalb gut, weil
+    // appliedBounds dort noch null ist und setBounds somit erzwungen wird.
+    entry.appliedBounds = null;
     this._applyBounds();
     entry.view.setVisible(true);
     entry.visible = true;
+
+    if (entry.needsRepaint) {
+      entry.needsRepaint = false;
+      this._forceRepaint(entry);
+    }
 
     try { entry.view.webContents.focus(); } catch (_) {}
   }
@@ -314,18 +361,22 @@ class ViewManager {
 
   navigate(appId, url) {
     const entry = this.views.get(appId);
-    if (entry) entry.view.webContents.loadURL(url);
+    if (!entry) return;
+    this._markDocumentReplaced(appId);
+    entry.view.webContents.loadURL(url);
   }
 
   reload(appId, ignoreCache = false) {
     const entry = this.views.get(appId);
     if (!entry) return;
+    this._markDocumentReplaced(appId);
     if (ignoreCache) entry.view.webContents.reloadIgnoringCache();
     else entry.view.webContents.reload();
   }
 
   reloadAll(ignoreCache = false) {
-    for (const entry of this.views.values()) {
+    for (const [appId, entry] of this.views.entries()) {
+      this._markDocumentReplaced(appId);
       if (ignoreCache) entry.view.webContents.reloadIgnoringCache();
       else entry.view.webContents.reload();
     }

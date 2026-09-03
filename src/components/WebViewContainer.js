@@ -247,6 +247,10 @@ const HEALTH_CHECK_INTERVAL_MS = 60 * 1000;
 // gebliebene Seite geprueft wird. Muss reichen, damit eine SPA booten kann.
 const BLANK_CHECK_DELAY_MS = 6000;
 
+// Dasselbe nach dem Wechsel auf eine App — dort darf es schnell gehen, weil
+// die Seite laengst geladen ist und der Nutzer die weisse Flaeche vor sich hat.
+const ACTIVATION_BLANK_CHECK_MS = 1200;
+
 // Ab welchem Alter eine Ansicht als abgestanden gilt und neu geladen wird.
 //
 // Betrifft nur Apps, deren Oberflaeche bei abgelaufener Sitzung einfach
@@ -321,6 +325,10 @@ const WCV_HEALTH_PROBES = {
 // nicht hinein — die deckt did-fail-load ab.
 const BLANK_PAGE_PROBE_JS = `(function() {
   try {
+    // Eine Seite, die noch laedt, ist nicht "leer geblieben". Ohne diese
+    // Pruefung wuerde ein Wechsel auf eine gerade ladende App deren
+    // Ladevorgang abschiessen.
+    if (document.readyState !== 'complete') return 'LOADING';
     const body = document.body;
     if (!body) return 'BLANK';
     // Erst die Elementzahl, dann erst der Text: innerText erzwingt ein Layout,
@@ -420,6 +428,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       autoReloadAtRef.current[id] = 0;
       blankReloadsRef.current[id] = 0;
       healthStrikeRef.current[id] = 0;
+      delete pendingReloadRef.current[id];
       clearTimeout(loadRetryRef.current[id]?.timer);
       loadRetryRef.current[id] = { attempt: 0, timer: null };
       if (id === 'schulcloud') {
@@ -454,6 +463,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       autoReloadAtRef.current = {};
       blankReloadsRef.current = {};
       healthStrikeRef.current = {};
+      pendingReloadRef.current = {};
       Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
       loadRetryRef.current = {};
       bbzChatLoginCallsRef.current = 0;
@@ -555,6 +565,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const healthStrikeRef = useRef({});
   // Wie oft wegen einer leeren Seite bereits neu geladen wurde
   const blankReloadsRef = useRef({});
+  // Reloads, die auf den Wechsel auf die App warten (siehe checkBlankPage)
+  const pendingReloadRef = useRef({});
 
   // --- BBZ Chat -------------------------------------------------------------
   // Tatsaechlich abgeschickte /api/login-Aufrufe (jeder legt ein Geraet an)
@@ -1133,8 +1145,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     } catch (_) {
       return; // View existiert nicht oder navigiert gerade
     }
+    if (result === 'LOADING') return; // Zaehler bewusst nicht anfassen
     if (result !== 'BLANK') {
       blankReloadsRef.current[id] = 0;
+      return;
+    }
+
+    // Eine unsichtbare Ansicht nicht im Hintergrund neu laden.
+    //
+    // Chromium darf Seiten im Hintergrund verwerfen und stellt sie beim
+    // Sichtbarwerden von selbst wieder her. Ein Reload von hier aus nimmt ihm
+    // das aus der Hand und bringt nichts — zu sehen ist die Seite ohnehin erst
+    // beim Wechsel. Also vormerken und dann nachholen.
+    if (activeWcvIdRef.current !== id) {
+      pendingReloadRef.current[id] = 'leere Seite';
       return;
     }
 
@@ -1287,19 +1311,36 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     return () => clearInterval(timer);
   }, [checkBlankPage, autoReloadWcv, getWcvProxy]);
 
-  // Beim Wechsel auf eine App pruefen, ob sie zu lange nicht geladen wurde.
+  // Beim Wechsel auf eine App: nachholen, was im Hintergrund liegen blieb.
   //
-  // Deckt den haeufigsten Fall im Alltag ab: der Rechner war im Standby oder
-  // der Bildschirm lange gesperrt, und beim Zurueckkommen soll die App nicht
-  // erst nach dem naechsten Gesundheitscheck wieder leben.
+  // 1. Vorgemerkter Reload (leere Seite, im Hintergrund erkannt).
+  // 2. Abgestandene Ansicht — der Rechner war im Standby oder der Bildschirm
+  //    lange gesperrt; die App soll nicht erst nach dem naechsten
+  //    Gesundheitscheck wieder leben.
+  // 3. Sicherheitsnetz: steht die App trotz allem als weisse Flaeche da, wird
+  //    sie sofort nachgeladen. Hier ist die Ansicht sichtbar, der Reload
+  //    zeichnet also verlaesslich.
   useEffect(() => {
     if (!activeWcvId) return;
-    const maxAge = WCV_MAX_AGE_MS[activeWcvId];
-    if (!maxAge) return;
-    const lastLoad = wcvLastLoadRef.current[activeWcvId];
-    if (!lastLoad || Date.now() - lastLoad < maxAge) return;
-    autoReloadWcv(activeWcvId, 'beim Wechsel abgestanden');
-  }, [activeWcvId, autoReloadWcv]);
+    const id = activeWcvId;
+
+    const pending = pendingReloadRef.current[id];
+    if (pending) {
+      delete pendingReloadRef.current[id];
+      if (autoReloadWcv(id, `${pending} (beim Wechsel nachgeholt)`, BLANK_RELOAD_COOLDOWN_MS)) {
+        return;
+      }
+    }
+
+    const maxAge = WCV_MAX_AGE_MS[id];
+    const lastLoad = wcvLastLoadRef.current[id];
+    if (maxAge && lastLoad && Date.now() - lastLoad >= maxAge) {
+      if (autoReloadWcv(id, 'beim Wechsel abgestanden')) return;
+    }
+
+    const timer = setTimeout(() => checkBlankPage(id), ACTIVATION_BLANK_CHECK_MS);
+    return () => clearTimeout(timer);
+  }, [activeWcvId, autoReloadWcv, checkBlankPage]);
 
   // Automatische BBZ-Chat-Anmeldung endgueltig stoppen und den Nutzer
   // informieren. `failedLogins` haelt den Login-Waechter an, das Overlay wird
@@ -2942,6 +2983,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       autoReloadAtRef.current = {};
       blankReloadsRef.current = {};
       healthStrikeRef.current = {};
+      pendingReloadRef.current = {};
       Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
       loadRetryRef.current = {};
       bbzChatLoginCallsRef.current = 0;

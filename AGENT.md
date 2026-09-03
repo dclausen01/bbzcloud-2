@@ -181,7 +181,30 @@ wofür man vorher von Hand neu laden musste.
    Ladevorgang aufgefrischt — im Hintergrund nach 20 min, als aktive App erst
    nach 40 min, und beim Wechsel auf die App wird das Alter ebenfalls geprüft.
 
+4. **Weisse Seite nach einem Reload im Verborgenen.** `_applyBounds()`
+   überspringt unveränderte Bounds (Schutz gegen den springenden Cursor). Wird
+   das Dokument einer *unsichtbaren* View ersetzt, bekommt der neue Renderer
+   beim Sichtbarwerden deshalb weder Bounds noch Resize und liefert nie ein
+   Bild — die App stand als weisse Fläche da, bis der Nutzer von Hand neu lud.
+   Beim allerersten `show()` fiel das nie auf, weil `appliedBounds` dort noch
+   `null` ist und `setBounds()` damit erzwungen wird.
+   `ViewManager.show()` setzt die Bounds jetzt bei jedem Wechsel von unsichtbar
+   auf sichtbar neu; wurde das Dokument im Verborgenen ersetzt
+   (`_markDocumentReplaced` aus `navigate`/`reload`/`reloadAll`), erzwingt
+   `_forceRepaint()` zusätzlich eine echte Grössenänderung — ein `setBounds()`
+   mit identischem Rechteck kann intern folgenlos bleiben.
+   Zusätzlich prüft der Renderer 1,2 s nach dem Wechsel auf eine App, ob
+   wirklich etwas zu sehen ist, und lädt sonst sofort nach.
+
 Beim Ändern beachten:
+- **Automatische Reloads unsichtbarer Ansichten sind heikel.** Bei „leere
+  Seite" wird deshalb nur vorgemerkt (`pendingReloadRef`) und beim Wechsel auf
+  die App nachgeholt: Chromium darf Hintergrundseiten verwerfen und stellt sie
+  beim Sichtbarwerden selbst wieder her — ein Reload von aussen nimmt ihm das
+  aus der Hand und bringt nichts, gesehen wird die Seite ohnehin erst beim
+  Wechsel.
+- **Der Leer-Test muss `document.readyState` prüfen.** Ohne das würde der
+  Wechsel auf eine gerade ladende App deren Ladevorgang abschiessen.
 - **Alter zählt ab `did-finish-load`/`did-navigate`, nicht ab
   `did-navigate-in-page`.** Eine Hash-Navigation innerhalb der SPA beweist
   keine lebende Verbindung — würde sie mitzählen, gälte ein toter Outlook als
