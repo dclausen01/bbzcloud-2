@@ -94,8 +94,10 @@ class ViewManager {
     wc.on('did-navigate', (_e, url) => fwd('did-navigate', { url }));
     wc.on('did-navigate-in-page', (_e, url) => fwd('did-navigate-in-page', { url }));
     wc.on('did-finish-load', () => fwd('did-finish-load', { url: wc.getURL() }));
-    wc.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL) =>
-      fwd('did-fail-load', { errorCode, errorDescription, validatedURL })
+    // isMainFrame mitschicken: ein fehlgeschlagenes Werbe-/Tracking-Iframe
+    // ist kein Grund, die ganze App neu zu laden.
+    wc.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) =>
+      fwd('did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame })
     );
     wc.on('render-process-gone', (_e, details) => fwd('render-process-gone', { details }));
 

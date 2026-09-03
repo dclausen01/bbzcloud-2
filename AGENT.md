@@ -154,6 +154,87 @@ Schutzmechanismen:
    Renderer hängt den show/hide-Effekt nur an der App-ID, nicht am
    `activeWebView`-Objekt (das bei jeder Navigation neu erzeugt wird).
 
+### Selbstheilung der WebContentsViews (`WebViewContainer.js`)
+Drei Mechanismen, die alle ohne Zutun des Nutzers laufen. Sie ersetzen das,
+wofür man vorher von Hand neu laden musste.
+
+1. **Ladefehler wiederholen.** `did-fail-load` und `render-process-gone` kamen
+   vom `ViewManager` schon immer im Renderer an, ausgewertet hat sie niemand:
+   schlug der erste Ladeversuch fehl (Netz beim Start noch nicht oben, kurzer
+   Aussetzer, überlasteter Server), stand die Ansicht bis zu einem Reload durch
+   den Nutzer auf der Chromium-Fehlerseite. Jetzt wird nach 3 s / 10 s / 30 s /
+   60 s und danach alle 5 Minuten erneut geladen; das `online`-Ereignis zieht
+   den nächsten Versuch sofort vor. Unterrahmen (`isMainFrame === false`) und
+   `ERR_ABORTED` (-3, kommt von eigenen Navigationen) zählen nicht.
+2. **Leer gebliebene Seiten.** 6 s nach `did-stop-loading` wird geprüft, ob das
+   Dokument praktisch leer ist (kein Text, < 5 Elemente) — das passiert, wenn
+   eine SPA nicht gebootet hat. Höchstens `MAX_BLANK_RELOADS` (3) Anläufe mit
+   30 s Abstand. Chromium-Fehlerseiten fallen hier *nicht* hinein, die haben
+   Text; um die kümmert sich Punkt 1.
+3. **Stille Sitzungsverluste (Outlook).** OWA verliert seine Sitzung, ohne eine
+   Loginmaske zu zeigen: die Oberfläche bleibt stehen, aktualisiert nichts mehr
+   und der Login-Wächter findet nichts, worauf er reagieren könnte. Jede Minute
+   fragt deshalb ein `HEAD /owa/` (`redirect: 'manual'`) den Server: eine
+   abgelaufene Sitzung antwortet mit 401/403/440 oder einer Umleitung
+   (`opaqueredirect`). Zwei Treffer hintereinander lösen einen Reload aus.
+   Zusätzlich wird Outlook nach `WCV_MAX_AGE_MS` (20 min) ohne erfolgreichen
+   Ladevorgang aufgefrischt — im Hintergrund nach 20 min, als aktive App erst
+   nach 40 min, und beim Wechsel auf die App wird das Alter ebenfalls geprüft.
+
+Beim Ändern beachten:
+- **Alter zählt ab `did-finish-load`/`did-navigate`, nicht ab
+  `did-navigate-in-page`.** Eine Hash-Navigation innerhalb der SPA beweist
+  keine lebende Verbindung — würde sie mitzählen, gälte ein toter Outlook als
+  frisch, solange der Nutzer darin herumklickt.
+- **`hasUnsavedText` prüft nur `contenteditable` und `<textarea>`.** Das trifft
+  eine offene E-Mail in OWA. Nähme man auch `<input>` dazu, würde ein einziges
+  Zeichen im Suchfeld den Reload dauerhaft blockieren.
+- **`autoReloadWcv` setzt `failedLogins` und `submitAttempts` NICHT zurück.**
+  Sonst gäbe ein automatischer Reload bei falschen Zugangsdaten alle 20 Minuten
+  die nächste Runde Anmeldeversuche frei. Nur ausdrückliche Nutzeraktionen
+  (Reload-Taste, Aufwachen aus dem Standby) dürfen das.
+- **`WCV_MAX_AGE_MS` enthält bewusst nur Outlook.** WebUntis wird beim Aufwachen
+  ohnehin ausdrücklich neu geladen, und ein Hintergrund-Reload während der
+  Eingabe des Bestätigungscodes würde die Anmeldung abwürgen.
+- **Die Ansichten werden gestaffelt erzeugt** (`WCV_CREATE_STAGGER_MS`, 250 ms).
+  Vorher starteten alle elf Ladevorgänge im selben Tick und bremsten sich
+  gegenseitig aus — einzelne blieben auf halber Strecke stehen. Das war die
+  Ursache von „schul.cloud lädt nicht zuverlässig, nach einem Reload dann schon".
+
+### BBZ Chat: falsches Verschlüsselungskennwort
+Jeder `POST /api/login` legt serverseitig **ein neues Gerät in schul.cloud** an.
+Vorher galt jede Fehlerantwort als „vorübergehend" und der Login-Wächter stiess
+sie alle 2,5 s erneut an — bei falschem Verschlüsselungskennwort hiess das:
+Spinner bleibt stehen, und in schul.cloud stapeln sich dutzende Geräte.
+
+- Der injizierte Code liefert jetzt `{state, status, body}` statt eines Strings.
+  Nur so lässt sich ein abgelehntes Kennwort von einer Serverstörung
+  unterscheiden.
+- **4xx (ausser 408/429) und „Antwort ohne Token" sind endgültig.**
+  `stopBbzChatAutoLogin` setzt `failedLogins`, blendet das Overlay aus und zeigt
+  einen dauerhaften Hinweis auf das Verschlüsselungskennwort.
+- **`MAX_BBZCHAT_LOGIN_CALLS` (3) begrenzt auch die vorübergehenden Fälle.**
+  Absichtlich viel niedriger als `MAX_SUBMIT_ATTEMPTS` — der Preis eines
+  Fehlversuchs ist hier ein Geräteeintrag, kein blosser Log-Eintrag.
+  Zurückgesetzt wird er erst, wenn der Login-Wächter keine Anmeldemaske mehr
+  sieht — **nicht** schon beim Speichern des Tokens. Verwirft die App den Token
+  beim Start wieder (privater Schlüssel lässt sich mit dem angegebenen Kennwort
+  nicht entsperren), stünde sonst wieder ein volles Budget bereit und die
+  Geräteliste wüchse in Endlosschleife weiter. Ausserdem zurückgesetzt bei
+  Reload und beim Aufwachen aus dem Standby.
+- **`bbzChatOverlayGaveUpRef` gegen den Dauer-Spinner.** Nach
+  `BBZ_CHAT_OVERLAY_TIMEOUT_MS` (30 s) wird das Overlay ausgeblendet, damit der
+  Nutzer die Seite darunter sieht. Ohne das Merkzeichen blendet der Wächter es
+  2,5 s später wieder ein und es flackert dauerhaft.
+- **Der Wächter blendet das Overlay auch dann aus, wenn er wegen
+  `failedLogins` aussteigt.** Sonst schaut der Nutzer auf einen Ladekreis,
+  hinter dem gar nichts mehr passiert.
+- **Der schul.cloud-Sichtbarkeitseffekt darf bei fehlenden Zugangsdaten nicht
+  vorzeitig aussteigen.** War die Ansicht gerade ausgeblendet (Overlay stand
+  noch) und fiel `hasBbzChatCredentials` danach auf false, blieb sie für den
+  Rest der Sitzung unsichtbar — und ein Reload half nicht, weil das Problem gar
+  nicht die Seite war.
+
 ### Besondere "Quirks" & Workarounds
 - **Session-Reloads**: Webseiten wie **Outlook (OWA)** und **WebUntis** benötigen einen expliziten Reload nach System-Resume (Sleep/Wake), da ihre Sessions sonst ablaufen oder einfrieren. Dies wird im Main Process (`powerMonitor`) behandelt.
   - **Nur `resume` löst den Reload aus, nicht `unlock-screen`.** Beide Ereignisse
@@ -164,6 +245,10 @@ Schutzmechanismen:
   - Läuft eine Sitzung während eines langen Sperrbildschirms *ohne* Standby ab,
     fängt das der Login-Wächter ab: er prüft alle 2,5 s auf eine sichtbare
     Loginmaske — seit dem Outlook-Eintrag auch dort — und injiziert von sich aus.
+  - **Zeigt die Seite gar keine Loginmaske, greift der Login-Wächter nicht.**
+    Genau das ist bei OWA der Fall; dafür gibt es den Gesundheitscheck (siehe
+    „Selbstheilung der WebContentsViews"). Auf `resume` allein ist ebenfalls
+    kein Verlass: Windows-Modern-Standby meldet nicht immer ein `resume`.
 - **Benutzer-Filterung**: In `App.js` (`filterNavigationButtons`) wird anhand der E-Mail-Domain (`@bbz-rd-eck.de`) unterschieden, ob der Nutzer Lehrer (alle Apps) oder Schüler (eingeschränkte Apps) ist. Schüler erhalten Zugriff auf: `schulcloud`, `moodle`, `nextcloud`, `cryptpad`, `webuntis`, `wiki`.
 - **macOS Memory Management**: Implementiert eine aggressive Cache-Bereinigung für Bilder und WebViews, um Speicherlecks unter macOS zu verhindern.
 - **Fenster-Sichtbarkeit**: `ensureWindowBoundsVisible` stellt sicher, dass Fenster nicht außerhalb des sichtbaren Bildschirmbereichs wiederhergestellt werden (z.B. bei Monitorwechsel).
