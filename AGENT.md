@@ -245,6 +245,33 @@ Spinner bleibt stehen, und in schul.cloud stapeln sich dutzende Geräte.
   nicht entsperren), stünde sonst wieder ein volles Budget bereit und die
   Geräteliste wüchse in Endlosschleife weiter. Ausserdem zurückgesetzt bei
   Reload und beim Aufwachen aus dem Standby.
+- **„Sitzung gilt, Anmeldemaske steht trotzdem da" ist ein eigener Zustand.**
+  Der Wächter meldet dafür `'STALE_SESSION'` statt `false`, und die Antwort
+  darauf ist ein **Reload, keine Anmeldung** — die Sitzung ist ja gültig, ein
+  weiterer `/api/login` legt nur ein zusätzliches Gerät an. Entsteht nach dem
+  Aufwachen: die App prüft ihren Token beim Start, das Netz ist noch nicht
+  zurück, sie landet auf der Anmeldemaske und bleibt dort. Vorher meldete der
+  Wächter hier „nichts zu tun" und der Nutzer sass bis zu einem Reload von Hand
+  vor dem Formular.
+  Höchstens `MAX_STALE_SESSION_RELOADS` (3) Versuche: hilft ein Reload nicht,
+  liegt es an der Webanwendung.
+  **Der Probe-Wrapper des Wächters muss Strings durchreichen** (`state`) und
+  darf sie nicht mit `!!` zu `true` machen — sonst würde genau dieser Fall als
+  „anmelden!" behandelt. Wahrheitswerte und DOM-Elemente (Nextcloud liefert
+  ein Element) werden weiterhin im Seitenkontext zu `true`/`false`, weil ein
+  Element nicht über die IPC-Grenze passt.
+- **Nach `resume` wird erst geladen, wenn das Netz da ist.** `powerMonitor`
+  meldet `resume`, sobald der Rechner läuft — WLAN und VPN brauchen danach noch
+  Sekunden. Sofort neu zu laden lässt die Webanwendungen in einen Halbzustand
+  starten (siehe `'STALE_SESSION'`). Gewartet wird auf `online`, danach noch
+  `RESUME_SETTLE_MS` (2 s) für die Namensauflösung, höchstens aber
+  `RESUME_NETWORK_TIMEOUT_MS` (30 s).
+- **Geänderte Zugangsdaten geben den Auto-Login wieder frei.** `failedLogins`
+  bleibt sonst für die ganze Sitzung stehen — richtig so, sonst legt jeder
+  Fehlversuch ein weiteres Gerät an. Wer daraufhin das Verschlüsselungskennwort
+  korrigiert, kam bisher aber erst nach einem Neustart weiter. Der periodische
+  Zugangsdaten-Check vergleicht deshalb eine Prüfsumme (`fnv1a`, kein Klartext)
+  und hebt die Sperre bei einer Änderung auf.
 - **`bbzChatOverlayGaveUpRef` gegen den Dauer-Spinner.** Nach
   `BBZ_CHAT_OVERLAY_TIMEOUT_MS` (30 s) wird das Overlay ausgeblendet, damit der
   Nutzer die Seite darunter sieht. Ohne das Merkzeichen blendet der Wächter es
