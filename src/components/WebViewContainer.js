@@ -97,6 +97,17 @@ async function isUserTyping(webview) {
   }
 }
 
+// Kurze, nicht kryptografische Pruefsumme. Dient allein dazu, eine Aenderung
+// zu erkennen — Kennwoerter sollen dafuer nicht im Klartext vorgehalten werden.
+function fnv1a(text) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
 // Steht auf der Seite ungespeicherter Text (z. B. eine halb geschriebene
 // E-Mail in OWA)? Wird vor automatischen Reloads geprueft.
 async function hasUnsavedText(webview) {
@@ -172,7 +183,20 @@ const LOGIN_WATCHERS = {
                       localStorage.removeItem('schulchat_token');
                       return true;
                     }
-                    return false;
+                    // Der Token gilt, die Seite zeigt trotzdem die Anmeldemaske.
+                    //
+                    // Genau dieser Zustand entsteht nach dem Aufwachen: die App
+                    // macht ihre Token-Pruefung beim Start, das Netz ist da aber
+                    // noch nicht zurueck — also landet sie auf der Anmeldemaske
+                    // und bleibt dort. Frueher meldete der Waechter hier 'false'
+                    // ("nichts zu tun") und der Nutzer sass bis zu einem Reload
+                    // von Hand vor dem Anmeldeformular.
+                    //
+                    // Ein Reload genuegt, die App holt sich den Token dann
+                    // selbst. Eine erneute Anmeldung waere hier FALSCH: sie
+                    // legt nur ein weiteres Geraet in schul.cloud an, obwohl
+                    // die Sitzung laengst gueltig ist.
+                    return 'STALE_SESSION';
                   } catch (_) {
                     return false; // network error — assume valid
                   }
@@ -250,6 +274,17 @@ const BLANK_CHECK_DELAY_MS = 6000;
 // Dasselbe nach dem Wechsel auf eine App — dort darf es schnell gehen, weil
 // die Seite laengst geladen ist und der Nutzer die weisse Flaeche vor sich hat.
 const ACTIVATION_BLANK_CHECK_MS = 1200;
+
+// Abstand und Obergrenze fuer den Fall "Sitzung gilt, Anmeldemaske steht da".
+// Ein Reload behebt das sofort; hilft er nicht, liegt es an der Webanwendung
+// und Dauerschleifen bringen nichts.
+const STALE_SESSION_COOLDOWN_MS = 30 * 1000;
+const MAX_STALE_SESSION_RELOADS = 3;
+
+// Nach dem Aufwachen: wie lange hoechstens auf das Netz gewartet wird und wie
+// lange danach noch, damit Namensaufloesung und VPN nachkommen.
+const RESUME_NETWORK_TIMEOUT_MS = 30 * 1000;
+const RESUME_SETTLE_MS = 2000;
 
 // Ab welchem Alter eine Ansicht als abgestanden gilt und neu geladen wird.
 //
@@ -429,6 +464,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       blankReloadsRef.current[id] = 0;
       healthStrikeRef.current[id] = 0;
       delete pendingReloadRef.current[id];
+      delete staleSessionReloadsRef.current[id];
       clearTimeout(loadRetryRef.current[id]?.timer);
       loadRetryRef.current[id] = { attempt: 0, timer: null };
       if (id === 'schulcloud') {
@@ -464,6 +500,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       blankReloadsRef.current = {};
       healthStrikeRef.current = {};
       pendingReloadRef.current = {};
+      staleSessionReloadsRef.current = {};
       Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
       loadRetryRef.current = {};
       bbzChatLoginCallsRef.current = 0;
@@ -567,6 +604,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const blankReloadsRef = useRef({});
   // Reloads, die auf den Wechsel auf die App warten (siehe checkBlankPage)
   const pendingReloadRef = useRef({});
+  // Reloads wegen "Sitzung gilt, Anmeldemaske steht trotzdem da"
+  const staleSessionReloadsRef = useRef({});
+  // Pruefsumme der BBZ-Chat-Zugangsdaten, um Aenderungen zu erkennen
+  const bbzChatCredentialFingerprintRef = useRef(null);
 
   // --- BBZ Chat -------------------------------------------------------------
   // Tatsaechlich abgeschickte /api/login-Aufrufe (jeder legt ein Geraet an)
@@ -712,6 +753,33 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           encResult?.success && encResult.password?.trim()
         );
         if (!cancelled) setHasBbzChatCredentials(ok);
+
+        // Haben sich die Zugangsdaten geaendert, ist ein neuer Anlauf faellig.
+        //
+        // stopBbzChatAutoLogin setzt failedLogins dauerhaft — richtig so, sonst
+        // legt jeder Fehlversuch ein weiteres Geraet in schul.cloud an. Wer
+        // daraufhin das Verschluesselungskennwort in den Einstellungen
+        // korrigiert, kam bisher aber erst nach einem Neustart der App wieder
+        // weiter. Nur die Aenderung selbst gibt den Auto-Login wieder frei.
+        //
+        // Verglichen wird eine einfache Pruefsumme, kein Klartext: sie soll
+        // nur eine Aenderung erkennen, nicht die Kennwoerter vorhalten.
+        const fingerprint = fnv1a([
+          emailResult?.password || '',
+          passwordResult?.password || '',
+          encResult?.password || '',
+        ].join('\u0000'));
+        const previous = bbzChatCredentialFingerprintRef.current;
+        bbzChatCredentialFingerprintRef.current = fingerprint;
+        if (previous !== null && previous !== fingerprint) {
+          console.log('[BBZ Chat] Zugangsdaten geaendert - Auto-Login wieder freigegeben');
+          failedLogins.current.schulcloud = false;
+          credsAreSet.current.schulcloud = false;
+          submitAttempts.current.schulcloud = 0;
+          submitLimitNotified.current.schulcloud = false;
+          bbzChatLoginCallsRef.current = 0;
+          bbzChatOverlayGaveUpRef.current = false;
+        }
       } catch (error) {
         if (!cancelled) setHasBbzChatCredentials(false);
       }
@@ -2876,9 +2944,15 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
           // die Selektoren nicht mehr passen.
           const probe = await window.electron.view.executeJavaScript(appId, `
             (async function() {
-              const needsLogin = await (${check});
+              const raw = await (${check});
+              // Ein String ist eine Sonderlage (aktuell nur 'STALE_SESSION').
+              // Alle anderen Waechter liefern Wahrheitswerte oder DOM-Elemente;
+              // die muessen hier im Seitenkontext zu true/false werden, weil
+              // ein Element nicht ueber die IPC-Grenze passt.
+              const state = typeof raw === 'string' ? raw : null;
               return {
-                needsLogin: !!needsLogin,
+                needsLogin: state ? false : !!raw,
+                state,
                 url: location.href,
                 title: document.title,
                 inputs: document.querySelectorAll('input').length,
@@ -2898,6 +2972,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             watcherLastRef.current[appId] = fingerprint;
             console.log(`[watcher] ${appId}`, probe);
           }
+
+          // Gueltige Sitzung, aber die Anmeldemaske steht da: nur neu laden,
+          // NICHT anmelden. Siehe LOGIN_WATCHERS.schulcloud.
+          if (probe && probe.state === 'STALE_SESSION') {
+            if (appId === 'schulcloud') setBbzChatLoginActive(false);
+            const done = staleSessionReloadsRef.current[appId] || 0;
+            if (done >= MAX_STALE_SESSION_RELOADS) continue;
+            if (autoReloadWcv(appId, 'gueltige Sitzung, aber Anmeldemaske sichtbar',
+                              STALE_SESSION_COOLDOWN_MS)) {
+              staleSessionReloadsRef.current[appId] = done + 1;
+            }
+            continue;
+          }
+          staleSessionReloadsRef.current[appId] = 0;
 
           if (appId === 'schulcloud') {
             const onChat = (wcvUrlsRef.current[appId] || '').includes('chat.bbz-rd-eck.com');
@@ -2953,7 +3041,30 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       return;
     }
 
-    const handleSystemResume = () => {
+    // Auf das Netz warten, bevor nach dem Aufwachen neu geladen wird.
+    //
+    // powerMonitor meldet 'resume', sobald der Rechner wieder laeuft — WLAN und
+    // VPN brauchen danach aber noch Sekunden. Wer sofort neu laedt, laesst die
+    // Webanwendungen in einen Halbzustand starten: BBZ Chat etwa prueft beim
+    // Start seinen Token, bekommt keine Antwort und zeigt die Anmeldemaske,
+    // obwohl die Sitzung gueltig ist. Danach passiert von selbst nichts mehr.
+    const waitForNetwork = () => new Promise((resolve) => {
+      const done = () => {
+        window.removeEventListener('online', done);
+        clearTimeout(timeout);
+        // Auch wenn der Browser 'online' meldet, ist die Namensaufloesung
+        // haeufig noch nicht so weit — deshalb zusaetzlich kurz warten.
+        setTimeout(resolve, RESUME_SETTLE_MS);
+      };
+      const timeout = setTimeout(done, RESUME_NETWORK_TIMEOUT_MS);
+      if (navigator.onLine) {
+        done();
+        return;
+      }
+      window.addEventListener('online', done);
+    });
+
+    const handleSystemResume = async () => {
       console.log('[System Resume] Handling webview reloads');
 
       // Reset all credsAreSet so periodic checks can re-authenticate if needed
@@ -2984,10 +3095,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       blankReloadsRef.current = {};
       healthStrikeRef.current = {};
       pendingReloadRef.current = {};
+      staleSessionReloadsRef.current = {};
       Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
       loadRetryRef.current = {};
       bbzChatLoginCallsRef.current = 0;
       bbzChatOverlayGaveUpRef.current = false;
+
+      await waitForNetwork();
+      console.log('[System Resume] Netz ist da - lade neu');
 
       // Reload dropdown app webviews
       Object.keys(webviewRefs.current).forEach(id => {
