@@ -224,7 +224,7 @@ jobs:
 
   create-release:
     runs-on: ubuntu-latest
-    needs: [build-linux-x64, build-linux-arm64, build-mac-arm64, build-windows]
+    needs: [build-linux-x64, build-linux-arm64, build-mac, build-windows]
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
@@ -247,11 +247,11 @@ jobs:
           name: linux-arm64-artifacts
           path: dist-linux-arm64/
 
-      - name: Download Mac arm64 artifacts
+      - name: Download Mac artifacts
         uses: actions/download-artifact@v8
         with:
-          name: mac-arm64-artifacts
-          path: dist-mac-arm64/
+          name: mac-artifacts
+          path: dist-mac/
 
       - name: Download Windows artifacts
         uses: actions/download-artifact@v8
@@ -264,7 +264,7 @@ jobs:
           mkdir -p dist
           cp -r dist-linux-x64/* dist/ 2>/dev/null || true
           cp -r dist-linux-arm64/* dist/ 2>/dev/null || true
-          cp -r dist-mac-arm64/* dist/ 2>/dev/null || true
+          cp -r dist-mac/* dist/ 2>/dev/null || true
           cp -r dist-windows/* dist/ 2>/dev/null || true
           echo "Combined artifacts:"
           ls -la dist/
@@ -294,6 +294,8 @@ jobs:
             dist/*.pacman
             dist/*.dmg
             dist/*.dmg.blockmap
+            dist/*.zip
+            dist/*.zip.blockmap
             dist/*.exe
             dist/*.exe.blockmap
             dist/*.msi
@@ -311,14 +313,16 @@ jobs:
             dist/*.pacman
             dist/*.dmg
             dist/*.dmg.blockmap
+            dist/*.zip
+            dist/*.zip.blockmap
             dist/*.exe
             dist/*.exe.blockmap
             dist/*.msi
             dist/*.yml
           retention-days: 7
 
-  build-mac-arm64:
-    runs-on: macos-14
+  build-mac:
+    runs-on: macos-15
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
@@ -349,21 +353,39 @@ jobs:
         id: get_version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Build Mac (arm64)
+      - name: Build Mac (arm64 + x64)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: false
         run: |
           npm run build
-          npx electron-builder --mac --arm64
+          # Beide Architekturen in EINEM electron-builder-Aufruf: nur so listet
+          # latest-mac.yml beide Architekturen. Getrennte Aufrufe oder Jobs würden
+          # die Datei gegenseitig überschreiben und das Auto-Update einer
+          # Architektur kaputt machen.
+          npx electron-builder --mac --arm64 --x64
 
-      - name: Upload Mac arm64 artifacts
+      - name: Verify Mac artifacts
+        run: |
+          ls -la dist/
+          echo "--- latest-mac.yml ---"
+          cat dist/latest-mac.yml
+          # Beide DMGs (manueller Download) und beide ZIPs (Auto-Update) müssen da sein
+          ls dist/*-arm64.dmg dist/*-x64.dmg dist/*-arm64.zip dist/*-x64.zip >/dev/null
+          # electron-updater liest ausschließlich ZIP-Einträge und wählt die
+          # Architektur am Dateinamen (MacUpdater.filterFilesForArch)
+          grep -q -- "-arm64.zip" dist/latest-mac.yml
+          grep -q -- "-x64.zip" dist/latest-mac.yml
+
+      - name: Upload Mac artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: mac-arm64-artifacts
+          name: mac-artifacts
           path: |
             dist/*.dmg
             dist/*.dmg.blockmap
+            dist/*.zip
+            dist/*.zip.blockmap
             dist/*.yml
 
   build-windows:

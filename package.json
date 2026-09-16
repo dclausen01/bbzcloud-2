@@ -127,7 +127,8 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "icon": "assets/images/icon.png",
       "category": "public.app-category.education",
