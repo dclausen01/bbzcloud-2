@@ -318,6 +318,12 @@ und wartete ohne Zeitlimit — genau dieser Fall wurde nie behoben, und der
 minütliche Gesundheitscheck blieb an einer hängenden View für **alle** Apps
 stehen. Jetzt:
 - Probe mit Zeitlimit (`BLANK_PROBE_TIMEOUT_MS`), Ergebnis `NO_RESPONSE`.
+- **Hängt schon die Hauptanfrage**, kommt kein `did-navigate`, die View hat
+  keine URL und kein Dokument — sie ist durchsichtig, man sieht darunter nur
+  den React-Ladebalken auf dunklem Grund (so im Nutzer-Screenshot). Der Test
+  stieg ohne URL früher sofort aus. Jetzt gilt das nach
+  `STUCK_NO_DOCUMENT_MS` (10 s) als hängend (`NO_DOCUMENT`); ein `reload()`
+  schickt die Anfrage neu und behebt es (in Electron nachgestellt).
 - Läuft der Ladevorgang seit `STUCK_LOAD_MS` (ab dem ersten
   `did-start-loading`) und die Seite antwortet nicht oder zeigt nichts
   (`LOADING_BLANK`, nur sichtbare Elemente gezählt — schul.cloud hat ein

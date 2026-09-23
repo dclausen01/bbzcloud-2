@@ -391,6 +391,11 @@ const AUTO_LOGIN_DISABLED = new Set(['wiki']);
 // Ladevorgang, der nie fertig wird, fiel damit durch jedes Raster.
 const STUCK_LOAD_MS = 20 * 1000;
 
+// Kommt die Hauptanfrage so lange nicht zurueck (noch kein Dokument), gilt sie
+// als haengend. Kuerzer als STUCK_LOAD_MS: das Dokument selbst ist bei allen
+// Apps nach 1-2 s da, und bis dahin sieht der Nutzer nur eine leere Flaeche.
+const STUCK_NO_DOCUMENT_MS = 10 * 1000;
+
 // So lange darf die Leer-Pruefung auf eine Antwort der Seite warten.
 const BLANK_PROBE_TIMEOUT_MS = 3000;
 
@@ -1337,32 +1342,47 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
   // Leer gebliebene Seite erkennen und einmal nachladen.
   const checkBlankPage = useCallback(async (id) => {
-    const url = wcvUrlsRef.current[id] || '';
-    if (!url || url.startsWith('about:')) return;
     if ((blankReloadsRef.current[id] || 0) >= MAX_BLANK_RELOADS) return;
+    const url = wcvUrlsRef.current[id] || '';
+    const startedAt = loadStartRef.current[id];
+    const loadingFor = startedAt ? Date.now() - startedAt : 0;
 
-    // Mit Zeitlimit: haengt der Ladevorgang an einem blockierenden Stylesheet
-    // oder Skript, beantwortet die Seite executeJavaScript GAR NICHT (in
-    // Electron nachgestellt). Ohne Limit wartete die Pruefung dann ewig, und
-    // genau der Fall "weisse Flaeche, Dauer-Ladebalken" wurde nie behoben.
     let result;
-    try {
-      result = await Promise.race([
-        window.electron.view.executeJavaScript(id, BLANK_PAGE_PROBE_JS),
-        new Promise((resolve) => setTimeout(() => resolve('NO_RESPONSE'), BLANK_PROBE_TIMEOUT_MS)),
-      ]);
-    } catch (_) {
-      return; // View existiert nicht oder navigiert gerade
+    if (!url) {
+      // Noch GAR KEIN Dokument: die Hauptanfrage selbst haengt. Dann gibt es
+      // kein did-navigate und damit keine URL — die View bleibt durchsichtig,
+      // man sieht darunter nur den Ladebalken (Nutzer-Screenshot, in Electron
+      // nachgestellt). Frueher stieg die Pruefung hier einfach aus. Ein
+      // reload() schickt die Anfrage neu und behebt es.
+      if (!startedAt) return;
+      result = 'NO_DOCUMENT';
+    } else if (url.startsWith('about:')) {
+      return;
+    } else {
+      // Mit Zeitlimit: haengt der Ladevorgang an einem blockierenden
+      // Stylesheet oder Skript, beantwortet die Seite executeJavaScript GAR
+      // NICHT (in Electron nachgestellt). Ohne Limit wartete die Pruefung
+      // ewig, und "weisse Flaeche, Dauer-Ladebalken" wurde nie behoben.
+      try {
+        result = await Promise.race([
+          window.electron.view.executeJavaScript(id, BLANK_PAGE_PROBE_JS),
+          new Promise((resolve) => setTimeout(() => resolve('NO_RESPONSE'), BLANK_PROBE_TIMEOUT_MS)),
+        ]);
+      } catch (_) {
+        return; // View existiert nicht oder navigiert gerade
+      }
     }
     if (result === 'LOADING') return; // Zaehler bewusst nicht anfassen
-    // Laedt noch, zeigt aber nichts: erst nach STUCK_LOAD_MS als haengend werten.
     let reason = 'leere Seite';
-    if (result === 'LOADING_BLANK' || result === 'NO_RESPONSE') {
-      // Keine Antwort OHNE laufenden Ladevorgang ist kein Haenger (etwa ein
-      // beschaeftigter Renderer) — dann nichts tun.
-      const startedAt = loadStartRef.current[id];
-      if (!startedAt || Date.now() - startedAt < STUCK_LOAD_MS) return;
-      reason = `Ladevorgang haengt seit ${Math.round((Date.now() - startedAt) / 1000)} s`;
+    if (result === 'NO_DOCUMENT') {
+      if (loadingFor < STUCK_NO_DOCUMENT_MS) return;
+      reason = `Hauptanfrage haengt seit ${Math.round(loadingFor / 1000)} s`;
+    } else if (result === 'LOADING_BLANK' || result === 'NO_RESPONSE') {
+      // Laedt noch, zeigt aber nichts: erst nach STUCK_LOAD_MS als haengend
+      // werten. Keine Antwort OHNE laufenden Ladevorgang ist kein Haenger
+      // (etwa ein beschaeftigter Renderer) — dann nichts tun.
+      if (!startedAt || loadingFor < STUCK_LOAD_MS) return;
+      reason = `Ladevorgang haengt seit ${Math.round(loadingFor / 1000)} s`;
     } else if (result !== 'BLANK') {
       blankReloadsRef.current[id] = 0;
       return;
@@ -1429,7 +1449,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         // innerhalb der SPA feuern start/stop in schneller Folge.
         if (!loadStartRef.current[id]) loadStartRef.current[id] = Date.now();
         clearTimeout(stuckLoadTimersRef.current[id]);
-        stuckLoadTimersRef.current[id] = setTimeout(() => checkBlankPage(id), STUCK_LOAD_MS + 500);
+        // Zweimal pruefen: frueh fuer eine haengende Hauptanfrage, spaeter
+        // fuer ein Dokument, das nicht fertig wird.
+        stuckLoadTimersRef.current[id] = setTimeout(() => {
+          checkBlankPage(id);
+          stuckLoadTimersRef.current[id] = setTimeout(
+            () => checkBlankPage(id), STUCK_LOAD_MS - STUCK_NO_DOCUMENT_MS);
+        }, STUCK_NO_DOCUMENT_MS + 500);
         return;
       }
 
@@ -1551,7 +1577,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
       for (const id of WCV_APPS) {
         if (!standardAppsRef.current?.[id]?.visible) continue;
-        if (!wcvUrlsRef.current[id]) continue;
+        if (!wcvUrlsRef.current[id]) {
+          // Noch kein Dokument — haengt womoeglich die Hauptanfrage
+          await checkBlankPage(id);
+          continue;
+        }
         // Waehrend eine Wiederholung nach Ladefehler laeuft, nicht dazwischenfunken
         const retry = loadRetryRef.current[id];
         if (retry && retry.timer) continue;
