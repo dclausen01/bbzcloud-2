@@ -253,7 +253,7 @@ class ViewManager {
   // Public API
   // -------------------------------------------------------------------------
 
-  async create(appId, { url, userAgent, preloadOverride } = {}) {
+  async create(appId, { url, userAgent, preloadOverride, backgroundThrottling = true } = {}) {
     if (this.views.has(appId)) return;
 
     const view = new WebContentsView({
@@ -264,6 +264,8 @@ class ViewManager {
         session: this._getSession(),
         sandbox: false,
         webSecurity: true,
+        // Siehe WCV_NO_BACKGROUND_THROTTLING in WebViewContainer.js
+        backgroundThrottling,
       },
     });
 
@@ -359,11 +361,27 @@ class ViewManager {
     this._applyBounds();
   }
 
+  // Laedt IMMER ein neues Dokument.
+  //
+  // Unterscheidet sich das Ziel von der aktuellen Adresse nur im Fragment
+  // (Outlook: '/owa/#path=/mail' vs. '/owa/#path=/mail/inbox', WebUntis:
+  // '#/basic/login'), macht Chromium aus loadURL() eine Navigation INNERHALB
+  // des Dokuments: es feuert nur did-navigate-in-page, die SPA wechselt ihre
+  // Route, und nichts wird neu geladen. Genau daran scheiterten Reload-Taste,
+  // Resume und Selbstheilung bei Outlook — die tote Oberflaeche blieb stehen,
+  // bis die ganze App beendet wurde. In dem Fall wird deshalb echt neu geladen.
   navigate(appId, url) {
     const entry = this.views.get(appId);
     if (!entry) return;
     this._markDocumentReplaced(appId);
-    entry.view.webContents.loadURL(url);
+    const wc = entry.view.webContents;
+    const stripHash = (u) => (u || '').split('#')[0];
+    const current = wc.getURL();
+    if (current && stripHash(current) === stripHash(url)) {
+      wc.reloadIgnoringCache();
+      return;
+    }
+    wc.loadURL(url);
   }
 
   reload(appId, ignoreCache = false) {
@@ -431,7 +449,7 @@ class ViewManager {
 
   clearHistory(appId) {
     const entry = this.views.get(appId);
-    if (entry) entry.view.webContents.clearHistory();
+    if (entry) entry.view.webContents.navigationHistory.clear();
   }
 
   getActiveViewId() {
