@@ -2289,8 +2289,8 @@ ipcMain.handle('set-zoom-factor', async (event, { webContentsId, zoomFactor }) =
 // WebContentsView IPC handlers (view:*)
 // ============================================================================
 
-ipcMain.handle('view:create', async (_e, { appId, url, userAgent, preloadOverride }) => {
-  await viewManager.create(appId, { url, userAgent, preloadOverride });
+ipcMain.handle('view:create', async (_e, { appId, url, userAgent, preloadOverride, backgroundThrottling }) => {
+  await viewManager.create(appId, { url, userAgent, preloadOverride, backgroundThrottling });
 });
 
 ipcMain.handle('view:show', (_e, { appId }) => {

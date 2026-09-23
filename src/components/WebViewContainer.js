@@ -39,6 +39,10 @@ function forceReloadWcv(id, standardApps, currentUrl) {
   // Login auf einer toten Huelle stehenbleiben koennen. Ein reload() laedt
   // genau diese Huelle erneut; erst eine frische Navigation auf die
   // konfigurierte URL bringt die Loginmaske zurueck.
+  //
+  // Achtung: steht die View schon auf dieser URL und unterscheidet sich nur
+  // das Fragment, waere loadURL() bloss eine Navigation innerhalb der Seite.
+  // ViewManager.navigate() laedt in dem Fall deshalb echt neu.
   if ((id === 'outlook' || id === 'webuntis') && url) {
     window.electron.view.clearHistory(id)
       .then(() => window.electron.view.navigate(id, url))
@@ -145,6 +149,11 @@ const LOGIN_WATCHER_INTERVAL_MS = 2500;
 // Sperre wird freigegeben. Laengster regulaerer Durchlauf liegt bei ~15 s.
 const INJECTION_STALE_MS = 45000;
 
+// schul.cloud-E-Mail-Feld. Seit dem Angular-20-Relaunch heisst es
+// `input#email` (Button: "Mit E-Mail fortfahren", `.text-button-primary`);
+// `input#username` bleibt als Rueckfall fuer die alte Oberflaeche.
+const SCHULCLOUD_EMAIL_SELECTOR = 'input#email, input#username[type="text"]';
+
 // Apps, deren Loginmaske asynchron erscheint oder mehrstufig ist. Der Wächter
 // prüft mit diesen Snippets im Seitenkontext, ob noch eine Anmeldung aussteht.
 //
@@ -209,12 +218,21 @@ const LOGIN_WATCHERS = {
                 //
                 // Bewusst ohne Sichtbarkeitsprüfung: ein zu enger Test kann das
                 // Zeitfenster verpassen, in dem der Login noch möglich wäre.
-                const emailInput = document.querySelector('input#username[type="text"]');
+                const emailInput = document.querySelector(${JSON.stringify(SCHULCLOUD_EMAIL_SELECTOR)});
                 const passwordInputs = document.querySelectorAll('input[type="password"]');
                 const encryptionButton = Array.from(document.querySelectorAll('button.row, div.row')).find(btn => btn.textContent.includes('Durch dein Verschlüsselungskennwort'));
                 const loggedIn = document.querySelector('.user-menu') || document.querySelector('.dashboard') || document.querySelector('.main-content');
                 if (loggedIn) return false;
                 return !!emailInput || passwordInputs.length > 0 || !!encryptionButton;
+              })()`,
+  // BBB/Greenlight 3: Loginformular auf /signin ODER die Startseite mit dem
+  // "Anmelden"-Button. Auf die Startseite landet man nach Sitzungsablauf —
+  // ohne Navigation, die einen anderen Ausloeser zuenden wuerde.
+  bbb: `(function() {
+                if (document.querySelector('#signInFormEmail') && document.querySelector('#signInFormPwd')) return true;
+                if (window.location.pathname !== '/') return false;
+                return Array.from(document.querySelectorAll('button, a')).some(el =>
+                  el.textContent.trim() === 'Anmelden' && el.offsetParent !== null);
               })()`,
   // Outlook/OWA verliert seine Sitzung still: die SPA feuert dabei kein
   // dom-ready, also gab es bisher ueberhaupt keinen Ausloeser mehr und die
@@ -251,6 +269,54 @@ const LOGIN_WATCHERS = {
                 return !authLabel || authLabel.textContent !== 'Bestätigungscode';
               })()`,
 };
+
+// ---------------------------------------------------------------------------
+// Abdunkeln waehrend des automatischen Ausfuellens
+// ---------------------------------------------------------------------------
+//
+// Die WebContentsView liegt nativ UEBER dem React-Renderer — ein Overlay dort
+// waere unsichtbar. Die Abdunklung wird deshalb in die Seite selbst gelegt.
+// pointer-events: none, damit ein haengengebliebener Rest nie die Bedienung
+// blockiert; zusaetzlich raeumt sie sich nach DIM_SAFETY_MS selbst ab.
+
+const DIM_ELEMENT_ID = '__bbz_autofill_dim';
+const DIM_SAFETY_MS = 20 * 1000;
+
+// Abdunkeln, aber nur wenn der Login-Waechter der App tatsaechlich eine
+// Loginmaske sieht und der Nutzer nicht gerade selbst tippt — sonst flackert
+// die Seite bei jedem Waechter-Tick. BBZ Chat hat ein eigenes Overlay.
+const dimOnJs = (check) => `(async function() {
+  try {
+    if (location.hostname === 'chat.bbz-rd-eck.com') return false;
+    if (${USER_IS_TYPING_JS}) return false;
+    const raw = await (${check});
+    // Strings sind Sonderlagen ('STALE_SESSION'), keine Loginmaske
+    if (!raw || typeof raw === 'string') return false;
+    let el = document.getElementById('${DIM_ELEMENT_ID}');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = '${DIM_ELEMENT_ID}';
+      el.setAttribute('aria-hidden', 'true');
+      el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;' +
+        'background:rgba(0,0,0,0.22);pointer-events:none;';
+      (document.body || document.documentElement).appendChild(el);
+    }
+    clearTimeout(window.__bbzDimTimer);
+    window.__bbzDimTimer = setTimeout(() => el.remove(), ${DIM_SAFETY_MS});
+    return true;
+  } catch (e) {
+    return false;
+  }
+})()`;
+
+const DIM_OFF_JS = `(function() {
+  try {
+    clearTimeout(window.__bbzDimTimer);
+    const el = document.getElementById('${DIM_ELEMENT_ID}');
+    if (el) el.remove();
+  } catch (e) { /* ignore */ }
+  return true;
+})()`;
 
 // ---------------------------------------------------------------------------
 // Selbstheilung der WebContentsViews
@@ -304,6 +370,42 @@ const WCV_MAX_AGE_MS = {
   outlook: 20 * 60 * 1000,
 };
 
+// Apps, deren Ansicht im Hintergrund NICHT gedrosselt werden darf.
+//
+// Chromium drosselt verborgene Seiten nach wenigen Minuten auf einen Timer-
+// Durchlauf pro Minute. OWA haelt seine Serververbindung (Benachrichtigungs-
+// kanal, Sitzungs-Heartbeat) ueber genau solche Timer am Leben — gedrosselt
+// reisst sie ab, und die Oberflaeche bleibt "taub" stehen. Kostet etwas CPU im
+// Hintergrund, deshalb bewusst nur Outlook.
+const WCV_NO_BACKGROUND_THROTTLING = new Set(['outlook']);
+
+// Apps, deren automatische Anmeldung voruebergehend abgeschaltet ist. Der
+// Handler bleibt im Code, er wird nur nicht ausgefuehrt.
+//
+// wiki: Umstellung des Produktivsystems auf LDAP.
+const AUTO_LOGIN_DISABLED = new Set(['wiki']);
+
+// Laeuft ein Ladevorgang so lange, ohne dass die Seite etwas zeigt, gilt er
+// als haengengeblieben (weisse Flaeche mit Dauer-Ladebalken) und wird neu
+// angestossen. Der Leer-Test wartete bisher auf readyState 'complete' — ein
+// Ladevorgang, der nie fertig wird, fiel damit durch jedes Raster.
+const STUCK_LOAD_MS = 20 * 1000;
+
+// So lange darf die Leer-Pruefung auf eine Antwort der Seite warten.
+const BLANK_PROBE_TIMEOUT_MS = 3000;
+
+// Clock-Sprung zwischen zwei Gesundheitschecks, ab dem von einem Standby
+// ausgegangen wird. Windows-Modern-Standby meldet nicht immer ein 'resume'.
+const SLEEP_GAP_MS = 3 * 60 * 1000;
+
+// Apps, die nach Standby oder Netzausfall ausdruecklich neu verbunden (also
+// neu geladen) werden. Ihre Oberflaeche ueberlebt den Verbindungsverlust
+// sichtbar, spricht danach aber nicht mehr mit dem Server.
+const WCV_RECONNECT_APPS = ['outlook'];
+
+// Ab dieser Offline-Dauer gilt die Serververbindung als verloren.
+const OFFLINE_RECONNECT_MS = 30 * 1000;
+
 // Mindestabstand zwischen zwei automatischen Reloads derselben App. Bremst
 // Reload-Schleifen, falls eine Pruefung faelschlich "tot" meldet.
 const AUTO_RELOAD_COOLDOWN_MS = 5 * 60 * 1000;
@@ -331,6 +433,12 @@ const IGNORED_LOAD_ERROR_CODES = new Set([0, -3]);
 // eigenen Ursprung verraet den Zustand dagegen eindeutig: eine abgelaufene
 // OWA-Sitzung antwortet mit 401/403/440 oder leitet auf logon.aspx bzw. den
 // ADFS um (redirect: 'manual' macht daraus eine opaqueredirect-Antwort).
+// Live geprueft: ohne gueltige Sitzung antwortet der Web Application Proxy
+// mit 307 auf adfs.bbz-rd-eck.de.
+//
+// Nebenbei ist die Anfrage das Keep-alive: sie laeuft jede Minute mit den
+// Sitzungscookies gegen Exchange und haelt damit die Anmeldung am Proxy warm,
+// auch wenn Outlook im Hintergrund liegt.
 const WCV_HEALTH_PROBES = {
   outlook: `(async function() {
     try {
@@ -363,7 +471,20 @@ const BLANK_PAGE_PROBE_JS = `(function() {
     // Eine Seite, die noch laedt, ist nicht "leer geblieben". Ohne diese
     // Pruefung wuerde ein Wechsel auf eine gerade ladende App deren
     // Ladevorgang abschiessen.
-    if (document.readyState !== 'complete') return 'LOADING';
+    //
+    // Ob sie dabei schon etwas zeigt, wird trotzdem mitgeteilt: haengt der
+    // Ladevorgang (weisse Flaeche, Dauer-Ladebalken), entscheidet der
+    // Renderer anhand der Ladedauer (STUCK_LOAD_MS). Gezaehlt werden nur
+    // sichtbare Elemente — schul.cloud hat allein ein Dutzend <script>- und
+    // <link>-Tags im <body>.
+    if (document.readyState !== 'complete') {
+      const b = document.body;
+      if (!b) return 'LOADING_BLANK';
+      if ((b.innerText || '').trim()) return 'LOADING';
+      const visible = Array.from(b.querySelectorAll('*')).filter(el =>
+        !/^(SCRIPT|LINK|STYLE|META|NOSCRIPT|TEMPLATE)$/.test(el.tagName)).length;
+      return visible >= 5 ? 'LOADING' : 'LOADING_BLANK';
+    }
     const body = document.body;
     if (!body) return 'BLANK';
     // Erst die Elementzahl, dann erst der Text: innerText erzwingt ein Layout,
@@ -583,6 +704,8 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Laufende Generation pro App — nur der aktuelle Durchlauf darf die Sperre
   // wieder freigeben (siehe injectCredentials).
   const injectionRunSeq = useRef({});
+  // Pro App die View, die gerade abgedunkelt ist (siehe dimOnJs)
+  const dimmedRef = useRef({});
   // Sperrzeiten pro Host, nur im Speicher (siehe WebUntis-Handler)
   const loginCooldownRef = useRef({});
   // Diagnose des Login-Wächters: Tick-Zähler und letzter berichteter Zustand
@@ -604,6 +727,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   const blankReloadsRef = useRef({});
   // Reloads, die auf den Wechsel auf die App warten (siehe checkBlankPage)
   const pendingReloadRef = useRef({});
+  // Beginn des laufenden Ladevorgangs (did-start-loading), null wenn keiner laeuft
+  const loadStartRef = useRef({});
+  // Watchdog fuer haengende Ladevorgaenge (siehe STUCK_LOAD_MS)
+  const stuckLoadTimersRef = useRef({});
   // Reloads wegen "Sitzung gilt, Anmeldemaske steht trotzdem da"
   const staleSessionReloadsRef = useRef({});
   // Pruefsumme der BBZ-Chat-Zugangsdaten, um Aenderungen zu erkennen
@@ -849,7 +976,11 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       const delay = createIndex * WCV_CREATE_STAGGER_MS;
       createIndex += 1;
       const create = () =>
-        window.electron.view.create({ appId: id, url: config.url }).catch((err) =>
+        window.electron.view.create({
+          appId: id,
+          url: config.url,
+          backgroundThrottling: !WCV_NO_BACKGROUND_THROTTLING.has(id),
+        }).catch((err) =>
           console.error(`[WCV] Failed to create view for ${id}:`, err)
         );
       // Nicht abgebrochen beim Unmount: create() ist idempotent, und ein
@@ -1171,6 +1302,9 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     loginAttempts.current[id] = 0;
     injectionInFlight.current[id] = null;
     injectionRerunRef.current[id] = null;
+    // Ein abgebrochener, haengender Ladevorgang meldet nicht zwingend
+    // did-stop-loading — sonst gaelte der neue sofort wieder als haengend.
+    loadStartRef.current[id] = null;
 
     try {
       forceReloadWcv(id, standardAppsRef.current, wcvUrlsRef.current[id]);
@@ -1207,14 +1341,29 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     if (!url || url.startsWith('about:')) return;
     if ((blankReloadsRef.current[id] || 0) >= MAX_BLANK_RELOADS) return;
 
+    // Mit Zeitlimit: haengt der Ladevorgang an einem blockierenden Stylesheet
+    // oder Skript, beantwortet die Seite executeJavaScript GAR NICHT (in
+    // Electron nachgestellt). Ohne Limit wartete die Pruefung dann ewig, und
+    // genau der Fall "weisse Flaeche, Dauer-Ladebalken" wurde nie behoben.
     let result;
     try {
-      result = await window.electron.view.executeJavaScript(id, BLANK_PAGE_PROBE_JS);
+      result = await Promise.race([
+        window.electron.view.executeJavaScript(id, BLANK_PAGE_PROBE_JS),
+        new Promise((resolve) => setTimeout(() => resolve('NO_RESPONSE'), BLANK_PROBE_TIMEOUT_MS)),
+      ]);
     } catch (_) {
       return; // View existiert nicht oder navigiert gerade
     }
     if (result === 'LOADING') return; // Zaehler bewusst nicht anfassen
-    if (result !== 'BLANK') {
+    // Laedt noch, zeigt aber nichts: erst nach STUCK_LOAD_MS als haengend werten.
+    let reason = 'leere Seite';
+    if (result === 'LOADING_BLANK' || result === 'NO_RESPONSE') {
+      // Keine Antwort OHNE laufenden Ladevorgang ist kein Haenger (etwa ein
+      // beschaeftigter Renderer) — dann nichts tun.
+      const startedAt = loadStartRef.current[id];
+      if (!startedAt || Date.now() - startedAt < STUCK_LOAD_MS) return;
+      reason = `Ladevorgang haengt seit ${Math.round((Date.now() - startedAt) / 1000)} s`;
+    } else if (result !== 'BLANK') {
       blankReloadsRef.current[id] = 0;
       return;
     }
@@ -1226,12 +1375,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
     // das aus der Hand und bringt nichts — zu sehen ist die Seite ohnehin erst
     // beim Wechsel. Also vormerken und dann nachholen.
     if (activeWcvIdRef.current !== id) {
-      pendingReloadRef.current[id] = 'leere Seite';
+      pendingReloadRef.current[id] = reason;
       return;
     }
 
-    console.warn(`[${id}] Seite ist leer geblieben`);
-    if (autoReloadWcv(id, 'leere Seite', BLANK_RELOAD_COOLDOWN_MS)) {
+    console.warn(`[${id}] Seite ist leer geblieben (${reason})`);
+    if (autoReloadWcv(id, reason, BLANK_RELOAD_COOLDOWN_MS)) {
       blankReloadsRef.current[id] = (blankReloadsRef.current[id] || 0) + 1;
     }
   }, [autoReloadWcv]);
@@ -1275,7 +1424,18 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         return;
       }
 
+      if (event.type === 'did-start-loading') {
+        // Nur den Beginn des ERSTEN Ladevorgangs merken — Navigationen
+        // innerhalb der SPA feuern start/stop in schneller Folge.
+        if (!loadStartRef.current[id]) loadStartRef.current[id] = Date.now();
+        clearTimeout(stuckLoadTimersRef.current[id]);
+        stuckLoadTimersRef.current[id] = setTimeout(() => checkBlankPage(id), STUCK_LOAD_MS + 500);
+        return;
+      }
+
       if (event.type === 'did-stop-loading') {
+        loadStartRef.current[id] = null;
+        clearTimeout(stuckLoadTimersRef.current[id]);
         clearTimeout(blankCheckTimersRef.current[id]);
         blankCheckTimersRef.current[id] = setTimeout(() => checkBlankPage(id), BLANK_CHECK_DELAY_MS);
       }
@@ -1283,16 +1443,69 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
     return () => {
       unsubscribe();
+      Object.values(stuckLoadTimersRef.current).forEach(clearTimeout);
       Object.values(blankCheckTimersRef.current).forEach(clearTimeout);
       Object.values(loadRetryRef.current).forEach((state) => clearTimeout(state?.timer));
     };
   }, [scheduleLoadRetry, checkBlankPage]);
 
+  // Apps mit empfindlicher Serververbindung nach Standby oder Netzausfall neu
+  // laden. `since`: Zeitpunkt des Ereignisses — wurde seitdem schon neu
+  // geladen (etwa vom resume-Handler), passiert nichts, damit es nicht doppelt
+  // laedt.
+  const reconnectOnOnlineRef = useRef(null);
+  // Zeitpunkt des letzten 'resume' — der Resume-Handler laedt selbst neu
+  const lastResumeAtRef = useRef(0);
+  const reconnectApps = useCallback(async (reason, since = 0) => {
+    // Ohne Netz ist ein Reload sinnlos und endet auf der Fehlerseite — dann
+    // uebernimmt das 'online'-Ereignis.
+    if (!navigator.onLine) {
+      reconnectOnOnlineRef.current = { reason, since };
+      return;
+    }
+    // Namensaufloesung/VPN kommen nach 'online' oft erst etwas spaeter
+    await new Promise((resolve) => setTimeout(resolve, RESUME_SETTLE_MS));
+    // Hat 'resume' dasselbe Aufwachen bereits gemeldet, laedt der
+    // Resume-Handler ohnehin neu.
+    if (since && lastResumeAtRef.current > since) return;
+    for (const id of WCV_RECONNECT_APPS) {
+      if (!standardAppsRef.current?.[id]?.visible) continue;
+      if (!wcvUrlsRef.current[id]) continue;
+      if (since && (wcvLastLoadRef.current[id] || 0) > since) continue;
+      if (await hasUnsavedText(getWcvProxy(id))) {
+        console.log(`[${id}] Wiederverbinden verschoben - ungespeicherter Text auf der Seite`);
+        continue;
+      }
+      // Die Reload-Sperre stammt aus der Zeit vor dem Ereignis und darf
+      // jetzt nicht bremsen.
+      autoReloadAtRef.current[id] = 0;
+      healthStrikeRef.current[id] = 0;
+      autoReloadWcv(id, reason);
+    }
+  }, [autoReloadWcv, getWcvProxy]);
+
   // Kommt das Netz zurueck, sofort erneut laden statt den naechsten
   // Backoff-Schritt abzuwarten.
   useEffect(() => {
+    let offlineSince = null;
+    const handleOffline = () => {
+      if (!offlineSince) offlineSince = Date.now();
+      console.log('[Netz] Verbindung weg');
+    };
+
     const handleOnline = () => {
       console.log('[Netz] Verbindung zurueck');
+
+      // Nach einem laengeren Ausfall ist die Serververbindung von OWA tot,
+      // auch wenn die Oberflaeche noch dasteht.
+      const pending = reconnectOnOnlineRef.current;
+      reconnectOnOnlineRef.current = null;
+      if (pending) {
+        reconnectApps(`${pending.reason}, Netz wieder da`, pending.since);
+      } else if (offlineSince && Date.now() - offlineSince >= OFFLINE_RECONNECT_MS) {
+        reconnectApps(`${Math.round((Date.now() - offlineSince) / 1000)} s offline`, offlineSince);
+      }
+      offlineSince = null;
       for (const id of WCV_APPS) {
         if (!standardAppsRef.current?.[id]?.visible) continue;
         const state = loadRetryRef.current[id];
@@ -1305,8 +1518,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
       }
     };
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
-  }, []);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [reconnectApps]);
 
   // Gesundheitscheck: stille Sitzungsverluste und abgestandene Ansichten.
   //
@@ -1317,7 +1534,21 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // Login-Waechter reagieren koennte. Ohne diesen Check half nur ein Reload
   // von Hand.
   useEffect(() => {
+    let lastTickAt = Date.now();
+
     const tick = async () => {
+      // Standby erkennen: lagen zwischen zwei Durchlaeufen deutlich mehr als
+      // HEALTH_CHECK_INTERVAL_MS, standen die Timer still. Auf 'resume' allein
+      // ist kein Verlass (Windows-Modern-Standby meldet es nicht immer), und
+      // danach haengt OWA mit toter Serververbindung da.
+      const now = Date.now();
+      const sleptSince = now - lastTickAt > SLEEP_GAP_MS ? lastTickAt : null;
+      lastTickAt = now;
+      if (sleptSince) {
+        console.log(`[Health] Zeitsprung von ${Math.round((now - sleptSince) / 60000)} min - vermutlich Standby`);
+        reconnectApps('Standby erkannt (Zeitsprung)', sleptSince);
+      }
+
       for (const id of WCV_APPS) {
         if (!standardAppsRef.current?.[id]?.visible) continue;
         if (!wcvUrlsRef.current[id]) continue;
@@ -1377,7 +1608,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
     const timer = setInterval(tick, HEALTH_CHECK_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [checkBlankPage, autoReloadWcv, getWcvProxy]);
+  }, [checkBlankPage, autoReloadWcv, getWcvProxy, reconnectApps]);
 
   // Beim Wechsel auf eine App: nachholen, was im Hintergrund liegen blieb.
   //
@@ -1432,6 +1663,31 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Seite waehrend des Ausfuellens abdunkeln — nur fuer Apps mit Login-Waechter
+  // und nur, wenn dieser tatsaechlich eine Loginmaske sieht (siehe dimOnJs).
+  const dimWhileFilling = useCallback(async (webview, id) => {
+    const check = LOGIN_WATCHERS[id];
+    if (!check || dimmedRef.current[id]) return;
+    if ((submitAttempts.current[id] || 0) >= MAX_SUBMIT_ATTEMPTS) return;
+    // Das Schulportal hat eigene Zugangsdaten; fehlen die, passiert nichts.
+    if (id === 'schulportal') {
+      const [u, p] = await Promise.all([
+        window.electron.getCredentials({ service: 'bbzcloud', account: 'schulportalEmail' }),
+        window.electron.getCredentials({ service: 'bbzcloud', account: 'schulportalPassword' }),
+      ]);
+      if (!u?.success || !u.password?.trim() || !p?.success || !p.password?.trim()) return;
+    }
+    try {
+      // Mit Zeitlimit: eine haengende Seite beantwortet executeJavaScript nicht,
+      // und die Anmeldung soll daran nicht mit haengenbleiben.
+      const dimmed = await Promise.race([
+        webview.executeJavaScript(dimOnJs(check)),
+        new Promise((resolve) => setTimeout(() => resolve(false), 1500)),
+      ]);
+      if (dimmed) dimmedRef.current[id] = webview;
+    } catch (_) { /* Seite laedt gerade — dann eben ohne Abdunklung */ }
+  }, []);
+
   // Eine tatsaechlich abgeschickte Anmeldung verbuchen. Siehe submitAttempts.
   const noteSubmit = useCallback((id) => {
     submitAttempts.current[id] = (submitAttempts.current[id] || 0) + 1;
@@ -1443,6 +1699,10 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
   // serialisiert die Aufrufe pro App)
   const injectCredentialsImpl = useCallback(async (webview, id) => {
     if (!webview || credsAreSet.current[id]) {
+      return;
+    }
+
+    if (AUTO_LOGIN_DISABLED.has(id)) {
       return;
     }
 
@@ -1519,6 +1779,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         console.log(`[${id}] Skipping credential injection - empty credentials`);
         return;
       }
+
+      // Seite abdunkeln, solange ausgefuellt wird. Erst HIER, nach der
+      // Zugangsdaten-Pruefung: fehlen sie, steigt der Handler aus — und die
+      // Loginseite wuerde bei jedem Waechter-Tick kurz aufflackern.
+      // Aufgehellt wird im finally von injectCredentials.
+      await dimWhileFilling(webview, id);
 
       // Check login attempt limit (except for Outlook, WebUntis, and schulcloud)
       // schulcloud has a multi-step login process (email -> password -> encryption)
@@ -1917,6 +2183,20 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 }
 
                 if (!emailInput || !passwordInput) {
+                  // Startseite '/': Greenlight 3 leitet eine abgelaufene
+                  // Sitzung dorthin um (/rooms -> /), nicht auf /signin. Dort
+                  // gibt es nur einen "Anmelden"-Button ohne ID (btn-brand;
+                  // ein zweiter, versteckter steckt im mobilen Menue). Der
+                  // Klick fuehrt per SPA-Navigation auf /signin, und das
+                  // did-navigate-in-page dorthin stoesst das Befuellen an.
+                  if (window.location.pathname === '/') {
+                    const signin = Array.from(document.querySelectorAll('button, a')).find(el =>
+                      el.textContent.trim() === 'Anmelden' && el.offsetParent !== null);
+                    if (signin) {
+                      signin.click();
+                      return 'CLICKED_SIGNIN';
+                    }
+                  }
                   // Kein Loginformular -> entweder bereits angemeldet oder
                   // gerade auf einer anderen Greenlight-Seite (/rooms, /rooms/<id>/join)
                   return 'NO_FORM';
@@ -1957,7 +2237,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           console.log('[bbb] Login injection result:', bbbResult);
 
-          if (bbbResult === 'NO_FORM') {
+          if (bbbResult === 'NO_FORM' || bbbResult === 'CLICKED_SIGNIN') {
             // Kein Loginformular sichtbar (bereits angemeldet oder andere
             // Greenlight-Seite). Das war kein Loginversuch — Zähler
             // zurücknehmen, damit ein späteres Abmelden wieder einen
@@ -2198,7 +2478,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                 console.log('[schul.cloud] Detecting login state...');
                 
                 // Look for specific schul.cloud elements
-                const emailInput = document.querySelector('input#username[type="text"]');
+                const emailInput = document.querySelector(${JSON.stringify(SCHULCLOUD_EMAIL_SELECTOR)});
                 const passwordInputs = document.querySelectorAll('input[type="password"]');
                 const weiterButton = document.querySelector('button[type="submit"].btn.btn-contained');
                 const loginButton = Array.from(document.querySelectorAll('span.header')).find(el => el.textContent.includes('Anmelden mit Passwort')) ||
@@ -2284,7 +2564,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                   try {
                     ${SAFE_FOCUS_HELPER_JS}
                     const EMAIL = ${JSON.stringify(emailAddress)};
-                    const emailInput = document.querySelector('input#username[type="text"]');
+                    const emailInput = document.querySelector(${JSON.stringify(SCHULCLOUD_EMAIL_SELECTOR)});
                     if (!emailInput) return 'NO_ELEMENTS';
 
                     // Wert setzen und GEGENPRUEFEN.
@@ -2319,10 +2599,17 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
                     // Den Button erst JETZT suchen, nicht vor dem Befuellen:
                     // Angular tauscht ihn beim Rendern aus, eine frueh
                     // gemerkte Referenz zeigt dann ins Leere.
+                    // Seit dem Relaunch "Mit E-Mail fortfahren" mit
+                    // .text-button-primary. Nicht einfach button[type=submit]
+                    // nehmen: auf derselben Seite sind auch "Anmeldung mit
+                    // QR-Code" und "Hier registrieren" Submit-Buttons.
                     const findWeiter = () =>
-                      document.querySelector('button[type="submit"].btn.btn-contained') ||
-                      Array.from(document.querySelectorAll('button')).find(b =>
-                        b.textContent.trim() === 'Weiter' || b.textContent.trim() === 'Anmelden');
+                      Array.from(document.querySelectorAll('button')).find(b => {
+                        const t = b.textContent.trim();
+                        return t === 'Mit E-Mail fortfahren' || t === 'Weiter' || t === 'Anmelden';
+                      }) ||
+                      document.querySelector('button.text-button-primary') ||
+                      document.querySelector('button[type="submit"].btn.btn-contained');
 
                     let weiterButton = findWeiter();
                     for (let i = 0; i < 20 && (!weiterButton || weiterButton.disabled); i++) {
@@ -2901,6 +3188,12 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
         target = pending;
       }
     } finally {
+      // Sofort wieder aufhellen (abgedunkelt wird in injectCredentialsImpl).
+      const dimmedView = dimmedRef.current[id];
+      if (dimmedView) {
+        dimmedRef.current[id] = null;
+        dimmedView.executeJavaScript(DIM_OFF_JS).catch(() => {});
+      }
       if (injectionRunSeq.current[id] === myRun) {
         injectionRerunRef.current[id] = null;
         injectionInFlight.current[id] = null;
@@ -3066,6 +3359,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
     const handleSystemResume = async () => {
       console.log('[System Resume] Handling webview reloads');
+      lastResumeAtRef.current = Date.now();
 
       // Reset all credsAreSet so periodic checks can re-authenticate if needed
       Object.keys(credsAreSet.current).forEach(id => {

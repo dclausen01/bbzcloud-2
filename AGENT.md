@@ -285,6 +285,54 @@ Spinner bleibt stehen, und in schul.cloud stapeln sich dutzende Geräte.
   Rest der Sitzung unsichtbar — und ein Reload half nicht, weil das Problem gar
   nicht die Seite war.
 
+### Echter Reload statt Fragment-Navigation (`ViewManager.navigate`)
+`forceReloadWcv` navigiert Outlook/WebUntis auf ihre konfigurierte URL
+(`…/owa/#path=/mail`, `…#/basic/login`). Steht die View schon auf derselben
+Adresse und unterscheidet sich nur das Fragment, macht Chromium aus `loadURL()`
+eine Navigation **innerhalb** des Dokuments: nur `did-navigate-in-page`, die SPA
+wechselt die Route, nichts wird neu geladen (in Electron nachgestellt). Damit
+waren Reload-Taste, Resume-Handler und die gesamte Outlook-Selbstheilung
+wirkungslos — „Reload bringt nichts, nur App-Neustart hilft“.
+`ViewManager.navigate()` lädt in dem Fall jetzt mit `reloadIgnoringCache()`.
+
+### Outlook: Keep-alive und Wiederverbinden
+- **Keine Hintergrund-Drosselung** (`WCV_NO_BACKGROUND_THROTTLING`, nur
+  Outlook): Chromium drosselt verborgene Seiten auf einen Timer pro Minute; OWA
+  hält seine Serververbindung über solche Timer am Leben.
+- **Keep-alive** ist der minütliche `HEAD /owa/` aus `WCV_HEALTH_PROBES`. Er
+  läuft mit den Sitzungscookies und erkennt zugleich den Sitzungsverlust
+  (Web Application Proxy antwortet dann mit 307 auf ADFS).
+- **Wiederverbinden** (`reconnectApps`, `WCV_RECONNECT_APPS`) bei
+  1. Zeitsprung zwischen zwei Gesundheitschecks > `SLEEP_GAP_MS` (Standby
+     ohne `resume`, z. B. Windows Modern Standby),
+  2. Netz zurück nach > `OFFLINE_RECONNECT_MS` offline.
+  Ohne Netz wird auf `online` gewartet. Kein doppelter Reload, wenn `resume`
+  oder ein anderer Ladevorgang seit dem Ereignis schon neu geladen hat;
+  ungespeicherter Text verschiebt den Reload.
+
+### Hängende Ladevorgänge (weiße Fläche + Dauer-Ladebalken)
+Hängt ein Ladevorgang an einem blockierenden Stylesheet/Skript, beantwortet die
+Seite `executeJavaScript` **überhaupt nicht** (in Electron nachgestellt). Der
+alte Leer-Test gab bei `readyState !== 'complete'` ohnehin nur `LOADING` zurück
+und wartete ohne Zeitlimit — genau dieser Fall wurde nie behoben, und der
+minütliche Gesundheitscheck blieb an einer hängenden View für **alle** Apps
+stehen. Jetzt:
+- Probe mit Zeitlimit (`BLANK_PROBE_TIMEOUT_MS`), Ergebnis `NO_RESPONSE`.
+- Läuft der Ladevorgang seit `STUCK_LOAD_MS` (ab dem ersten
+  `did-start-loading`) und die Seite antwortet nicht oder zeigt nichts
+  (`LOADING_BLANK`, nur sichtbare Elemente gezählt — schul.cloud hat ein
+  Dutzend `<script>`/`<link>` im Body), wird neu geladen (unsichtbar:
+  beim Wechsel auf die App). `autoReloadWcv` setzt den Ladebeginn zurück.
+
+### Abdunkeln während des Auto-Logins
+Die WebContentsView liegt nativ über dem React-Renderer, deshalb wird die
+Abdunklung als `div#__bbz_autofill_dim` in die Seite gelegt (`dimOnJs`,
+`pointer-events: none`, räumt sich nach 20 s selbst ab). Abgedunkelt wird erst
+**nach** der Zugangsdaten-Prüfung in `injectCredentialsImpl` und nur, wenn der
+Login-Wächter der App eine Maske sieht — sonst flackert die Loginseite bei
+fehlenden Zugangsdaten jeden Wächter-Tick. Aufgehellt wird im `finally` von
+`injectCredentials`. BBZ Chat hat sein eigenes Overlay und ist ausgenommen.
+
 ### Besondere "Quirks" & Workarounds
 - **Session-Reloads**: Webseiten wie **Outlook (OWA)** und **WebUntis** benötigen einen expliziten Reload nach System-Resume (Sleep/Wake), da ihre Sessions sonst ablaufen oder einfrieren. Dies wird im Main Process (`powerMonitor`) behandelt.
   - **Nur `resume` löst den Reload aus, nicht `unlock-screen`.** Beide Ereignisse
@@ -349,11 +397,12 @@ Die automatische Anmeldung ist in `WebViewContainer.js` implementiert und wird a
 
 | Dienst | Ablauf |
 |--------|--------|
-| **BigBlueButton** | Greenlight 3: `#signInFormEmail` + `#signInFormPwd` → `button[type="submit"]` im Formular. Werte über den nativen `value`-Setter + gebubbletes `input`-Event (react-hook-form ignoriert direkt gesetzte `.value`). Alte Greenlight-2-Selektoren (`#session_email`/`#session_password`/`.signin-button`) bleiben als Fallback. |
+| **BigBlueButton** | Greenlight 3: Auf der Startseite `/` (dorthin leitet eine abgelaufene Sitzung um, `/rooms` → `/`) erst den sichtbaren „Anmelden“-Button klicken (`btn-brand`, keine ID; ein zweiter steckt versteckt im Mobilmenü). Danach auf `/signin`: `#signInFormEmail` + `#signInFormPwd` → `button[type="submit"]` im Formular. Werte über den nativen `value`-Setter + gebubbletes `input`-Event (react-hook-form ignoriert direkt gesetzte `.value`). Alte Greenlight-2-Selektoren (`#session_email`/`#session_password`/`.signin-button`) bleiben als Fallback. |
 | **Outlook** | `#userNameInput` + `#passwordInput` → `#submitButton` (ADFS) |
 | **Nextcloud** | Klick auf `a[href*="user_saml/saml/login"]` ("BBZ ADFS") → dann wie Outlook (ADFS) |
 | **Moodle** | `input#username` + `input#password` → `button#loginbtn` |
-| **schul.cloud** | `input#username` + `input[type="password"]` |
+| **schul.cloud** | E-Mail-Schritt: `input#email` (seit dem Angular-20-Relaunch, vorher `input#username`; `SCHULCLOUD_EMAIL_SELECTOR`) → Button „Mit E-Mail fortfahren“ (`.text-button-primary`). **Nicht** `button[type=submit]` nehmen — „Anmeldung mit QR-Code“ und „Hier registrieren“ sind ebenfalls Submit-Buttons. Danach `input[type="password"]`. |
+| **Wiki** | Auto-Login **vorübergehend abgeschaltet** (`AUTO_LOGIN_DISABLED`, Umstellung auf LDAP). Der Handler bleibt im Code. |
 | **BBZ Chat** | Direkter API-Call: `fetch('/api/login', {email, password, securityPassword})` → Token in `localStorage('schulchat_token')` speichern → `webview.reload()`. Umgeht die React-19-Login-Form komplett. Webview-ID ist `schulcloud` (URL-Erkennung via `chat.bbz-rd-eck.com`). |
 | **WebUntis** | Periodenbasiert, eigene Selektor-Logik |
 | **Schulportal** | Keycloak: `input#username` + `input#password` → `input#kc-login` |
