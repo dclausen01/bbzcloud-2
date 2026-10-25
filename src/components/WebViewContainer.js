@@ -381,9 +381,7 @@ const WCV_NO_BACKGROUND_THROTTLING = new Set(['outlook']);
 
 // Apps, deren automatische Anmeldung voruebergehend abgeschaltet ist. Der
 // Handler bleibt im Code, er wird nur nicht ausgefuehrt.
-//
-// wiki: Umstellung des Produktivsystems auf LDAP.
-const AUTO_LOGIN_DISABLED = new Set(['wiki']);
+const AUTO_LOGIN_DISABLED = new Set([]);
 
 // Laeuft ein Ladevorgang so lange, ohne dass die Seite etwas zeigt, gilt er
 // als haengengeblieben (weisse Flaeche mit Dauer-Ladebalken) und wird neu
@@ -2294,7 +2292,13 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             (function() {
               const userInput = document.querySelector('input[name="u"]');
               const passInput = document.querySelector('input[name="p"]');
-              if (userInput && passInput) return 'form';
+              if (userInput && passInput) {
+                // DokuWiki zeigt nach falschen Zugangsdaten wieder die Maske,
+                // diesmal mit Fehlermeldung
+                const err = document.querySelector('div.error, .alert-danger');
+                if (err && /passwort|password/i.test(err.textContent)) return 'error';
+                return 'form';
+              }
               const loginBtn = document.querySelector('a.login.btn');
               if (loginBtn) return 'login-btn';
               return 'logged-in';
@@ -2303,6 +2307,14 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
 
           if (wikiState === 'logged-in') {
             credsAreSet.current[id] = true;
+            break;
+          }
+
+          // Nicht erneut abschicken: das Wiki prueft gegen LDAP, wiederholte
+          // Fehlversuche koennen das Schulkonto sperren.
+          if (wikiState === 'error') {
+            failedLogins.current[id] = true;
+            console.warn('[wiki] Anmeldung abgelehnt - Auto-Login gestoppt');
             break;
           }
 
@@ -2324,6 +2336,7 @@ const WebViewContainer = forwardRef(({ activeWebView, onNavigate, standardApps }
             await webview.executeJavaScript(
               `(function() { const cb = document.querySelector('input[name="r"]'); if (cb) cb.checked = true; })(); void(0);`
             );
+            noteSubmit(id);
             await webview.executeJavaScript(
               `document.querySelector('button[type="submit"][data-dw-icon="mdi:lock"]').click();`
             );
